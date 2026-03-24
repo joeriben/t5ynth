@@ -1,0 +1,30 @@
+build/
+JUCE/
+.cache/
+*.o
+*.so
+*.dylib
+*.exe
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Python backend venv
+backend/venv/
+backend/__pycache__/
+*.pyc
+
+# Models (user downloads separately)
+models/
+
+# OS
+.DS_Store
+Thumbs.db
