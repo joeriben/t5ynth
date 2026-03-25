@@ -88,7 +88,8 @@ void PromptPanel::resized()
     float pad = w * 0.04f;
     auto area = b.reduced(juce::roundToInt(pad));
 
-    float fs = juce::jlimit(9.0f, 14.0f, h * 0.02f);
+    float topH = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
+    float fs = juce::jlimit(10.0f, 16.0f, topH * 0.016f);
     float fsSmall = fs * 0.85f;
     headerLabel.setFont(juce::FontOptions(fs));
     infoLabel.setFont(juce::FontOptions(fsSmall));

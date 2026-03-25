@@ -90,7 +90,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"gen_steps", 1}, "Steps", 1, 100, 20));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"gen_cfg", 1}, "CFG Scale",
-        juce::NormalisableRange<float>(1.0f, 15.0f, 0.1f), 3.5f));
+        juce::NormalisableRange<float>(1.0f, 15.0f, 0.1f), 7.0f));
 
     // Engine mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(

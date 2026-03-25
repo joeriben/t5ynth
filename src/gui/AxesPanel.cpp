@@ -42,7 +42,8 @@ void AxesPanel::addAxis(const juce::String& name, const juce::String& poleA, con
 
 void AxesPanel::paint(juce::Graphics& g)
 {
-    float fs = juce::jlimit(8.0f, 12.0f, static_cast<float>(getHeight()) * 0.04f);
+    float topH = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
+    float fs = juce::jlimit(10.0f, 16.0f, topH * 0.016f);
     g.setFont(juce::FontOptions(fs));
     g.setColour(juce::Colour(0xff888888));
     float pad = getWidth() * 0.03f;
@@ -59,7 +60,8 @@ void AxesPanel::resized()
     float pad = w * 0.03f;
     float headerH = h * 0.09f;
     float rowH = (h - headerH) / static_cast<float>(rows.size());
-    float fs = juce::jlimit(7.0f, 10.0f, rowH * 0.55f);
+    float topH2 = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
+    float fs = juce::jlimit(9.0f, 13.0f, topH2 * 0.013f);
     float labelW = w * 0.22f;
 
     for (size_t i = 0; i < rows.size(); ++i)

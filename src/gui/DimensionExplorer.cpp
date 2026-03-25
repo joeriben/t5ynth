@@ -18,7 +18,8 @@ void DimensionExplorer::paint(juce::Graphics& g)
     g.drawVerticalLine(juce::roundToInt(area.getCentreX()), area.getY(), area.getBottom());
 
     // Header
-    float fs = juce::jlimit(8.0f, 12.0f, b.getHeight() * 0.04f);
+    float topH = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
+    float fs = juce::jlimit(10.0f, 16.0f, topH * 0.016f);
     g.setFont(juce::FontOptions(fs));
     g.setColour(juce::Colour(0xff888888));
     g.drawText("EXPLORE", juce::roundToInt(pad + 4), juce::roundToInt(pad),

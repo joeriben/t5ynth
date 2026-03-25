@@ -104,7 +104,8 @@ void SynthPanel::paint(juce::Graphics& g)
 {
     float h = static_cast<float>(getHeight());
     float w = static_cast<float>(getWidth());
-    float fs = juce::jlimit(8.0f, 12.0f, h * 0.017f);
+    float topH = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
+    float fs = juce::jlimit(10.0f, 16.0f, topH * 0.016f);
 
     // Section headers drawn directly
     g.setFont(juce::FontOptions(fs));
@@ -132,7 +133,8 @@ void SynthPanel::resized()
     float w = static_cast<float>(getWidth());
     float h = static_cast<float>(getHeight());
     int pad = juce::roundToInt(w * 0.04f);
-    float fs = juce::jlimit(7.0f, 11.0f, h * 0.015f);
+    float topH = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
+    float fs = juce::jlimit(10.0f, 14.0f, topH * 0.014f);
 
     auto placeKnob = [&](juce::Slider& knob, juce::Label& label, int x, int y, int dia)
     {

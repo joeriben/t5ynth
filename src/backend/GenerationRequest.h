@@ -63,7 +63,7 @@ private:
     float durationSeconds = 1.0f;
     float startPosition = 0.0f;
     int steps = 20;
-    float cfgScale = 3.5f;
+    float cfgScale = 7.0f;
     int seed = -1;                 // -1 = random
     std::map<juce::String, float> axes;
     std::map<int, float> dimensionOffsets;
