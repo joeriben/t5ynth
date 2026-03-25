@@ -63,7 +63,7 @@ private:
     void enqueueWork(std::function<void()> work);
 
     std::atomic<bool> connected { false };
-    juce::String endpointUrl { "http://127.0.0.1:17803" };
+    juce::String endpointUrl { "http://127.0.0.1:17850" };
     juce::CriticalSection endpointLock;
 
     std::queue<std::function<void()>> workQueue;

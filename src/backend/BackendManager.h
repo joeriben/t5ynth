@@ -38,7 +38,7 @@ private:
 
     std::unique_ptr<juce::ChildProcess> childProcess;
     std::atomic<Status> status { Status::Stopped };
-    juce::String endpointUrl { "http://127.0.0.1:17803" };
+    juce::String endpointUrl { "http://127.0.0.1:17850" };
 
     StatusCallback statusCallback;
     int healthCheckAttempts = 0;

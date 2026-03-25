@@ -23,7 +23,7 @@ else:
 
 # --- Server ---
 HOST = os.environ.get("T5YNTH_HOST", "127.0.0.1")  # Loopback only — no external access
-PORT = int(os.environ.get("T5YNTH_PORT", "17803"))
+PORT = int(os.environ.get("T5YNTH_PORT", "17850"))
 
 # --- Model Storage ---
 MODEL_DIR = Path(os.environ.get("T5YNTH_MODEL_DIR", str(Path.home() / "t5ynth" / "models")))
