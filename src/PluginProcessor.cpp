@@ -6,9 +6,22 @@ T5ynthProcessor::T5ynthProcessor()
                      .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "T5ynth", createParameterLayout())
 {
+    backendManager.setStatusCallback([this](BackendManager::Status s)
+    {
+        if (s == BackendManager::Status::Running)
+        {
+            backendConnection.setEndpoint(backendManager.getEndpointUrl());
+            backendConnection.checkHealth();
+        }
+    });
+
+    backendManager.start();
 }
 
-T5ynthProcessor::~T5ynthProcessor() = default;
+T5ynthProcessor::~T5ynthProcessor()
+{
+    backendManager.stop();
+}
 
 juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParameterLayout()
 {

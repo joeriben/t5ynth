@@ -12,6 +12,7 @@
 #include "dsp/ModulationMatrix.h"
 #include "sequencer/StepSequencer.h"
 #include "sequencer/Arpeggiator.h"
+#include "backend/BackendManager.h"
 #include "backend/BackendConnection.h"
 
 class T5ynthProcessor : public juce::AudioProcessor
@@ -51,7 +52,8 @@ public:
     // Load generated audio into the engine
     void loadGeneratedAudio(const juce::AudioBuffer<float>& buffer, double sampleRate);
 
-    // Backend connection
+    // Backend
+    BackendManager& getBackendManager() { return backendManager; }
     BackendConnection& getBackendConnection() { return backendConnection; }
 
 private:
@@ -80,7 +82,8 @@ private:
     T5ynthStepSequencer stepSequencer;
     T5ynthArpeggiator arpeggiator;
 
-    // Backend
+    // Backend (backendConnection destroyed before backendManager — correct order)
+    BackendManager backendManager;
     BackendConnection backendConnection;
 
     // State

@@ -1,36 +1,50 @@
 #pragma once
 #include <JuceHeader.h>
+#include <functional>
 
 /**
  * Manages the lifecycle of the local Python backend process.
  *
- * Responsibilities:
- * - Locates or downloads the T5 model
- * - Starts/stops the inference server
- * - Health checks
- * - Provides the BackendConnection endpoint
+ * - Locates the Python interpreter (venv or system)
+ * - Starts server.py via juce::ChildProcess
+ * - Polls /health until the server is ready
+ * - Kills the process on shutdown
  */
-class BackendManager
+class BackendManager : private juce::Timer
 {
 public:
-    BackendManager() = default;
-    ~BackendManager();
+    enum class Status { Stopped, Starting, Running, Failed };
 
-    /** Start the backend process. */
+    using StatusCallback = std::function<void(Status)>;
+
+    BackendManager();
+    ~BackendManager() override;
+
     void start();
-
-    /** Stop the backend process. */
     void stop();
 
-    /** Check if the backend is running and healthy. */
-    bool isRunning() const { return running; }
-
-    /** Get the backend URL (e.g., http://localhost:17850). */
+    Status getStatus() const { return status.load(); }
+    bool isRunning() const { return status.load() == Status::Running; }
     juce::String getEndpointUrl() const { return endpointUrl; }
 
+    void setStatusCallback(StatusCallback cb);
+
 private:
-    bool running = false;
-    juce::String endpointUrl = "http://localhost:17850";
+    void timerCallback() override;
+    void notifyStatus();
+
+    juce::File findPythonExecutable() const;
+    juce::File findBackendDirectory() const;
+
+    std::unique_ptr<juce::ChildProcess> childProcess;
+    std::atomic<Status> status { Status::Stopped };
+    juce::String endpointUrl { "http://127.0.0.1:17803" };
+
+    StatusCallback statusCallback;
+    int healthCheckAttempts = 0;
+
+    static constexpr int maxHealthCheckAttempts = 30;   // 30 x 500ms = 15s
+    static constexpr int healthCheckIntervalMs = 500;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BackendManager)
 };

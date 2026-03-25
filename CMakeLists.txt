@@ -4,6 +4,8 @@ project(T5ynth VERSION 0.1.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+find_package(CURL REQUIRED)
+
 add_subdirectory(JUCE)
 
 juce_add_plugin(T5ynth
@@ -84,6 +86,7 @@ target_link_libraries(T5ynth
         juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_gui_extra
+        CURL::libcurl
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -96,4 +99,6 @@ target_compile_definitions(T5ynth
         JUCE_USE_CURL=1
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
+    PRIVATE
+        T5YNTH_BACKEND_DIR="${CMAKE_SOURCE_DIR}/backend"
 )
