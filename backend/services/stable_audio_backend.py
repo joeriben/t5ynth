@@ -46,9 +46,19 @@ class StableAudioGenerator:
             STABLE_AUDIO_LAZY_LOAD,
             STABLE_AUDIO_MAX_DURATION,
             STABLE_AUDIO_SAMPLE_RATE,
+            MODEL_DIR,
         )
 
-        self.model_id = STABLE_AUDIO_MODEL_ID
+        # Check for local model directory first (users without HF account)
+        local_model_path = MODEL_DIR / "stable-audio-open-1.0"
+        if local_model_path.is_dir() and any(local_model_path.iterdir()):
+            self.model_id = str(local_model_path)
+            logger.info(f"[STABLE-AUDIO] Using local model: {local_model_path}")
+        else:
+            self.model_id = STABLE_AUDIO_MODEL_ID
+            logger.info(f"[STABLE-AUDIO] No local model at {local_model_path}, "
+                        f"will download from HF: {STABLE_AUDIO_MODEL_ID}")
+
         self.device = STABLE_AUDIO_DEVICE
         self.dtype_str = STABLE_AUDIO_DTYPE
         self.lazy_load = STABLE_AUDIO_LAZY_LOAD
