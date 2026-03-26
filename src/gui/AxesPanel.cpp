@@ -1,11 +1,10 @@
 #include "AxesPanel.h"
+#include "GuiHelpers.h"
 
-static const auto kGreen  = juce::Colour(0xff4a9eff);
-static const auto kDim    = juce::Colour(0xff888888);
-static const auto kDimmer = juce::Colour(0xff606060);
+static const juce::Colour kAxisColors[] = { kAxis1, kAxis2, kAxis3 };
 
 static const juce::StringArray kSemanticAxes {
-    "—",
+    "---",
     "tonal / noisy (d=4.81)",
     "rhythmic / sustained (d=2.60)",
     "bright / dark (d=1.28)",
@@ -17,7 +16,7 @@ static const juce::StringArray kSemanticAxes {
 };
 
 static const juce::StringArray kPcaAxes {
-    "—",
+    "---",
     "PC1: natural / synthetic",
     "PC2: sonic / physical",
     "PC3: tonal / atonal",
@@ -41,33 +40,37 @@ AxesPanel::AxesPanel()
     addAndMakeVisible(pcaHeader);
 
     semSlots.resize(3);
-    for (auto& slot : semSlots)
-        initSlot(slot, kSemanticAxes);
+    for (size_t i = 0; i < semSlots.size(); ++i)
+        initSlot(semSlots[i], kSemanticAxes, static_cast<int>(i));
 
     pcaSlots.resize(6);
     for (auto& slot : pcaSlots)
-        initSlot(slot, kPcaAxes);
+        initSlot(slot, kPcaAxes, -1);
 }
 
-void AxesPanel::initSlot(AxisSlot& slot, const juce::StringArray& options)
+void AxesPanel::initSlot(AxisSlot& slot, const juce::StringArray& options, int axisIndex)
 {
+    slot.axisIndex = axisIndex;
+
     slot.dropdown = std::make_unique<juce::ComboBox>();
     slot.dropdown->addItemList(options, 1);
-    slot.dropdown->setSelectedId(1, juce::dontSendNotification); // "—"
+    slot.dropdown->setSelectedId(1, juce::dontSendNotification); // "---"
     slot.dropdown->onChange = [this] { resized(); };
     addAndMakeVisible(*slot.dropdown);
+
+    juce::Colour sliderColor = (axisIndex >= 0 && axisIndex < 3) ? kAxisColors[axisIndex] : kAccent;
 
     slot.slider = std::make_unique<juce::Slider>();
     slot.slider->setSliderStyle(juce::Slider::LinearHorizontal);
     slot.slider->setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
-    slot.slider->setRange(-1.0, 1.0, 0.01);
+    slot.slider->setRange(-1.0, 1.0, 0.002);
     slot.slider->setValue(0.0, juce::dontSendNotification);
-    slot.slider->setColour(juce::Slider::trackColourId, kGreen);
-    slot.slider->setColour(juce::Slider::backgroundColourId, juce::Colour(0xff1a1a1a));
+    slot.slider->setColour(juce::Slider::trackColourId, sliderColor);
+    slot.slider->setColour(juce::Slider::backgroundColourId, kSurface);
     addAndMakeVisible(*slot.slider);
 
     slot.valueLabel = std::make_unique<juce::Label>("", "0.00");
-    slot.valueLabel->setColour(juce::Label::textColourId, kGreen);
+    slot.valueLabel->setColour(juce::Label::textColourId, sliderColor);
     slot.valueLabel->setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(*slot.valueLabel);
 
@@ -80,12 +83,27 @@ float AxesPanel::fs() const
 {
     float topH = (getTopLevelComponent() != nullptr)
                      ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
-    return juce::jlimit(14.0f, 26.0f, topH * 0.030f);
+    return juce::jlimit(12.0f, 22.0f, topH * 0.022f);
 }
 
-void AxesPanel::paint(juce::Graphics&) {}
+void AxesPanel::paint(juce::Graphics& g)
+{
+    // Draw color dots for semantic axis slots
+    float f = fs();
+    int dotSize = juce::roundToInt(f * 0.55f);
+    for (size_t i = 0; i < semSlots.size(); ++i)
+    {
+        auto& slot = semSlots[i];
+        auto dropBounds = slot.dropdown->getBounds();
+        int dotX = dropBounds.getX() - dotSize - 4;
+        int dotY = dropBounds.getCentreY() - dotSize / 2;
+        g.setColour(kAxisColors[i]);
+        g.fillEllipse(static_cast<float>(dotX), static_cast<float>(dotY),
+                       static_cast<float>(dotSize), static_cast<float>(dotSize));
+    }
+}
 
-void AxesPanel::layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f)
+void AxesPanel::layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f, int dotOffset)
 {
     int rowH = juce::roundToInt(f * 1.4f);
     int sliderH = juce::roundToInt(f * 1.2f);
@@ -94,15 +112,21 @@ void AxesPanel::layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& 
 
     for (auto& slot : slots)
     {
-        bool active = slot.dropdown->getSelectedId() != 1; // 1 = "—"
+        bool active = slot.dropdown->getSelectedId() != 1; // 1 = "---"
 
-        slot.dropdown->setBounds(area.removeFromTop(rowH));
+        auto dropRow = area.removeFromTop(rowH);
+        if (dotOffset > 0)
+            dropRow.removeFromLeft(dotOffset); // space for color dot
+        slot.dropdown->setBounds(dropRow);
+
         slot.slider->setVisible(active);
         slot.valueLabel->setVisible(active);
 
         if (active)
         {
             auto sliderRow = area.removeFromTop(sliderH);
+            if (dotOffset > 0)
+                sliderRow.removeFromLeft(dotOffset);
             slot.valueLabel->setFont(juce::FontOptions(f * 0.8f));
             slot.valueLabel->setBounds(sliderRow.removeFromRight(valW));
             slot.slider->setBounds(sliderRow);
@@ -119,21 +143,31 @@ void AxesPanel::resized()
     auto area = getLocalBounds().reduced(pad, juce::roundToInt(h * 0.01f));
     float f = fs();
     int headerH = juce::roundToInt(f * 1.3f);
+    int dotOffset = juce::roundToInt(f * 0.8f); // space for color dot
 
     semHeader.setFont(juce::FontOptions(f * 0.85f));
     semHeader.setBounds(area.removeFromTop(headerH));
-    layoutSlots(semSlots, area, f * 0.75f);
+    layoutSlots(semSlots, area, f * 0.75f, dotOffset);
 
     area.removeFromTop(juce::roundToInt(f * 0.5f));
 
     pcaHeader.setFont(juce::FontOptions(f * 0.85f));
     pcaHeader.setBounds(area.removeFromTop(headerH));
-    layoutSlots(pcaSlots, area, f * 0.65f);
+    layoutSlots(pcaSlots, area, f * 0.65f, 0); // no dots for PCA
 }
 
 std::map<juce::String, float> AxesPanel::getAxisValues() const
 {
     std::map<juce::String, float> vals;
-    // TODO: map dropdown selection back to axis names
+    for (auto& slot : semSlots)
+    {
+        if (slot.dropdown->getSelectedId() > 1)
+            vals[slot.dropdown->getText()] = static_cast<float>(slot.slider->getValue());
+    }
+    for (auto& slot : pcaSlots)
+    {
+        if (slot.dropdown->getSelectedId() > 1)
+            vals[slot.dropdown->getText()] = static_cast<float>(slot.slider->getValue());
+    }
     return vals;
 }

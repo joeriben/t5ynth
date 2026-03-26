@@ -57,11 +57,10 @@ target_sources(T5ynth PRIVATE
     src/gui/MainPanel.cpp
     src/gui/PromptPanel.cpp
     src/gui/SynthPanel.cpp
-    src/gui/EffectsPanel.cpp
+    src/gui/FxPanel.cpp
     src/gui/SequencerPanel.cpp
     src/gui/AxesPanel.cpp
     src/gui/DimensionExplorer.cpp
-    src/gui/DriftPanel.cpp
     src/gui/WaveformDisplay.cpp
     src/gui/PresetPanel.cpp
     src/gui/SetupWizard.cpp

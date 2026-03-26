@@ -10,30 +10,24 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& processor)
     modeBox.addItemList({"Seq", "Arp Up", "Arp Dn", "Arp UD", "Arp Rnd"}, 1);
     addAndMakeVisible(modeBox);
 
-    bpmKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    bpmKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 1, 1);
-    bpmKnob.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff4a9eff));
-    bpmKnob.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff2a2a2a));
-    addAndMakeVisible(bpmKnob);
-    bpmLabel.setText("BPM", juce::dontSendNotification);
-    bpmLabel.setJustificationType(juce::Justification::centred);
-    bpmLabel.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
-    addAndMakeVisible(bpmLabel);
+    // Linear slider rows instead of rotary knobs
+    bpmRow = std::make_unique<SliderRow>("BPM", [](double v) {
+        return juce::String(juce::roundToInt(v));
+    });
+    addAndMakeVisible(*bpmRow);
 
-    octKnob.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    octKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 1, 1);
-    octKnob.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff4a9eff));
-    octKnob.setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff2a2a2a));
-    addAndMakeVisible(octKnob);
-    octLabel.setText("Oct", juce::dontSendNotification);
-    octLabel.setJustificationType(juce::Justification::centred);
-    octLabel.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
-    addAndMakeVisible(octLabel);
+    octRow = std::make_unique<SliderRow>("Oct", [](double v) {
+        return juce::String(juce::roundToInt(v));
+    });
+    addAndMakeVisible(*octRow);
 
     auto& apvts = processor.getValueTreeState();
-    bpmAttach  = std::make_unique<SA>(apvts, "seq_bpm", bpmKnob);
-    octAttach  = std::make_unique<SA>(apvts, "arp_octaves", octKnob);
-    modeAttach = std::make_unique<CA>(apvts, "arp_mode", modeBox);
+    bpmAttach  = std::make_unique<SA>(apvts, "seq_bpm",     bpmRow->getSlider());
+    octAttach  = std::make_unique<SA>(apvts, "arp_octaves", octRow->getSlider());
+    modeAttach = std::make_unique<CA>(apvts, "arp_mode",    modeBox);
+
+    bpmRow->updateValue();
+    octRow->updateValue();
 
     for (int i = 0; i < 4; ++i)
         stepStates[static_cast<size_t>(i)] = true;
@@ -41,9 +35,8 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& processor)
 
 void SequencerPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xff0a0a0a));
+    g.fillAll(kBg);
 
-    // Draw step grid
     for (int i = 0; i < numVisibleSteps; ++i)
     {
         auto r = getStepBounds(i);
@@ -66,44 +59,32 @@ void SequencerPanel::resized()
     float w = static_cast<float>(getWidth());
     float h = static_cast<float>(getHeight());
     int pad = juce::roundToInt(w * 0.01f);
-    float topH = (getTopLevelComponent() != nullptr) ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
-    float fs = juce::jlimit(14.0f, 24.0f, topH * 0.026f);
-
-    bpmLabel.setFont(juce::FontOptions(fs));
-    octLabel.setFont(juce::FontOptions(fs));
 
     auto area = getLocalBounds().reduced(pad, juce::roundToInt(h * 0.05f));
 
-    // Left controls strip (15% of width)
-    int controlsW = juce::roundToInt(w * 0.15f);
+    // Left controls strip (18% of width)
+    int controlsW = juce::roundToInt(w * 0.18f);
     auto controls = area.removeFromLeft(controlsW);
 
-    int btnH = juce::roundToInt(h * 0.35f);
-    int btnW = controls.getWidth() / 2 - 2;
-    auto btnRow = controls.removeFromTop(btnH);
+    int rowH = juce::roundToInt(h * 0.28f);
+
+    // Play / Stop
+    auto btnRow = controls.removeFromTop(rowH);
+    int btnW = btnRow.getWidth() / 2 - 2;
     playButton.setBounds(btnRow.removeFromLeft(btnW));
     btnRow.removeFromLeft(4);
     stopButton.setBounds(btnRow.removeFromLeft(btnW));
 
     controls.removeFromTop(2);
-    modeBox.setBounds(controls.removeFromTop(juce::roundToInt(h * 0.3f)));
+    modeBox.setBounds(controls.removeFromTop(rowH));
 
-    // BPM + Oct knobs
+    // BPM + Oct as horizontal slider rows
     area.removeFromLeft(pad);
-    int knobDia = juce::jmin(juce::roundToInt(h * 0.55f), juce::roundToInt(w * 0.05f));
-    int tbW = juce::roundToInt(knobDia * 0.9f);
-    int tbH = juce::roundToInt(fs + 2.0f);
-    int labelH = juce::roundToInt(h * 0.15f);
+    int sliderStripW = juce::roundToInt(w * 0.15f);
+    auto sliderStrip = area.removeFromLeft(sliderStripW);
 
-    auto bpmArea = area.removeFromLeft(knobDia + 8);
-    bpmKnob.setBounds(bpmArea.removeFromTop(knobDia).withSizeKeepingCentre(knobDia, knobDia));
-    bpmKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, tbW, tbH);
-    bpmLabel.setBounds(bpmArea.withHeight(labelH));
-
-    auto octArea = area.removeFromLeft(knobDia + 8);
-    octKnob.setBounds(octArea.removeFromTop(knobDia).withSizeKeepingCentre(knobDia, knobDia));
-    octKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, tbW, tbH);
-    octLabel.setBounds(octArea.withHeight(labelH));
+    bpmRow->setBounds(sliderStrip.removeFromTop(juce::roundToInt(h * 0.45f)));
+    octRow->setBounds(sliderStrip.removeFromTop(juce::roundToInt(h * 0.45f)));
 
     // Step grid: remaining space
     area.removeFromLeft(pad);

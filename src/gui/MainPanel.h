@@ -4,13 +4,21 @@
 #include "AxesPanel.h"
 #include "DimensionExplorer.h"
 #include "SynthPanel.h"
-#include "EffectsPanel.h"
-#include "DriftPanel.h"
+#include "FxPanel.h"
 #include "SequencerPanel.h"
 #include "StatusBar.h"
 
 class T5ynthProcessor;
 
+/**
+ * 3-column layout:
+ *   Col 1 (25%): GENERATION (PromptPanel + AxesPanel)
+ *   Col 2 (55%): ENGINE + FILTER + MODULATION (SynthPanel)
+ *   Col 3 (20%): FX (FxPanel)
+ *   Bottom: SequencerPanel + StatusBar
+ *
+ * DimensionExplorer opens as a modal overlay.
+ */
 class MainPanel : public juce::Component
 {
 public:
@@ -23,21 +31,28 @@ public:
 private:
     T5ynthProcessor& processorRef;
 
-    // Col 1: GENERATION (30%) — prompts, gen params, axes
+    // Col 1: GENERATION
     PromptPanel promptPanel;
     AxesPanel axesPanel;
 
-    // Col 2: MODE + FILTER + EXPLORE (40%)
+    // Col 2: ENGINE + FILTER + MODULATION
     SynthPanel synthPanel;
-    DimensionExplorer dimensionExplorer;
 
-    // Col 3: MODULATION + FX (30%)
-    EffectsPanel modulationPanel;
-    DriftPanel fxPanel;
+    // Col 3: FX
+    FxPanel fxPanel;
 
     // Bottom
     SequencerPanel sequencerPanel;
     StatusBar statusBar;
+
+    // Overlay: Dimension Explorer
+    DimensionExplorer dimensionExplorer;
+    juce::TextButton dimExplorerClose { "Close" };
+    juce::TextButton dimExplorerReset { "Reset" };
+    bool dimExplorerVisible = false;
+
+    void showDimExplorer();
+    void hideDimExplorer();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainPanel)
 };

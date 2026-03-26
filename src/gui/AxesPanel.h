@@ -4,8 +4,9 @@
 #include <map>
 
 /**
- * Semantic + PCA axes. Separated sections with dropdown selection.
- * Max 3 semantic slots, max 6 PCA slots.
+ * Semantic + PCA axes with color-coded slots.
+ * Semantic: 3 slots with pink/blue/green dots and colored sliders.
+ * PCA: 6 slots, neutral accent color.
  */
 class AxesPanel : public juce::Component
 {
@@ -25,15 +26,16 @@ private:
     {
         std::unique_ptr<juce::ComboBox> dropdown;
         std::unique_ptr<juce::Slider> slider;
-        std::unique_ptr<juce::Label> labelA, labelB, valueLabel;
+        std::unique_ptr<juce::Label> valueLabel;
+        int axisIndex = -1; // 0/1/2 for semantic (color), -1 for PCA
     };
 
     juce::Label semHeader, pcaHeader;
-    std::vector<AxisSlot> semSlots;  // max 3
-    std::vector<AxisSlot> pcaSlots;  // max 6
+    std::vector<AxisSlot> semSlots;  // 3
+    std::vector<AxisSlot> pcaSlots;  // 6
 
-    void initSlot(AxisSlot& slot, const juce::StringArray& options);
-    void layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f);
+    void initSlot(AxisSlot& slot, const juce::StringArray& options, int axisIndex);
+    void layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f, int dotOffset);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AxesPanel)
 };

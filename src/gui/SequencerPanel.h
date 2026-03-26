@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <array>
+#include "GuiHelpers.h"
 
 class T5ynthProcessor;
 
@@ -20,8 +21,10 @@ private:
     juce::TextButton playButton { ">" };
     juce::TextButton stopButton { "||" };
     juce::ComboBox modeBox;
-    juce::Slider bpmKnob, octKnob;
-    juce::Label bpmLabel, octLabel;
+
+    // Linear slider rows instead of rotary knobs
+    std::unique_ptr<SliderRow> bpmRow;
+    std::unique_ptr<SliderRow> octRow;
 
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
