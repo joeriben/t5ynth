@@ -27,6 +27,8 @@ private:
         std::unique_ptr<juce::ComboBox> dropdown;
         std::unique_ptr<juce::Slider> slider;
         std::unique_ptr<juce::Label> valueLabel;
+        std::unique_ptr<juce::Label> poleLabelA; // left pole
+        std::unique_ptr<juce::Label> poleLabelB; // right pole
         int axisIndex = -1; // 0/1/2 for semantic (color), -1 for PCA
     };
 

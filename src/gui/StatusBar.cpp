@@ -1,4 +1,5 @@
 #include "StatusBar.h"
+#include "GuiHelpers.h"
 
 StatusBar::StatusBar()
 {
@@ -6,7 +7,7 @@ StatusBar::StatusBar()
 
 void StatusBar::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xff1a1a1a));
+    g.fillAll(kCard);
 
     float h = static_cast<float>(getHeight());
     float dotSize = juce::jmax(6.0f, h * 0.35f);

@@ -35,7 +35,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& processor)
 
 void SequencerPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(kBg);
+    g.fillAll(kCard);
 
     for (int i = 0; i < numVisibleSteps; ++i)
     {
@@ -43,12 +43,12 @@ void SequencerPanel::paint(juce::Graphics& g)
         if (r.isEmpty()) continue;
 
         bool on = stepStates[static_cast<size_t>(i)];
-        g.setColour(on ? juce::Colour(0xff2a2a2a) : juce::Colour(0xff131313));
+        g.setColour(on ? kSurface : kBg);
         g.fillRect(r.reduced(1));
 
         if (i % 4 == 0)
         {
-            g.setColour(juce::Colour(0xff333333));
+            g.setColour(kBorder);
             g.drawRect(r, 1);
         }
     }
@@ -78,13 +78,17 @@ void SequencerPanel::resized()
     controls.removeFromTop(2);
     modeBox.setBounds(controls.removeFromTop(rowH));
 
-    // BPM + Oct as horizontal slider rows
+    // BPM + Oct as horizontal slider rows — constrain height so font doesn't explode
     area.removeFromLeft(pad);
-    int sliderStripW = juce::roundToInt(w * 0.15f);
+    int sliderStripW = juce::roundToInt(w * 0.18f);
     auto sliderStrip = area.removeFromLeft(sliderStripW);
 
-    bpmRow->setBounds(sliderStrip.removeFromTop(juce::roundToInt(h * 0.45f)));
-    octRow->setBounds(sliderStrip.removeFromTop(juce::roundToInt(h * 0.45f)));
+    int sliderRowH = juce::jmin(juce::roundToInt(h * 0.38f), 24);
+    int sliderGap = juce::roundToInt(h * 0.08f);
+    sliderStrip.removeFromTop((sliderStrip.getHeight() - sliderRowH * 2 - sliderGap) / 2); // center vertically
+    bpmRow->setBounds(sliderStrip.removeFromTop(sliderRowH));
+    sliderStrip.removeFromTop(sliderGap);
+    octRow->setBounds(sliderStrip.removeFromTop(sliderRowH));
 
     // Step grid: remaining space
     area.removeFromLeft(pad);

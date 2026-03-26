@@ -87,21 +87,19 @@ void MainPanel::paint(juce::Graphics& g)
     float bottomH = h * 0.16f;
     float topH = h - bottomH;
 
-    g.setColour(kSurface);
+    g.setColour(kBorder);
 
-    // 3 column separators
+    // Column separator
     float x1 = w * 0.25f;
-    float x2 = x1 + w * 0.55f;
     g.drawVerticalLine(juce::roundToInt(x1), 0.0f, topH);
-    g.drawVerticalLine(juce::roundToInt(x2), 0.0f, topH);
 
+    // Bottom strip separator
     g.drawHorizontalLine(juce::roundToInt(topH), 0.0f, w);
-    g.drawHorizontalLine(juce::roundToInt(h - h * 0.03f), 0.0f, w);
 
     // DimExplorer overlay background
     if (dimExplorerVisible)
     {
-        g.setColour(juce::Colour(0xdd0a0a0a)); // semi-transparent dark
+        g.setColour(juce::Colour(0xdd101016));
         g.fillRect(getLocalBounds());
     }
 }
@@ -113,26 +111,26 @@ void MainPanel::resized()
     float h = static_cast<float>(b.getHeight());
 
     int statusH = juce::roundToInt(h * 0.03f);
-    int seqH = juce::roundToInt(h * 0.13f);
+    int footerH = juce::roundToInt(h * 0.10f);
     statusBar.setBounds(b.removeFromBottom(statusH));
-    sequencerPanel.setBounds(b.removeFromBottom(seqH));
 
-    // 3 columns: 25% | 55% | 20%
+    // Footer: Sequencer (left 60%) | FX (right 40%)
+    auto footer = b.removeFromBottom(footerH);
+    int fxW = juce::roundToInt(w * 0.35f);
+    fxPanel.setBounds(footer.removeFromRight(fxW));
+    sequencerPanel.setBounds(footer);
+
+    // 2 columns: 25% | 75%
     int col1W = juce::roundToInt(w * 0.25f);
-    int col2W = juce::roundToInt(w * 0.55f);
-    int col3W = b.getWidth() - col1W - col2W;
 
     // Col 1: GENERATION
     auto genCol = b.removeFromLeft(col1W);
-    int promptH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.60f);
+    int promptH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.55f);
     promptPanel.setBounds(genCol.removeFromTop(promptH));
     axesPanel.setBounds(genCol);
 
     // Col 2: ENGINE + FILTER + MODULATION
-    synthPanel.setBounds(b.removeFromLeft(col2W));
-
-    // Col 3: FX
-    fxPanel.setBounds(b);
+    synthPanel.setBounds(b);
 
     // DimExplorer overlay
     if (dimExplorerVisible)

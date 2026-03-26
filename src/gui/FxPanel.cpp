@@ -3,11 +3,11 @@
 static juce::String fmtMs(double v)  { return juce::String(juce::roundToInt(v)) + "ms"; }
 static juce::String fmtF2(double v)  { return juce::String(v, 2); }
 
-// Map normalized 0-1 to 200-20000 Hz for display
 static juce::String fmtDampHz(double v)
 {
-    double hz = 200.0 * std::pow(100.0, v); // exponential: 200 Hz at 0, 20000 Hz at 1
-    return juce::String(juce::roundToInt(hz)) + " Hz";
+    double hz = 200.0 * std::pow(100.0, v);
+    if (hz >= 1000.0) return juce::String(hz / 1000.0, 1) + "k";
+    return juce::String(juce::roundToInt(hz)) + "Hz";
 }
 
 FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
@@ -15,14 +15,13 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     // ── Delay ──
     delayToggle.setColour(juce::ToggleButton::textColourId, kDim);
     delayToggle.setColour(juce::ToggleButton::tickColourId, kAccent);
-    delayToggle.onClick = [this] { resized(); };
+    delayToggle.onClick = [this] { if (initialized) { repaint(); resized(); } };
     addAndMakeVisible(delayToggle);
-    delayEnableA = std::make_unique<BA>(apvts, "delay_enabled", delayToggle);
 
-    delayTimeRow = std::make_unique<SliderRow>("Time",     fmtMs);
-    delayFbRow   = std::make_unique<SliderRow>("Feedback", fmtF2);
-    delayDampRow = std::make_unique<SliderRow>("Damp",     fmtDampHz);
-    delayMixRow  = std::make_unique<SliderRow>("Mix",      fmtF2);
+    delayTimeRow = std::make_unique<SliderRow>("Time", fmtMs);
+    delayFbRow   = std::make_unique<SliderRow>("FB",   fmtF2);
+    delayDampRow = std::make_unique<SliderRow>("Damp", fmtDampHz);
+    delayMixRow  = std::make_unique<SliderRow>("Mix",  fmtF2);
 
     for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
         addAndMakeVisible(*r);
@@ -40,9 +39,8 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     // ── Reverb ──
     reverbToggle.setColour(juce::ToggleButton::textColourId, kDim);
     reverbToggle.setColour(juce::ToggleButton::tickColourId, kAccent);
-    reverbToggle.onClick = [this] { resized(); };
+    reverbToggle.onClick = [this] { if (initialized) { repaint(); resized(); } };
     addAndMakeVisible(reverbToggle);
-    reverbEnableA = std::make_unique<BA>(apvts, "reverb_enabled", reverbToggle);
 
     reverbIrBox.addItemList({"Bright", "Medium", "Dark"}, 1);
     addAndMakeVisible(reverbIrBox);
@@ -53,6 +51,11 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     reverbMixA = std::make_unique<SA>(apvts, "reverb_mix", reverbMixRow->getSlider());
     reverbIrA  = std::make_unique<CA>(apvts, "reverb_ir",  reverbIrBox);
     reverbMixRow->updateValue();
+
+    // All components ready
+    initialized = true;
+    delayEnableA  = std::make_unique<BA>(apvts, "delay_enabled", delayToggle);
+    reverbEnableA = std::make_unique<BA>(apvts, "reverb_enabled", reverbToggle);
 }
 
 float FxPanel::fs() const
@@ -64,46 +67,59 @@ float FxPanel::fs() const
 
 void FxPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(kBg);
+    g.fillAll(kCard);
+
+    // Vertical separator on left edge (between Seq and FX)
+    g.setColour(kBorder);
+    g.drawVerticalLine(0, 0.0f, static_cast<float>(getHeight()));
 }
 
 void FxPanel::resized()
 {
-    float w = static_cast<float>(getWidth());
-    float h = static_cast<float>(getHeight());
-    int pad = juce::roundToInt(w * 0.06f);
-    auto area = getLocalBounds().reduced(pad, juce::roundToInt(h * 0.01f));
-    float f = fs();
-    int rowH = juce::roundToInt(f * 1.4f);
-    int gap = juce::roundToInt(f * 0.3f);
+    auto area = getLocalBounds().reduced(6, 2);
+    int rowH = juce::jmin(juce::roundToInt(static_cast<float>(getHeight()) * 0.22f), 20);
+    int gap = 2;
 
+    // Stacked: Delay on top, Reverb below
     // ── Delay ──
     delayToggle.setBounds(area.removeFromTop(rowH));
-    bool delayOn = delayToggle.getToggleState();
+    area.removeFromTop(gap);
 
+    bool delayOn = delayToggle.getToggleState();
     for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
         r->setVisible(delayOn);
 
     if (delayOn)
     {
-        delayTimeRow->setBounds(area.removeFromTop(rowH));
-        delayFbRow->setBounds(area.removeFromTop(rowH));
-        delayDampRow->setBounds(area.removeFromTop(rowH));
-        delayMixRow->setBounds(area.removeFromTop(rowH));
+        int colW = (area.getWidth() - 2) / 2;
+        auto row1 = area.removeFromTop(rowH);
+        delayTimeRow->setBounds(row1.removeFromLeft(colW));
+        row1.removeFromLeft(2);
+        delayFbRow->setBounds(row1);
+
+        area.removeFromTop(gap);
+        auto row2 = area.removeFromTop(rowH);
+        delayDampRow->setBounds(row2.removeFromLeft(colW));
+        row2.removeFromLeft(2);
+        delayMixRow->setBounds(row2);
     }
-    area.removeFromTop(gap);
+
+    area.removeFromTop(gap * 2);
 
     // ── Reverb ──
     reverbToggle.setBounds(area.removeFromTop(rowH));
-    bool reverbOn = reverbToggle.getToggleState();
+    area.removeFromTop(gap);
 
+    bool reverbOn = reverbToggle.getToggleState();
     reverbIrBox.setVisible(reverbOn);
     reverbMixRow->setVisible(reverbOn);
 
     if (reverbOn)
     {
-        reverbIrBox.setBounds(area.removeFromTop(rowH));
-        area.removeFromTop(gap / 2);
-        reverbMixRow->setBounds(area.removeFromTop(rowH));
+        int colW = (area.getWidth() - 2) / 2;
+        auto row = area.removeFromTop(rowH);
+        reverbIrBox.setBounds(row.removeFromLeft(colW));
+        row.removeFromLeft(2);
+        reverbMixRow->setBounds(row);
     }
 }

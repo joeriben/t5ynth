@@ -6,13 +6,37 @@
 static const auto kAccent  = juce::Colour(0xff4a9eff);  // Blue accent
 static const auto kDim     = juce::Colour(0xff888888);
 static const auto kDimmer  = juce::Colour(0xff606060);
-static const auto kSurface = juce::Colour(0xff1a1a1a);
-static const auto kBg      = juce::Colour(0xff0a0a0a);
+static const auto kSurface = juce::Colour(0xff1e2130);  // Slider track bg, input fields
+static const auto kCard    = juce::Colour(0xff1a1e2a);  // Card/section background
+static const auto kBg      = juce::Colour(0xff0e1018);  // Main background (dark blue-gray, not black)
+static const auto kBorder  = juce::Colour(0xff353a4a);  // Section borders (more visible)
 
 // Semantic axis colors
 static const auto kAxis1   = juce::Colour(0xffe91e63);  // Pink
 static const auto kAxis2   = juce::Colour(0xff2196f3);  // Blue
 static const auto kAxis3   = juce::Colour(0xff4caf50);  // Green
+
+// PCA axis colors (muted variants)
+static const auto kPca1    = juce::Colour(0xffff9800);  // Orange
+static const auto kPca2    = juce::Colour(0xff9c27b0);  // Purple
+static const auto kPca3    = juce::Colour(0xff00bcd4);  // Cyan
+static const auto kPca4    = juce::Colour(0xffcddc39);  // Lime
+static const auto kPca5    = juce::Colour(0xffff5722);  // Deep orange
+static const auto kPca6    = juce::Colour(0xff8bc34a);  // Light green
+
+// Section accent colors (for headers/highlights per module)
+static const auto kFilterCol = juce::Colour(0xff00bcd4);  // Cyan
+static const auto kModCol    = juce::Colour(0xffff9800);  // Orange
+static const auto kDriftCol  = juce::Colour(0xff9c27b0);  // Purple
+
+/** Paint a rounded card background with subtle border. */
+inline void paintCard(juce::Graphics& g, juce::Rectangle<int> bounds, float cornerSize = 6.0f)
+{
+    g.setColour(kCard);
+    g.fillRoundedRectangle(bounds.toFloat(), cornerSize);
+    g.setColour(kBorder);
+    g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), cornerSize, 1.0f);
+}
 
 /**
  * Compact horizontal slider row:  Label [===slider===] Value+Unit
@@ -35,7 +59,7 @@ public:
         slider.setSliderStyle(juce::Slider::LinearHorizontal);
         slider.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
         slider.setColour(juce::Slider::trackColourId, trackCol);
-        slider.setColour(juce::Slider::backgroundColourId, kSurface);
+        slider.setColour(juce::Slider::backgroundColourId, trackCol.withAlpha(0.18f));
         slider.onValueChange = [this] { updateValue(); };
         addAndMakeVisible(slider);
 

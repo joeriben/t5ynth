@@ -109,9 +109,9 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
         seedValue.setText(juce::String(juce::roundToInt(seedSlider.getValue())), juce::dontSendNotification);
     };
 
-    // Generate
-    generateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1a2a3a));
-    generateButton.setColour(juce::TextButton::textColourOffId, kAccent);
+    // Generate — prominent green button like web UI
+    generateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1b5e20));
+    generateButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff4caf50));
     generateButton.onClick = [this] { triggerGeneration(); };
     addAndMakeVisible(generateButton);
 
@@ -136,7 +136,28 @@ float PromptPanel::fs() const
     return juce::jlimit(14.0f, 26.0f, topH * 0.030f);
 }
 
-void PromptPanel::paint(juce::Graphics&) {}
+void PromptPanel::paint(juce::Graphics& g)
+{
+    g.fillAll(kBg);
+
+    int pad = juce::roundToInt(static_cast<float>(getWidth()) * 0.04f);
+
+    // Card behind prompts A + B
+    if (promptALabel.isVisible())
+    {
+        int top = promptALabel.getY() - 4;
+        int bot = promptBEditor.getBottom() + 4;
+        paintCard(g, juce::Rectangle<int>(pad, top, getWidth() - pad * 2, bot - top));
+    }
+
+    // Card behind embedding controls (Alpha, Magnitude, Noise)
+    if (alphaLabel.isVisible())
+    {
+        int top = alphaLabel.getY() - 4;
+        int bot = noiseHint.getBottom() + 4;
+        paintCard(g, juce::Rectangle<int>(pad, top, getWidth() - pad * 2, bot - top));
+    }
+}
 
 void PromptPanel::resized()
 {

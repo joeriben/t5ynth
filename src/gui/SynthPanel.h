@@ -26,6 +26,7 @@ public:
 private:
     float fs() const;
     void updateVisibility();
+    bool initialized = false;
 
     T5ynthProcessor& processorRef;
 
@@ -46,6 +47,9 @@ private:
     // ── Scan ──
     std::unique_ptr<SliderRow> scanRow;
     juce::Label scanHint;
+
+    // ── Section headers ──
+    juce::Label filterHeader, modHeader, driftHeader;
 
     // ── Filter ──
     juce::ToggleButton filterToggle { "Filter" };

@@ -1,14 +1,15 @@
 #include "T5ynthLookAndFeel.h"
+#include "GuiHelpers.h"
 
 T5ynthLookAndFeel::T5ynthLookAndFeel()
 {
-    // Core dark palette
-    const auto background   = juce::Colour(0xff0a0a0a);
-    const auto surface      = juce::Colour(0xff1a1a1a);
-    const auto surfaceLight = juce::Colour(0xff2a2a2a);
+    // Derive from shared constants
+    const auto background   = kBg;
+    const auto surface      = kSurface;
+    const auto surfaceLight = kBorder;
     const auto textPrimary  = juce::Colour(0xffe3e3e3);
-    const auto textDim      = juce::Colour(0xff888888);
-    const auto accent       = juce::Colour(0xff4a9eff);
+    const auto textDim      = kDim;
+    const auto accent       = kAccent;
 
     // Window / general
     setColour(juce::ResizableWindow::backgroundColourId, background);

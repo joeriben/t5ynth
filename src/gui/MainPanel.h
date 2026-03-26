@@ -11,11 +11,10 @@
 class T5ynthProcessor;
 
 /**
- * 3-column layout:
+ * 2-column layout:
  *   Col 1 (25%): GENERATION (PromptPanel + AxesPanel)
- *   Col 2 (55%): ENGINE + FILTER + MODULATION (SynthPanel)
- *   Col 3 (20%): FX (FxPanel)
- *   Bottom: SequencerPanel + StatusBar
+ *   Col 2 (75%): ENGINE + FILTER + MODULATION (SynthPanel)
+ *   Footer: SequencerPanel + FxPanel (compact) + StatusBar
  *
  * DimensionExplorer opens as a modal overlay.
  */
