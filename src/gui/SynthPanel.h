@@ -103,6 +103,9 @@ private:
     std::unique_ptr<CA> filterTypeA, filterSlopeA;
     std::unique_ptr<BA> filterEnableA, normalizeA;
 
+    // ENV/LFO target attachments (routed in processBlock)
+    std::unique_ptr<CA> mod1TargetA, mod2TargetA, lfo1TargetA, lfo2TargetA;
+
     void initEnv(EnvSection& env, const juce::String& name, int defaultTarget,
                  const juce::String& aId, const juce::String& dId,
                  const juce::String& sId, const juce::String& rId,
