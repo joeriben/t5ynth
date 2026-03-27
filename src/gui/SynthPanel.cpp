@@ -345,44 +345,61 @@ void SynthPanel::updateVisibility()
 {
     if (!initialized) return;
 
+    // All sections always visible — inactive ones get dimmed via alpha
+    constexpr float dimAlpha = 0.3f;
+
     bool filterOn = filterToggle.getToggleState();
-    filterTypeBox.setVisible(filterOn);
-    filterSlopeBox.setVisible(filterOn);
+    float filterAlpha = filterOn ? 1.0f : dimAlpha;
+    filterTypeBox.setAlpha(filterAlpha);
+    filterSlopeBox.setAlpha(filterAlpha);
+    filterTypeBox.setEnabled(filterOn);
+    filterSlopeBox.setEnabled(filterOn);
     for (auto* r : { cutoffRow.get(), resoRow.get(), filterMixRow.get(), kbdTrackRow.get() })
-        r->setVisible(filterOn);
+    {
+        r->setAlpha(filterAlpha);
+        r->setEnabled(filterOn);
+    }
 
     bool isOneshot = loopModeHidden.getSelectedId() == 1;
-    crossfadeRow->setVisible(!isOneshot);
+    crossfadeRow->setAlpha(isOneshot ? dimAlpha : 1.0f);
+    crossfadeRow->setEnabled(!isOneshot);
 
-    auto setEnvVisible = [](EnvSection& env) {
+    auto setEnvDimmed = [dimAlpha](EnvSection& env) {
         bool active = env.targetBox.getSelectedId() != 4;
-        env.loopToggle.setVisible(active);
+        float alpha = active ? 1.0f : dimAlpha;
+        env.loopToggle.setAlpha(alpha);
+        env.loopToggle.setEnabled(active);
         for (auto* r : { env.aRow.get(), env.dRow.get(), env.sRow.get(),
                          env.rRow.get(), env.amtRow.get() })
-            if (r) r->setVisible(active);
+            if (r) { r->setAlpha(alpha); r->setEnabled(active); }
     };
-    setEnvVisible(ampEnv);
-    setEnvVisible(mod1Env);
-    setEnvVisible(mod2Env);
+    setEnvDimmed(ampEnv);
+    setEnvDimmed(mod1Env);
+    setEnvDimmed(mod2Env);
 
-    auto setLfoVisible = [](LfoSection& lfo) {
+    auto setLfoDimmed = [dimAlpha](LfoSection& lfo) {
         bool active = lfo.targetBox.getSelectedId() != 4;
-        lfo.waveBox.setVisible(active);
-        lfo.modeBox.setVisible(active);
-        if (lfo.rateRow)  lfo.rateRow->setVisible(active);
-        if (lfo.depthRow) lfo.depthRow->setVisible(active);
+        float alpha = active ? 1.0f : dimAlpha;
+        lfo.waveBox.setAlpha(alpha);
+        lfo.modeBox.setAlpha(alpha);
+        lfo.waveBox.setEnabled(active);
+        lfo.modeBox.setEnabled(active);
+        if (lfo.rateRow)  { lfo.rateRow->setAlpha(alpha);  lfo.rateRow->setEnabled(active); }
+        if (lfo.depthRow) { lfo.depthRow->setAlpha(alpha); lfo.depthRow->setEnabled(active); }
     };
-    setLfoVisible(lfo1);
-    setLfoVisible(lfo2);
+    setLfoDimmed(lfo1);
+    setLfoDimmed(lfo2);
 
-    auto setDriftVisible = [](DriftSection& drift) {
+    auto setDriftDimmed = [dimAlpha](DriftSection& drift) {
         bool active = drift.targetBox.getSelectedId() != 1; // 1 = "None"
-        drift.waveBox.setVisible(active);
-        if (drift.rateRow)  drift.rateRow->setVisible(active);
-        if (drift.depthRow) drift.depthRow->setVisible(active);
+        float alpha = active ? 1.0f : dimAlpha;
+        drift.waveBox.setAlpha(alpha);
+        drift.waveBox.setEnabled(active);
+        if (drift.rateRow)  { drift.rateRow->setAlpha(alpha);  drift.rateRow->setEnabled(active); }
+        if (drift.depthRow) { drift.depthRow->setAlpha(alpha); drift.depthRow->setEnabled(active); }
     };
-    setDriftVisible(drift1);
-    setDriftVisible(drift2);
+    setDriftDimmed(drift1);
+    setDriftDimmed(drift2);
 }
 
 float SynthPanel::fs() const
@@ -406,27 +423,22 @@ void SynthPanel::layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float f,
     hdr.removeFromLeft(4);
     env.loopToggle.setBounds(hdr.removeFromLeft(juce::roundToInt(hdr.getWidth() * 0.4f)));
 
-    bool active = env.targetBox.getSelectedId() != 4;
-    if (active)
-    {
-        int colW = (area.getWidth() - 4) / 2;
+    // Always allocate space — inactive sections are dimmed, not hidden
+    int colW = (area.getWidth() - 4) / 2;
 
-        // A | D as pair
-        auto adRow = area.removeFromTop(rowH);
-        env.aRow->setBounds(adRow.removeFromLeft(colW));
-        adRow.removeFromLeft(4);
-        env.dRow->setBounds(adRow);
+    auto adRow = area.removeFromTop(rowH);
+    env.aRow->setBounds(adRow.removeFromLeft(colW));
+    adRow.removeFromLeft(4);
+    env.dRow->setBounds(adRow);
 
-        // S | R as pair
-        auto srRow = area.removeFromTop(rowH);
-        env.sRow->setBounds(srRow.removeFromLeft(colW));
-        srRow.removeFromLeft(4);
-        env.rRow->setBounds(srRow);
+    auto srRow = area.removeFromTop(rowH);
+    env.sRow->setBounds(srRow.removeFromLeft(colW));
+    srRow.removeFromLeft(4);
+    env.rRow->setBounds(srRow);
 
-        // Amt — half width to match pair rhythm
-        auto amtRow = area.removeFromTop(rowH);
-        env.amtRow->setBounds(amtRow.removeFromLeft(colW));
-    }
+    auto amtRow = area.removeFromTop(rowH);
+    env.amtRow->setBounds(amtRow.removeFromLeft(colW));
+
     area.removeFromTop(gap);
 }
 
@@ -446,15 +458,13 @@ void SynthPanel::layoutLfo(LfoSection& lfo, juce::Rectangle<int>& area, float f,
     hdr.removeFromLeft(4);
     lfo.modeBox.setBounds(hdr.removeFromLeft(modeW));
 
-    bool active = lfo.targetBox.getSelectedId() != 4;
-    if (active)
-    {
-        int colW = (area.getWidth() - 4) / 2;
-        auto slRow = area.removeFromTop(rowH);
-        lfo.rateRow->setBounds(slRow.removeFromLeft(colW));
-        slRow.removeFromLeft(4);
-        lfo.depthRow->setBounds(slRow);
-    }
+    // Always allocate space
+    int colW = (area.getWidth() - 4) / 2;
+    auto slRow = area.removeFromTop(rowH);
+    lfo.rateRow->setBounds(slRow.removeFromLeft(colW));
+    slRow.removeFromLeft(4);
+    lfo.depthRow->setBounds(slRow);
+
     area.removeFromTop(gap);
 }
 
@@ -471,15 +481,13 @@ void SynthPanel::layoutDrift(DriftSection& drift, juce::Rectangle<int>& area, fl
     hdr.removeFromLeft(4);
     drift.waveBox.setBounds(hdr.removeFromLeft(waveW));
 
-    bool active = drift.targetBox.getSelectedId() != 1; // 1 = "None"
-    if (active)
-    {
-        int colW = (area.getWidth() - 4) / 2;
-        auto slRow = area.removeFromTop(rowH);
-        drift.rateRow->setBounds(slRow.removeFromLeft(colW));
-        slRow.removeFromLeft(4);
-        drift.depthRow->setBounds(slRow);
-    }
+    // Always allocate space
+    int colW = (area.getWidth() - 4) / 2;
+    auto slRow = area.removeFromTop(rowH);
+    drift.rateRow->setBounds(slRow.removeFromLeft(colW));
+    slRow.removeFromLeft(4);
+    drift.depthRow->setBounds(slRow);
+
     area.removeFromTop(gap);
 }
 
@@ -502,30 +510,18 @@ void SynthPanel::paint(juce::Graphics& g)
     }
 
     // Card: Filter section
-    if (filterHeader.isVisible())
     {
         int top = filterHeader.getY() - inset;
-        int bot = filterToggle.getBottom();
-        if (filterToggle.getToggleState() && kbdTrackRow->isVisible())
-            bot = kbdTrackRow->getBottom();
+        int bot = kbdTrackRow->getBottom();
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
     }
 
     // Card: Modulation (all ENVs + LFOs)
-    if (modHeader.isVisible())
     {
         int top = modHeader.getY() - inset;
-        int bot = ampEnv.header.getBottom();
-        auto envBot = [](const EnvSection& e) {
-            if (e.amtRow && e.amtRow->isVisible()) return e.amtRow->getBottom();
-            return e.header.getBottom();
-        };
-        auto lfoBot = [](const LfoSection& l) {
-            if (l.depthRow && l.depthRow->isVisible()) return l.depthRow->getBottom();
-            return l.header.getBottom();
-        };
-        bot = juce::jmax(bot, envBot(ampEnv), envBot(mod1Env), envBot(mod2Env));
-        bot = juce::jmax(bot, lfoBot(lfo1), lfoBot(lfo2));
+        int bot = juce::jmax(ampEnv.amtRow->getBottom(), mod1Env.amtRow->getBottom(),
+                             mod2Env.amtRow->getBottom());
+        bot = juce::jmax(bot, lfo1.depthRow->getBottom(), lfo2.depthRow->getBottom());
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
 
         // Subtle separator lines between ENV/LFO sub-sections
@@ -534,24 +530,15 @@ void SynthPanel::paint(juce::Graphics& g)
         int lineR = getWidth() - padX - 8;
         for (auto* hdr : { &mod1Env.header, &mod2Env.header, &lfo1.header, &lfo2.header })
         {
-            if (hdr->isVisible())
-            {
-                int y = hdr->getY() - 2;
-                g.drawHorizontalLine(y, static_cast<float>(lineL), static_cast<float>(lineR));
-            }
+            int y = hdr->getY() - 2;
+            g.drawHorizontalLine(y, static_cast<float>(lineL), static_cast<float>(lineR));
         }
     }
 
     // Card: Drift
-    if (driftHeader.isVisible())
     {
         int top = driftHeader.getY() - inset;
-        int bot = drift1.header.getBottom();
-        auto driftBot = [](const DriftSection& d) {
-            if (d.depthRow && d.depthRow->isVisible()) return d.depthRow->getBottom();
-            return d.header.getBottom();
-        };
-        bot = juce::jmax(bot, driftBot(drift1), driftBot(drift2));
+        int bot = juce::jmax(drift1.depthRow->getBottom(), drift2.depthRow->getBottom());
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
     }
 }
@@ -593,12 +580,9 @@ void SynthPanel::resized()
     pingpongBtn.setBounds(loopRow);
     area.removeFromTop(gap);
 
-    // Crossfade (hidden if oneshot)
-    if (crossfadeRow->isVisible())
-    {
-        crossfadeRow->setBounds(area.removeFromTop(rowH));
-        area.removeFromTop(gap);
-    }
+    // Crossfade (dimmed if oneshot)
+    crossfadeRow->setBounds(area.removeFromTop(rowH));
+    area.removeFromTop(gap);
 
     // Normalize
     normalizeToggle.setBounds(area.removeFromTop(rowH));
@@ -617,24 +601,19 @@ void SynthPanel::resized()
     // ── Filter ──
     auto filterHdr = area.removeFromTop(rowH);
     filterToggle.setBounds(filterHdr.removeFromLeft(juce::roundToInt(w * 0.18f)));
-    if (filterToggle.getToggleState())
-    {
-        filterTypeBox.setBounds(filterHdr.removeFromLeft(juce::roundToInt(w * 0.10f)));
-        filterHdr.removeFromLeft(4);
-        filterSlopeBox.setBounds(filterHdr.removeFromLeft(juce::roundToInt(w * 0.10f)));
-    }
+    filterTypeBox.setBounds(filterHdr.removeFromLeft(juce::roundToInt(w * 0.10f)));
+    filterHdr.removeFromLeft(4);
+    filterSlopeBox.setBounds(filterHdr.removeFromLeft(juce::roundToInt(w * 0.10f)));
     area.removeFromTop(gap);
 
-    if (filterToggle.getToggleState())
     {
-        // Cutoff | Resonance
+        // Always allocate — dimmed when filter off
         int colW = (area.getWidth() - 4) / 2;
         auto row1 = area.removeFromTop(rowH);
         cutoffRow->setBounds(row1.removeFromLeft(colW));
         row1.removeFromLeft(4);
         resoRow->setBounds(row1);
 
-        // Mix | Kbd Track
         auto row2 = area.removeFromTop(rowH);
         filterMixRow->setBounds(row2.removeFromLeft(colW));
         row2.removeFromLeft(4);

@@ -12,7 +12,7 @@ StatusBar::StatusBar()
 void StatusBar::browseForModel()
 {
     fileChooser = std::make_unique<juce::FileChooser>(
-        "Select Stable Audio model directory (contains model_index.json)",
+        "Select Stable Audio model directory (HuggingFace format)",
         juce::File::getSpecialLocation(juce::File::userHomeDirectory),
         "", true);
 
@@ -23,15 +23,20 @@ void StatusBar::browseForModel()
             auto result = fc.getResult();
             if (result == juce::File()) return;
 
-            // Validate: must contain model_index.json
+            // Must be HuggingFace pretrained format — embedding manipulation
+            // requires separate access to text encoder + projection model
             if (!result.getChildFile("model_index.json").existsAsFile())
             {
                 juce::AlertWindow::showMessageBoxAsync(
                     juce::MessageBoxIconType::WarningIcon,
-                    "Invalid Model Directory",
-                    "The selected directory does not contain model_index.json.\n\n"
-                    "Please select the root directory of the Stable Audio model "
-                    "(e.g. stable-audio-open-1.0/).");
+                    "Wrong Model Format",
+                    "T5ynth needs the HuggingFace pipeline format (with model_index.json) "
+                    "for embedding manipulation.\n\n"
+                    "A single .safetensors checkpoint won't work — the text encoder and "
+                    "projection model must be accessible as separate components.\n\n"
+                    "Download with:\n"
+                    "  huggingface-cli download stabilityai/stable-audio-open-1.0 "
+                    "--local-dir ~/t5ynth/models/stable-audio-open-1.0");
                 return;
             }
 
@@ -54,7 +59,6 @@ void StatusBar::browseForModel()
 
             if (!targetDir.exists())
             {
-                // Create symlink: target -> selected directory
                 auto symlinkResult = targetDir.createSymbolicLink(result, false);
                 if (symlinkResult)
                 {
@@ -64,16 +68,7 @@ void StatusBar::browseForModel()
                 }
                 else
                 {
-                    // Symlink failed — try to copy
-                    setStatusText("Copying model...");
-                    repaint();
-
-                    juce::Thread::launch([this, result, targetDir]() {
-                        result.copyDirectoryTo(targetDir);
-                        juce::MessageManager::callAsync([this]() {
-                            setStatusText("Model copied — restart to load");
-                        });
-                    });
+                    setStatusText("Symlink failed — check permissions");
                 }
             }
             else

@@ -12,6 +12,7 @@ T5ynthEditor::T5ynthEditor(T5ynthProcessor& processor)
     setSize(1200, 800);
     setResizable(true, true);
     setResizeLimits(900, 600, 2400, 1600);
+    getConstrainer()->setFixedAspectRatio(1200.0 / 800.0);
 }
 
 T5ynthEditor::~T5ynthEditor()
