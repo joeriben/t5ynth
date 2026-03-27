@@ -80,6 +80,8 @@ float ADSREnvelope::processSample()
         }
 
         case State::Sustain:
+            if (looping)
+                state = State::Attack;
             return currentLevel;
 
         case State::Release:

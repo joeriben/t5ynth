@@ -3,7 +3,11 @@
 void DriftLFO::reset()
 {
     for (auto& lfo : lfos)
+    {
         lfo.phase = 0.0;
+        lfo.rate = lfo.baseRate;
+        lfo.depth = lfo.baseDepth;
+    }
 }
 
 void DriftLFO::tick(double dt)
@@ -17,7 +21,20 @@ void DriftLFO::tick(double dt)
 
         // Wrap phase to prevent precision loss over long runs
         if (lfo.phase >= 1.0)
+        {
             lfo.phase -= std::floor(lfo.phase);
+
+            // Regenerate rate/depth on cycle completion
+            if (autoRegen && lfo.baseDepth > 0.0f)
+            {
+                std::uniform_real_distribution<float> rateDist(
+                    lfo.baseRate * 0.5f, lfo.baseRate * 1.5f);
+                std::uniform_real_distribution<float> depthDist(
+                    lfo.baseDepth * 0.5f, lfo.baseDepth * 1.5f);
+                lfo.rate = rateDist(rng);
+                lfo.depth = depthDist(rng);
+            }
+        }
     }
 }
 
@@ -43,13 +60,23 @@ float DriftLFO::getOffsetForTarget(int target) const
 void DriftLFO::setLfoRate(int lfoIndex, float hz)
 {
     if (lfoIndex >= 0 && lfoIndex < NUM_LFOS)
-        lfos[static_cast<size_t>(lfoIndex)].rate = hz;
+    {
+        auto& lfo = lfos[static_cast<size_t>(lfoIndex)];
+        lfo.baseRate = hz;
+        if (!autoRegen)
+            lfo.rate = hz;
+    }
 }
 
 void DriftLFO::setLfoDepth(int lfoIndex, float amount)
 {
     if (lfoIndex >= 0 && lfoIndex < NUM_LFOS)
-        lfos[static_cast<size_t>(lfoIndex)].depth = amount;
+    {
+        auto& lfo = lfos[static_cast<size_t>(lfoIndex)];
+        lfo.baseDepth = amount;
+        if (!autoRegen)
+            lfo.depth = amount;
+    }
 }
 
 void DriftLFO::setLfoTarget(int lfoIndex, int target)

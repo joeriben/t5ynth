@@ -24,9 +24,14 @@ public:
     /** Set filter type: 0=Lowpass, 1=Highpass, 2=Bandpass. */
     void setType(int type);
 
+    /** Set dry/wet mix (0=fully dry / bypassed, 1=fully wet / filtered). */
+    void setMix(float mix);
+
 private:
     juce::dsp::StateVariableTPTFilter<float> filter;
+    juce::dsp::DryWetMixer<float> mixer;
     double sr = 44100.0;
     int blockSize = 512;
+    float currentMix = 1.0f;
     bool prepared = false;
 };

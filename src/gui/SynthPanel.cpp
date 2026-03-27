@@ -270,6 +270,11 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     initDrift(drift1, "DRIFT 1", "drift1_rate", "drift1_depth", "drift1_target", "drift1_wave", apvts);
     initDrift(drift2, "DRIFT 2", "drift2_rate", "drift2_depth", "drift2_target", "drift2_wave", apvts);
 
+    driftRegenToggle.setColour(juce::ToggleButton::textColourId, kDim);
+    driftRegenToggle.setColour(juce::ToggleButton::tickColourId, kDriftCol);
+    addAndMakeVisible(driftRegenToggle);
+    driftRegenA = std::make_unique<BA>(apvts, "drift_regen", driftRegenToggle);
+
     // ── Explore button ──
     exploreBtn.setColour(juce::TextButton::buttonColourId, kSurface);
     exploreBtn.setColour(juce::TextButton::textColourOffId, kAccent);
@@ -614,6 +619,7 @@ void SynthPanel::resized()
     area.removeFromTop(sectionGap);
     driftHeader.setFont(juce::FontOptions(f * 0.85f));
     driftHeader.setBounds(area.removeFromTop(juce::roundToInt(f * 1.1f)));
+    driftRegenToggle.setBounds(area.removeFromTop(rowH));
 
     // ── Drift ──
     layoutDrift(drift1, area, f, rowH, gap);

@@ -89,6 +89,7 @@ private:
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> targetA, waveA;
     };
     DriftSection drift1, drift2;
+    juce::ToggleButton driftRegenToggle { "Regen" };
 
     // ── Explore button ──
     juce::TextButton exploreBtn { "Explore" };
@@ -101,7 +102,7 @@ private:
     std::unique_ptr<CA> engineModeA, loopModeA;
     std::unique_ptr<SA> scanA, cutoffA, resoA, filterMixA, kbdTrackA, crossfadeA;
     std::unique_ptr<CA> filterTypeA, filterSlopeA;
-    std::unique_ptr<BA> filterEnableA, normalizeA;
+    std::unique_ptr<BA> filterEnableA, normalizeA, driftRegenA;
 
     // ENV/LFO target attachments (routed in processBlock)
     std::unique_ptr<CA> mod1TargetA, mod2TargetA, lfo1TargetA, lfo2TargetA;

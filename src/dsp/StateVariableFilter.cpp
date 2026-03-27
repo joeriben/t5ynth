@@ -13,6 +13,9 @@ void T5ynthFilter::prepare(double sampleRate, int samplesPerBlock)
     filter.prepare(spec);
     filter.setCutoffFrequency(20000.0f);
     filter.setResonance(1.0f / std::sqrt(2.0f)); // Butterworth default
+
+    mixer.prepare(spec);
+    mixer.setWetMixProportion(currentMix);
     prepared = true;
 }
 
@@ -22,13 +25,32 @@ void T5ynthFilter::processBlock(juce::AudioBuffer<float>& buffer)
         return;
 
     juce::dsp::AudioBlock<float> block(buffer);
-    juce::dsp::ProcessContextReplacing<float> context(block);
-    filter.process(context);
+
+    if (currentMix < 0.999f)
+    {
+        mixer.pushDrySamples(block);
+        juce::dsp::ProcessContextReplacing<float> context(block);
+        filter.process(context);
+        mixer.mixWetSamples(block);
+    }
+    else
+    {
+        juce::dsp::ProcessContextReplacing<float> context(block);
+        filter.process(context);
+    }
 }
 
 void T5ynthFilter::reset()
 {
     filter.reset();
+    mixer.reset();
+}
+
+void T5ynthFilter::setMix(float mix)
+{
+    currentMix = juce::jlimit(0.0f, 1.0f, mix);
+    if (prepared)
+        mixer.setWetMixProportion(currentMix);
 }
 
 void T5ynthFilter::setCutoff(float hz)

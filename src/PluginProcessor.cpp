@@ -164,6 +164,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift LFO
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"drift_enabled", 1}, "Drift Enabled", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"drift_regen", 1}, "Drift Regen", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"drift1_rate", 1}, "Drift1 Rate",
         juce::NormalisableRange<float>(0.001f, 2.0f, 0.001f, 0.3f), 0.1f));
@@ -335,6 +337,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     ampEnvelope.setSustain(parameters.getRawParameterValue("amp_sustain")->load());
     ampEnvelope.setRelease(parameters.getRawParameterValue("amp_release")->load());
     float ampAmount = parameters.getRawParameterValue("amp_amount")->load();
+    ampEnvelope.setLooping(parameters.getRawParameterValue("amp_loop")->load() > 0.5f);
 
     // Mod envelope 1
     modEnvelope1.setAttack(parameters.getRawParameterValue("mod1_attack")->load());
@@ -343,6 +346,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     modEnvelope1.setRelease(parameters.getRawParameterValue("mod1_release")->load());
     float mod1Amount = parameters.getRawParameterValue("mod1_amount")->load();
     int mod1Target = static_cast<int>(parameters.getRawParameterValue("mod1_target")->load());
+    modEnvelope1.setLooping(parameters.getRawParameterValue("mod1_loop")->load() > 0.5f);
 
     // Mod envelope 2
     modEnvelope2.setAttack(parameters.getRawParameterValue("mod2_attack")->load());
@@ -351,6 +355,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     modEnvelope2.setRelease(parameters.getRawParameterValue("mod2_release")->load());
     float mod2Amount = parameters.getRawParameterValue("mod2_amount")->load();
     int mod2Target = static_cast<int>(parameters.getRawParameterValue("mod2_target")->load());
+    modEnvelope2.setLooping(parameters.getRawParameterValue("mod2_loop")->load() > 0.5f);
 
     // LFOs
     lfo1.setRate(parameters.getRawParameterValue("lfo1_rate")->load());
@@ -380,6 +385,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // Drift LFOs (block-rate)
     driftLfo.setEnabled(parameters.getRawParameterValue("drift_enabled")->load() > 0.5f);
+    driftLfo.setAutoRegen(parameters.getRawParameterValue("drift_regen")->load() > 0.5f);
     driftLfo.setLfoRate(0, parameters.getRawParameterValue("drift1_rate")->load());
     driftLfo.setLfoDepth(0, parameters.getRawParameterValue("drift1_depth")->load());
     driftLfo.setLfoTarget(0, static_cast<int>(parameters.getRawParameterValue("drift1_target")->load()));
@@ -518,13 +524,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         filter.setCutoff(cutoffMod);
         filter.setResonance(baseReso);
         filter.setType(filterType);
+        filter.setMix(filterMix);
         filter.processBlock(buffer);
-
-        // Apply filter mix (dry/wet)
-        if (filterMix < 0.99f)
-        {
-            // Would need dry buffer copy — skip for now, mix=1 is standard
-        }
     }
 
     // ── Effects ─────────────────────────────────────────────────────────────

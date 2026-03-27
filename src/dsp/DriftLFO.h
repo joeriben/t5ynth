@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <array>
+#include <random>
 
 /**
  * Drift LFO system — offset-based parameter drift.
@@ -50,17 +51,24 @@ public:
     void setEnabled(bool enabled) { active = enabled; }
     bool isEnabled() const { return active; }
 
+    /** Enable auto-regeneration: randomize rate/depth on each cycle wrap. */
+    void setAutoRegen(bool enabled) { autoRegen = enabled; }
+
 private:
     struct InternalLFO
     {
         double phase = 0.0;
-        float rate = 0.1f;    // Hz
-        float depth = 0.0f;   // offset amplitude
-        int target = Alpha;   // which parameter to modulate
+        float rate = 0.1f;      // Hz (current, possibly randomized)
+        float depth = 0.0f;     // offset amplitude (current, possibly randomized)
+        int target = Alpha;     // which parameter to modulate
+        float baseRate = 0.1f;  // configured rate (center of randomization)
+        float baseDepth = 0.0f; // configured depth (center of randomization)
     };
 
     std::array<InternalLFO, NUM_LFOS> lfos;
     bool active = false;
+    bool autoRegen = false;
+    std::mt19937 rng { std::random_device{}() };
 
     static constexpr double TWO_PI = 6.283185307179586;
 };

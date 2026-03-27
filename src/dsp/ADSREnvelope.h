@@ -25,6 +25,9 @@ public:
     /** Bypass envelope (gain = 1 immediately, for non-MIDI playback). */
     void bypass();
 
+    /** Enable looping: envelope restarts Attack when reaching Sustain. */
+    void setLooping(bool shouldLoop) { looping = shouldLoop; }
+
     /** Process one sample, returns gain value 0–1. */
     float processSample();
 
@@ -49,6 +52,7 @@ private:
     float targetVelocity = 1.0f;
     double sr = 44100.0;
     bool bypassed = false;
+    bool looping = false;
 
     void recalculate();
 };
