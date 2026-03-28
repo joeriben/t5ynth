@@ -1,5 +1,58 @@
 # T5ynth Development Log
 
+## 2026-03-28 — Session 4: Reference Audit + Critical Repairs
+
+### Full Gap Analysis Against Reference (useAudioLooper.ts, useModulation.ts, useEffects.ts, useFilter.ts, useDriftLfo.ts, crossmodal_lab.vue)
+- Session 3 left 75% of features unimplemented or broken
+- Delay/Reverb/Limiter parameters were defined in APVTS + GUI but **never passed to DSP classes**
+- Reverb IR was never loaded — ConvolutionReverb was permanently dead
+- Filter modulation double-ticked envelopes/LFOs (ran at 2× speed)
+- AudioLooper could only do endless forward loop — missing one-shot, ping-pong, crossfade, normalize, loop brackets, retrigger
+- ADSREnvelope used exponential decay (wrong) instead of reference's linear decay, and simple exponential release instead of RC-discharge
+
+### Parameter Wiring (Phase 1)
+- `delay.setTime/setFeedback/setMix()` now called in processBlock
+- Reverb IR loaded from BinaryData in `prepareToPlay()`, mix wired, IR switching on `reverb_ir` parameter change
+- `limiter.setThreshold/setRelease()` wired
+- Looper: `loop_mode`, `crossfade_ms`, `normalize` wired
+
+### Correctness Fixes (Phase 2)
+- **Double-tick bug**: Filter modulation now uses captured last values from per-sample loop instead of re-calling `processSample()`
+- **DCF sweep factor**: 4 → 8 to match reference (`base × (1 + amount × 8)`)
+- **Alpha conversion**: UI range (-2..+2) → backend (0..1) via `alpha/2 + 0.5`
+- **Fake S&H removed**: LFO waveform list reduced from 5 to 4 (S&H was not in reference, returned silence)
+- **Drift LFO 3**: rate/depth/target now wired, `drift3_target` and `drift3_wave` parameters added
+
+### AudioLooper Rewrite (from useAudioLooper.ts)
+- LoopMode enum: OneShot, Loop, PingPong
+- Loop start/end brackets (fractional 0–1 of buffer)
+- Equal-power crossfade baked into buffer (`sin/cos` curves, max half loop length)
+- Cross-correlation loop-point optimization (512-sample window, 2000-sample search)
+- Palindrome buffer for ping-pong (endpoints not doubled)
+- Peak normalization to 0.95
+- Retrigger (hard restart from cold-start offset)
+- processBlock respects play region, stops on one-shot end
+
+### ADSREnvelope Rewrite (from useModulation.ts)
+- Linear attack with soft retrigger (ramps from current level, not zero)
+- Linear decay (was exponential RC — wrong curve shape)
+- RC-discharge release: `e^(-t/τ)`, `τ = releaseMs/5`, hard-zero at end
+- 3ms minimum ramp for all stages
+- Loop re-triggers attack from sustain
+
+### Remaining Work (identified in gap analysis, not yet done)
+- Filter slope 12/24dB (parameter exists, not implemented)
+- Parallel effects chain (currently serial: signal → delay → reverb)
+- 13 modulation targets (currently only 4 per source)
+- Delay damping filter in feedback loop
+- Drift LFO waveform selection (currently sine-only)
+- Delay BPM sync
+- Sequencer: gate length, glide, note divisions, presets
+- Arpeggiator: musical rate divisions instead of float
+- UI: on-screen keyboard, preset panel, dimension explorer canvas, loop region display, recording
+
+---
+
 ## 2026-03-28 — Session 3: Audio Pipeline Debugging + Sequencer Fix
 
 ### Critical Bug Fixed: No Sound After Generation
