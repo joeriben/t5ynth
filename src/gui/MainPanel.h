@@ -28,6 +28,9 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
+    // Settings button (injected into JUCE standalone header next to Options)
+    juce::TextButton settingsButton { "Settings" };
+
 private:
     T5ynthProcessor& processorRef;
 
@@ -45,8 +48,9 @@ private:
     SequencerPanel sequencerPanel;
     StatusBar statusBar;
 
-    // Master volume (footer, right edge)
-    std::unique_ptr<SliderRow> masterVolRow;
+    // Master volume (footer, rotary knob)
+    juce::Slider masterVolKnob;
+    juce::Label masterVolLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterVolA;
 
     // Overlay: Dimension Explorer

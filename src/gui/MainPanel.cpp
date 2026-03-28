@@ -16,14 +16,23 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     addAndMakeVisible(sequencerPanel);
     addAndMakeVisible(statusBar);
 
-    // Master volume
-    masterVolRow = std::make_unique<SliderRow>("Vol", [](double v) {
-        return juce::String(v, 1) + "dB";
-    });
-    addAndMakeVisible(*masterVolRow);
+    // Master volume (rotary knob)
+    masterVolKnob.setSliderStyle(juce::Slider::RotaryVerticalDrag);
+    masterVolKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 14);
+    masterVolKnob.setColour(juce::Slider::rotarySliderFillColourId, kAccent);
+    masterVolKnob.setColour(juce::Slider::rotarySliderOutlineColourId, kSurface);
+    masterVolKnob.setColour(juce::Slider::textBoxTextColourId, kDim);
+    masterVolKnob.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    masterVolKnob.setTextValueSuffix(" dB");
+    addAndMakeVisible(masterVolKnob);
+
+    masterVolLabel.setText("Vol", juce::dontSendNotification);
+    masterVolLabel.setColour(juce::Label::textColourId, kDim);
+    masterVolLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(masterVolLabel);
+
     masterVolA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        processor.getValueTreeState(), "master_vol", masterVolRow->getSlider());
-    masterVolRow->updateValue();
+        processor.getValueTreeState(), "master_vol", masterVolKnob);
 
     // DimExplorer overlay — initially hidden
     dimensionExplorer.setVisible(false);
@@ -44,11 +53,15 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     // Wire up Explore button in SynthPanel
     synthPanel.onExploreClicked = [this] { showDimExplorer(); };
 
+    // Settings button — will be injected into JUCE standalone header
+    settingsButton.setColour(juce::TextButton::buttonColourId, kSurface);
+    settingsButton.setColour(juce::TextButton::textColourOffId, kAccent);
+    settingsButton.onClick = [this] { showSettings(); };
+
     // Settings overlay
     settingsPage.setVisible(false);
     addChildComponent(settingsPage);
     settingsPage.onClose = [this] { hideSettings(); };
-    statusBar.onSettingsClicked = [this] { showSettings(); };
 
     // Backend status
     processorRef.getBackendManager().setStatusCallback(
@@ -56,7 +69,14 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
         {
             juce::MessageManager::callAsync([this, s]()
             {
-                statusBar.setConnected(s == BackendManager::Status::Running);
+                bool running = (s == BackendManager::Status::Running);
+                statusBar.setConnected(running);
+                settingsPage.setBackendConnected(running);
+
+                // Sync BackendConnection's connected state when manager reports Running
+                if (running)
+                    processorRef.getBackendConnection().checkHealth();
+
                 switch (s)
                 {
                     case BackendManager::Status::Stopped:  statusBar.setStatusText("Backend stopped"); break;
@@ -68,7 +88,10 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
         });
 
     processorRef.getBackendConnection().setConnectionCallback(
-        [this](bool connected) { statusBar.setConnected(connected); });
+        [this](bool connected) {
+            statusBar.setConnected(connected);
+            settingsPage.setBackendConnected(connected);
+        });
 }
 
 void MainPanel::showDimExplorer()
@@ -145,12 +168,17 @@ void MainPanel::resized()
     int footerH = juce::roundToInt(h * 0.10f);
     statusBar.setBounds(b.removeFromBottom(statusH));
 
-    // Footer: Sequencer (left) | FX (right) | Master Vol (far right)
+    // Footer: Sequencer (left) | FX (right) | Master Vol knob (far right)
     auto footer = b.removeFromBottom(footerH);
-    int volW = juce::roundToInt(w * 0.10f);
+    int volW = juce::roundToInt(w * 0.06f);
     int fxW = juce::roundToInt(w * 0.30f);
     auto volArea = footer.removeFromRight(volW);
-    masterVolRow->setBounds(volArea.reduced(4, volArea.getHeight() / 2 - 10));
+    int knobSize = juce::jmin(volArea.getWidth(), volArea.getHeight() - 16);
+    masterVolKnob.setBounds(volArea.getCentreX() - knobSize / 2, volArea.getY() + 2,
+                            knobSize, knobSize);
+    masterVolLabel.setFont(juce::FontOptions(10.0f));
+    masterVolLabel.setBounds(volArea.getX(), masterVolKnob.getBottom() - 2,
+                             volArea.getWidth(), 14);
     fxPanel.setBounds(footer.removeFromRight(fxW));
     sequencerPanel.setBounds(footer);
 

@@ -17,6 +17,10 @@ SettingsPage::SettingsPage()
     modelPathLabel.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(modelPathLabel);
 
+    backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
+    backendStatusLabel.setText("Backend: Not connected", juce::dontSendNotification);
+    addAndMakeVisible(backendStatusLabel);
+
     instructionsLabel.setColour(juce::Label::textColourId, kDim);
     instructionsLabel.setJustificationType(juce::Justification::topLeft);
     addAndMakeVisible(instructionsLabel);
@@ -138,6 +142,21 @@ void SettingsPage::browseForModel()
         });
 }
 
+void SettingsPage::setBackendConnected(bool connected)
+{
+    backendConnected = connected;
+    if (connected)
+    {
+        backendStatusLabel.setText("Backend: Connected", juce::dontSendNotification);
+        backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
+    }
+    else
+    {
+        backendStatusLabel.setText("Backend: Not connected", juce::dontSendNotification);
+        backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
+    }
+}
+
 void SettingsPage::updateStatus()
 {
     if (modelPath.exists() && modelPath.getChildFile(kModelFileName).existsAsFile())
@@ -145,8 +164,16 @@ void SettingsPage::updateStatus()
         modelStatusLabel.setText("Model: Found", juce::dontSendNotification);
         modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
         modelPathLabel.setText(modelPath.getFullPathName(), juce::dontSendNotification);
-        instructionsLabel.setText("Model is ready. The backend will use this path on next start.",
-                                 juce::dontSendNotification);
+
+        if (backendConnected)
+            instructionsLabel.setText("Model and backend ready.", juce::dontSendNotification);
+        else
+            instructionsLabel.setText(
+                "Model found but backend is not connected.\n"
+                "The backend starts automatically — check the terminal for errors.\n\n"
+                "If the backend fails to load, ensure the model directory contains\n"
+                "all required files: model_index.json, text_encoder/, transformer/, vae/.",
+                juce::dontSendNotification);
     }
     else
     {
@@ -193,6 +220,10 @@ void SettingsPage::resized()
 
     modelPathLabel.setFont(juce::FontOptions(f * 0.8f));
     modelPathLabel.setBounds(area.removeFromTop(rowH));
+    area.removeFromTop(gap);
+
+    backendStatusLabel.setFont(juce::FontOptions(f));
+    backendStatusLabel.setBounds(area.removeFromTop(rowH));
     area.removeFromTop(gap);
 
     // Buttons row

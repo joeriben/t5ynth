@@ -13,11 +13,15 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void parentHierarchyChanged() override;
 
 private:
+    void injectSettingsButton();
+
     T5ynthProcessor& processorRef;
     T5ynthLookAndFeel lookAndFeel;
     MainPanel mainPanel;
+    bool settingsInjected = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(T5ynthEditor)
 };

@@ -3,10 +3,6 @@
 
 StatusBar::StatusBar()
 {
-    settingsButton.setColour(juce::TextButton::buttonColourId, kSurface);
-    settingsButton.setColour(juce::TextButton::textColourOffId, kAccent);
-    settingsButton.onClick = [this] { if (onSettingsClicked) onSettingsClicked(); };
-    addAndMakeVisible(settingsButton);
 }
 
 void StatusBar::paint(juce::Graphics& g)
@@ -24,17 +20,12 @@ void StatusBar::paint(juce::Graphics& g)
     g.setColour(juce::Colour(0xffe3e3e3));
     g.setFont(juce::FontOptions(fs));
     int textX = juce::roundToInt(dotX + dotSize + h * 0.3f);
-    int btnW = settingsButton.getWidth();
-    g.drawText(statusText, textX, 0, getWidth() - textX - btnW - 8, getHeight(),
+    g.drawText(statusText, textX, 0, getWidth() - textX - 8, getHeight(),
                juce::Justification::centredLeft);
 }
 
 void StatusBar::resized()
 {
-    auto b = getLocalBounds();
-    int btnW = 70;
-    int btnH = juce::jmin(b.getHeight() - 4, 22);
-    settingsButton.setBounds(b.getRight() - btnW - 4, (b.getHeight() - btnH) / 2, btnW, btnH);
 }
 
 void StatusBar::setStatusText(const juce::String& text)

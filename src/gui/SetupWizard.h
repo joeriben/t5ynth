@@ -25,6 +25,9 @@ public:
     /** Get the resolved model path (empty if not found). */
     juce::File getModelPath() const { return modelPath; }
 
+    /** Update backend connection status display. */
+    void setBackendConnected(bool connected);
+
     /** Called when user clicks Close. */
     std::function<void()> onClose;
 
@@ -37,7 +40,9 @@ private:
     juce::Label titleLabel;
     juce::Label modelStatusLabel;
     juce::Label modelPathLabel;
+    juce::Label backendStatusLabel;
     juce::Label instructionsLabel;
+    bool backendConnected = false;
 
     juce::TextButton scanButton    { "Auto-Scan" };
     juce::TextButton browseButton  { "Browse..." };

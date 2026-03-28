@@ -212,17 +212,25 @@ bool BackendConnection::decodeBase64Wav(const juce::String& base64,
     if (base64.isEmpty())
         return false;
 
-    juce::MemoryBlock wavData;
-    if (!wavData.fromBase64Encoding(base64))
+    // Decode base64 using juce::Base64 (more robust than MemoryBlock::fromBase64Encoding)
+    juce::MemoryOutputStream decoded;
+    if (!juce::Base64::convertFromBase64(decoded, base64))
+    {
+        DBG("BackendConnection: Base64 decoding failed, length=" + juce::String(base64.length()));
         return false;
+    }
 
+    auto wavData = decoded.getMemoryBlock();
     auto memStream = std::make_unique<juce::MemoryInputStream>(wavData, false);
 
     juce::WavAudioFormat wavFormat;
     std::unique_ptr<juce::AudioFormatReader> reader(wavFormat.createReaderFor(memStream.release(), true));
 
     if (reader == nullptr)
+    {
+        DBG("BackendConnection: WAV reader creation failed, data size=" + juce::String((int)wavData.getSize()));
         return false;
+    }
 
     sampleRate = reader->sampleRate;
     auto numSamples = static_cast<int>(reader->lengthInSamples);
