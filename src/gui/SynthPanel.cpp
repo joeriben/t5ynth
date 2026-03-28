@@ -404,9 +404,16 @@ void SynthPanel::updateVisibility()
 
 float SynthPanel::fs() const
 {
-    float topH = (getTopLevelComponent() != nullptr)
-                     ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
-    return juce::jlimit(12.0f, 22.0f, topH * 0.022f);
+    // Derive font size from available height so all content fits.
+    // Content budget: ~54 f-units (28 rows * 1.4 + headers + gaps)
+    // plus waveform at 12% of panel height.
+    float h = static_cast<float>(getHeight());
+    float padY = h * 0.005f;
+    float available = h - 2.0f * padY;
+    float waveform = h * 0.12f;
+    float remaining = available - waveform;
+    float maxF = remaining / 54.0f;
+    return juce::jlimit(9.0f, 20.0f, maxF);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
