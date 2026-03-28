@@ -25,6 +25,9 @@ backend/__pycache__/
 # Models (user downloads separately)
 models/
 
+# Secrets
+*.key
+
 # OS
 .DS_Store
 Thumbs.db
