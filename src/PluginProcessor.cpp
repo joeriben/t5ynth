@@ -537,7 +537,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     else
     {
-        // Fallback sine oscillator — always produces sound for MIDI
+        // No audio source — advance mod sources to keep state consistent
         for (int i = 0; i < numSamples; ++i)
         {
             ampEnvelope.processSample();
@@ -545,16 +545,6 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             modEnvelope2.processSample();
             lfo1.processSample();
             lfo2.processSample();
-
-            if (currentNote >= 0 && noteIsOn)
-            {
-                float freq = juce::MidiMessage::getMidiNoteInHertz(static_cast<int>(currentNote));
-                fallbackPhase += freq / static_cast<float>(getSampleRate());
-                if (fallbackPhase >= 1.0f) fallbackPhase -= 1.0f;
-                float sample = std::sin(fallbackPhase * juce::MathConstants<float>::twoPi) * 0.3f;
-                for (int ch = 0; ch < numChannels; ++ch)
-                    buffer.setSample(ch, i, sample);
-            }
         }
     }
 

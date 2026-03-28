@@ -99,7 +99,6 @@ private:
     float currentNote = -1.0f;
     float currentVelocity = 0.0f;
     bool noteIsOn = false;
-    float fallbackPhase = 0.0f;
 
     // Waveform display
     juce::AudioBuffer<float> waveformSnapshot;
