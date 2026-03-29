@@ -117,6 +117,20 @@ torch::Tensor T5ynthInference::tokenize(const std::string& text)
 
 // ─── T5 Encode ──────────────────────────────────────────
 
+static torch::Tensor extractFromIValue(const torch::jit::IValue& val, const char* key, int tupleIdx = 0)
+{
+    if (val.isTensor())
+        return val.toTensor();
+    if (val.isTuple())
+        return val.toTuple()->elements()[tupleIdx].toTensor();
+    if (val.isGenericDict())
+    {
+        auto dict = val.toGenericDict();
+        return dict.at(key).toTensor();
+    }
+    throw std::runtime_error(std::string("Unexpected output type from model (looking for ") + key + ")");
+}
+
 torch::Tensor T5ynthInference::encodeText(const torch::Tensor& tokenIds,
                                           const torch::Tensor& attentionMask)
 {
@@ -125,28 +139,7 @@ torch::Tensor T5ynthInference::encodeText(const torch::Tensor& tokenIds,
     auto mask = attentionMask.to(device_);
 
     auto output = t5Encoder_.forward({input, mask});
-
-    // Output is tuple or dict — extract last_hidden_state
-    if (output.isTuple())
-        return output.toTuple()->elements()[0].toTensor();
-    return output.toGenericDict().at("last_hidden_state").toTensor();
-}
-
-// ─── Projection (Duration Conditioning) ─────────────────
-
-torch::Tensor T5ynthInference::projectConditioning(const torch::Tensor& textHidden,
-                                                   float secondsStart, float secondsEnd)
-{
-    torch::NoGradGuard noGrad;
-    auto start = torch::tensor({secondsStart}, torch::kFloat32).to(device_);
-    auto end = torch::tensor({secondsEnd}, torch::kFloat32).to(device_);
-
-    auto output = projectionModel_.forward({textHidden, start, end});
-
-    // Returns (text_hidden_states, ...) — we need the first element
-    if (output.isTuple())
-        return output.toTuple()->elements()[0].toTensor();
-    return output.toGenericDict().at("text_hidden_states").toTensor();
+    return extractFromIValue(output, "last_hidden_state", 0);
 }
 
 // ─── Embedding Manipulation ─────────────────────────────
@@ -354,23 +347,40 @@ T5ynthInference::Result T5ynthInference::generate(const Request& request)
         float secondsStart = startPos * virtualTotal;
         float secondsEnd = secondsStart + duration;
 
-        // Project conditioning (text + duration → encoder_hidden + global_hidden)
+        // Project conditioning: projection model outputs 3 separate tensors.
+        // We must assemble them the same way StableAudioPipeline does.
         auto projected = projectionModel_.forward({
             manipulated,
             torch::tensor({secondsStart}, torch::kFloat32).to(device_),
             torch::tensor({secondsEnd}, torch::kFloat32).to(device_)
         });
 
-        // Extract projected outputs
-        torch::Tensor encoderHidden, globalHidden;
-        if (projected.isTuple())
+        torch::Tensor textHidden, startHidden, endHidden;
+        if (projected.isGenericDict())
+        {
+            auto dict = projected.toGenericDict();
+            textHidden = dict.at("text_hidden_states").toTensor();    // [1, 128, 768]
+            startHidden = dict.at("seconds_start_hidden_states").toTensor(); // [1, 1, 768]
+            endHidden = dict.at("seconds_end_hidden_states").toTensor();     // [1, 1, 768]
+        }
+        else if (projected.isTuple())
         {
             auto tuple = projected.toTuple();
-            encoderHidden = tuple->elements()[0].toTensor();   // [1, 129, 768]
-            globalHidden = tuple->elements()[1].toTensor();    // [1, 1536]
+            textHidden = tuple->elements()[0].toTensor();
+            startHidden = tuple->elements()[1].toTensor();
+            endHidden = tuple->elements()[2].toTensor();
+        }
+        else
+        {
+            throw std::runtime_error("Unexpected projection model output type");
         }
 
-        // Attention mask for cross-attention: [1, 129] all true
+        // Assemble DiT inputs (matching StableAudioPipeline):
+        // encoder_hidden_states = cat(text, start, end, dim=1) → [1, 130, 768]
+        auto encoderHidden = torch::cat({textHidden, startHidden, endHidden}, /*dim=*/1);
+        // global_hidden_states = cat(start, end, dim=2).squeeze(1) → [1, 1536]
+        auto globalHidden = torch::cat({startHidden, endHidden}, /*dim=*/2).squeeze(1);
+        // attention mask: all valid
         auto attentionMask = torch::ones({1, encoderHidden.size(1)},
                                          torch::TensorOptions().dtype(torch::kBool).device(device_));
 
