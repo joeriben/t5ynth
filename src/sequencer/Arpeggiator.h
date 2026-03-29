@@ -1,18 +1,28 @@
 #pragma once
 #include <JuceHeader.h>
 #include <vector>
-#include <algorithm>
+#include <array>
 
 /**
- * Arpeggiator that cycles through held notes.
+ * Arpeggiator — port of useArpeggiator.ts.
  *
- * Modes: Up, Down, UpDown, Random, Order.
- * Syncs to host tempo.
+ * Takes a base note and expands it through chord intervals [0, 4, 7]
+ * across octave range, then applies pattern ordering.
+ *
+ * This is NOT a held-note arpeggiator — it receives a single base note
+ * and generates a chord pattern from fixed intervals (major triad).
+ *
+ * Musical rate divisions: 1/4, 1/8, 1/16, 1/32, 1/4T, 1/8T, 1/16T.
  */
 class T5ynthArpeggiator
 {
 public:
-    enum class Mode { Up, Down, UpDown, Random, Order };
+    enum class Mode { Up, Down, UpDown, Random };
+
+    /** Rate division indices (matching APVTS choice order) */
+    enum RateDiv { Rate_1_4 = 0, Rate_1_8, Rate_1_16, Rate_1_32, Rate_1_4T, Rate_1_8T, Rate_1_16T };
+    static constexpr float RATE_FACTORS[] = { 1.0f, 0.5f, 0.25f, 0.125f, 2.0f/3.0f, 1.0f/3.0f, 1.0f/6.0f };
+    static constexpr int NUM_RATES = 7;
 
     T5ynthArpeggiator() = default;
 
@@ -20,30 +30,39 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
     void reset();
 
-    void setMode(Mode m) { mode = m; }
-    void setRate(float noteDivision) { rate = noteDivision; }
-    void setOctaveRange(int octaves) { octaveRange = juce::jlimit(1, 4, octaves); }
+    void setMode(Mode m);
+    void setRate(int rateIndex) { rate = juce::jlimit(0, NUM_RATES - 1, rateIndex); }
+    void setOctaveRange(int octaves) { octaveRange = juce::jlimit(1, 4, octaves); rebuildIntervals(); }
     void setBpm(double b) { bpm = b; }
 
-    void noteOn(int midiNote, float velocity);
-    void noteOff(int midiNote);
+    /** Set base note and start arpeggiating. */
+    void setBaseNote(int midiNote, float velocity);
 
-    bool isActive() const { return !heldNotes.empty(); }
+    /** Stop arpeggiator. */
+    void stopArp();
+
+    bool isActive() const { return active; }
 
 private:
-    struct HeldNote
-    {
-        int note;
-        float velocity;
-    };
+    static constexpr int CHORD_INTERVALS[] = { 0, 4, 7 }; // Major triad
+    static constexpr int NUM_CHORD_NOTES = 3;
 
-    std::vector<HeldNote> heldNotes;
     Mode mode = Mode::Up;
-    float rate = 1.0f; // Quarter note = 1.0
+    int rate = 2; // default 1/16
     int octaveRange = 1;
+    int baseNote = 60;
+    float baseVelocity = 0.8f;
+    bool active = false;
+
+    std::vector<int> intervals;
     int currentIndex = 0;
-    double sampleRate = 44100.0;
+    double sampleRateVal = 44100.0;
     double bpm = 120.0;
     double samplesUntilNext = 0.0;
     int lastPlayedNote = -1;
+
+    juce::Random rng;
+
+    void rebuildIntervals();
+    void fisherYatesShuffle();
 };

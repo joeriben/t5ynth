@@ -227,19 +227,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"mod2_loop", 1}, "Mod2 Loop", false));
 
-    // ENV / LFO targets (for modulation routing in processBlock)
+    // ENV targets: matches ModTarget enum in reference (useModulation.ts)
+    // 0=DCA, 1=Filter, 2=Scan, 3=Pitch, 4=DelayTime, 5=DelayFB, 6=DelayMix, 7=ReverbMix, 8=None
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod1_target", 1}, "Mod1 Target",
-        juce::StringArray{"DCA", "Filter", "Scan", "---"}, 3));
+        juce::StringArray{"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "---"}, 8));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod2_target", 1}, "Mod2 Target",
-        juce::StringArray{"DCA", "Filter", "Scan", "---"}, 3));
+        juce::StringArray{"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "---"}, 8));
+    // LFO targets: 0=Filter, 1=Scan, 2=Pitch, 3=DlyTime, 4=DlyFB, 5=DlyMix, 6=RevMix,
+    //              7=LFO1Rate, 8=LFO2Rate, 9=LFO1Depth, 10=LFO2Depth, 11=None
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_target", 1}, "LFO1 Target",
-        juce::StringArray{"Filter", "Scan", "Alpha", "---"}, 3));
+        juce::StringArray{"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                          "LFO2 Rate", "LFO2 Depth", "---"}, 9));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo2_target", 1}, "LFO2 Target",
-        juce::StringArray{"Filter", "Scan", "Alpha", "---"}, 3));
+        juce::StringArray{"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                          "LFO1 Rate", "LFO1 Depth", "---"}, 9));
 
     // LFO Mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -296,9 +301,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(20.0f, 300.0f, 0.1f), 120.0f));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{"seq_steps", 1}, "Seq Steps", 1, 64, 16));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+    // Arp rate: musical divisions (reference: 1/4, 1/8, 1/16, 1/32, 1/4T, 1/8T, 1/16T)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"arp_rate", 1}, "Arp Rate",
-        juce::NormalisableRange<float>(0.25f, 4.0f, 0.25f), 1.0f));
+        juce::StringArray{"1/4", "1/8", "1/16", "1/32", "1/4T", "1/8T", "1/16T"}, 2));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{"arp_octaves", 1}, "Arp Octaves", 1, 4, 1));
 
@@ -430,7 +436,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bool seqRunning = parameters.getRawParameterValue("seq_running")->load() > 0.5f;
     float seqBpm = parameters.getRawParameterValue("seq_bpm")->load();
     int seqSteps = static_cast<int>(parameters.getRawParameterValue("seq_steps")->load());
-    float arpRate = parameters.getRawParameterValue("arp_rate")->load();
+    int arpRate = static_cast<int>(parameters.getRawParameterValue("arp_rate")->load());
     int arpOctaves = static_cast<int>(parameters.getRawParameterValue("arp_octaves")->load());
     bool arpEnabled = (seqMode >= 1); // 0=Seq only, 1-4=Arp modes
 
@@ -451,15 +457,15 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         arpeggiator.setOctaveRange(arpOctaves);
         arpeggiator.setMode(static_cast<T5ynthArpeggiator::Mode>(seqMode - 1));
 
-        // Feed note events (from seq + external MIDI) to arpeggiator
+        // Feed note events to arpeggiator (chord-interval based, not held-note)
         juce::MidiBuffer filtered;
         for (const auto metadata : midiMessages)
         {
             auto msg = metadata.getMessage();
             if (msg.isNoteOn())
-                arpeggiator.noteOn(msg.getNoteNumber(), msg.getFloatVelocity());
+                arpeggiator.setBaseNote(msg.getNoteNumber(), msg.getFloatVelocity());
             else if (msg.isNoteOff())
-                arpeggiator.noteOff(msg.getNoteNumber());
+                arpeggiator.stopArp();
             else
                 filtered.addEvent(msg, metadata.samplePosition);
         }
@@ -509,13 +515,25 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // ── Audio generation + per-sample modulation ────────────────────────────
-    // Target indices: 0=DCA, 1=Filter, 2=Scan, 3=None (env)
-    //                 0=Filter, 1=Scan, 2=Alpha, 3=None (lfo)
+    // Env target indices: 0=DCA, 1=Filter, 2=Scan, 3=Pitch,
+    //   4=DlyTime, 5=DlyFB, 6=DlyMix, 7=RevMix, 8=None
+    // LFO target indices: 0=Filter, 1=Scan, 2=Pitch, 3=DlyTime,
+    //   4=DlyFB, 5=DlyMix, 6=RevMix, 7=LFO2Rate(lfo1)/LFO1Rate(lfo2),
+    //   8=LFO2Depth(lfo1)/LFO1Depth(lfo2), 9=None
 
-    // Capture last modulation values for block-rate filter modulation
-    // (fixes double-tick bug: previously processSample() was called again for filter)
+    // Read base LFO rates for cross-modulation
+    float baseLfo1Rate = parameters.getRawParameterValue("lfo1_rate")->load();
+    float baseLfo2Rate = parameters.getRawParameterValue("lfo2_rate")->load();
+    float baseLfo1Depth = parameters.getRawParameterValue("lfo1_depth")->load();
+    float baseLfo2Depth = parameters.getRawParameterValue("lfo2_depth")->load();
+
+    // Capture last modulation values for block-rate targets
     float lastMod1Val = 0.0f, lastMod2Val = 0.0f;
     float lastLfo1Val = 0.0f, lastLfo2Val = 0.0f;
+
+    // Accumulators for block-rate modulation of delay/reverb parameters
+    float modDelayTime = 0.0f, modDelayFb = 0.0f, modDelayMix = 0.0f, modReverbMix = 0.0f;
+    float modPitch = 0.0f;
 
     if (engineMode == EngineMode::Wavetable && wavetableOsc.hasFrames())
     {
@@ -527,13 +545,19 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             float lfo1Val = lfo1.processSample();
             float lfo2Val = lfo2.processSample();
 
-            // Save for filter modulation (block-rate, uses last sample's value)
+            // LFO cross-modulation: LFO1 target 7 = LFO2 Rate, 8 = LFO2 Depth
+            if (lfo1Target == 7) lfo2.setRate(baseLfo2Rate * (1.0f + lfo1Val));
+            if (lfo1Target == 8) lfo2.setDepth(std::max(0.0f, baseLfo2Depth + lfo1Val * baseLfo2Depth));
+            // LFO2 target 7 = LFO1 Rate, 8 = LFO1 Depth
+            if (lfo2Target == 7) lfo1.setRate(baseLfo1Rate * (1.0f + lfo2Val));
+            if (lfo2Target == 8) lfo1.setDepth(std::max(0.0f, baseLfo1Depth + lfo2Val * baseLfo1Depth));
+
             lastMod1Val = mod1Env;
             lastMod2Val = mod2Env;
             lastLfo1Val = lfo1Val;
             lastLfo2Val = lfo2Val;
 
-            // Compute modulated scan position
+            // Scan modulation
             float scanMod = baseScan + driftScanOffset;
             if (mod1Target == 2) scanMod += mod1Env;
             if (mod2Target == 2) scanMod += mod2Env;
@@ -543,7 +567,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
             float sample = wavetableOsc.processSample();
 
-            // Apply DCA
+            // DCA
             float vca = ampEnv;
             if (mod1Target == 0) vca *= (1.0f + mod1Env);
             if (mod2Target == 0) vca *= (1.0f + mod2Env);
@@ -564,6 +588,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             float mod2Env = modEnvelope2.processSample() * mod2Amount;
             float lfo1Val = lfo1.processSample();
             float lfo2Val = lfo2.processSample();
+
+            if (lfo1Target == 7) lfo2.setRate(baseLfo2Rate * (1.0f + lfo1Val));
+            if (lfo1Target == 8) lfo2.setDepth(std::max(0.0f, baseLfo2Depth + lfo1Val * baseLfo2Depth));
+            if (lfo2Target == 7) lfo1.setRate(baseLfo1Rate * (1.0f + lfo2Val));
+            if (lfo2Target == 8) lfo1.setDepth(std::max(0.0f, baseLfo1Depth + lfo2Val * baseLfo1Depth));
 
             lastMod1Val = mod1Env;
             lastMod2Val = mod2Env;
@@ -590,6 +619,30 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         }
     }
 
+    // ── Accumulate block-rate modulation for delay/reverb/pitch ─────────────
+    // Env → delay/reverb targets (uses last captured values)
+    if (mod1Target == 4) modDelayTime += lastMod1Val;   // Env→DelayTime
+    if (mod1Target == 5) modDelayFb += lastMod1Val;     // Env→DelayFB
+    if (mod1Target == 6) modDelayMix += lastMod1Val;    // Env→DelayMix
+    if (mod1Target == 7) modReverbMix += lastMod1Val;   // Env→ReverbMix
+    if (mod1Target == 3) modPitch += lastMod1Val;       // Env→Pitch
+    if (mod2Target == 4) modDelayTime += lastMod2Val;
+    if (mod2Target == 5) modDelayFb += lastMod2Val;
+    if (mod2Target == 6) modDelayMix += lastMod2Val;
+    if (mod2Target == 7) modReverbMix += lastMod2Val;
+    if (mod2Target == 3) modPitch += lastMod2Val;
+    // LFO → delay/reverb targets
+    if (lfo1Target == 3) modDelayTime += lastLfo1Val;
+    if (lfo1Target == 4) modDelayFb += lastLfo1Val;
+    if (lfo1Target == 5) modDelayMix += lastLfo1Val;
+    if (lfo1Target == 6) modReverbMix += lastLfo1Val;
+    if (lfo1Target == 2) modPitch += lastLfo1Val;       // LFO→Pitch
+    if (lfo2Target == 3) modDelayTime += lastLfo2Val;
+    if (lfo2Target == 4) modDelayFb += lastLfo2Val;
+    if (lfo2Target == 5) modDelayMix += lastLfo2Val;
+    if (lfo2Target == 6) modReverbMix += lastLfo2Val;
+    if (lfo2Target == 2) modPitch += lastLfo2Val;
+
     // ── Filter with modulation ──────────────────────────────────────────────
     if (filterEnabled)
     {
@@ -599,14 +652,27 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (kbdTrack > 0.0f && currentNote >= 0)
             cutoffMod *= std::pow(2.0f, (currentNote - 60.0f) / 12.0f * kbdTrack);
 
-        // Envelope → filter: sweep proportional to base (reference: base × (1 + amount × 8))
-        // Uses captured last values — no double-tick
-        if (mod1Target == 1) cutoffMod *= (1.0f + mod1Amount * 8.0f * lastMod1Val);
-        if (mod2Target == 1) cutoffMod *= (1.0f + mod2Amount * 8.0f * lastMod2Val);
+        // DCF Envelope: subtractive sweep (reference useModulation.ts:272-290)
+        // Start = base * (1 - amount), Peak = base * (1 + amount * 8)
+        // The envelope value (0-1) interpolates between start and peak.
+        if (mod1Target == 1)
+        {
+            float startFactor = 1.0f - mod1Amount;
+            float peakFactor = 1.0f + mod1Amount * 8.0f;
+            float envFactor = startFactor + (peakFactor - startFactor) * lastMod1Val;
+            cutoffMod *= envFactor;
+        }
+        if (mod2Target == 1)
+        {
+            float startFactor = 1.0f - mod2Amount;
+            float peakFactor = 1.0f + mod2Amount * 8.0f;
+            float envFactor = startFactor + (peakFactor - startFactor) * lastMod2Val;
+            cutoffMod *= envFactor;
+        }
 
-        // LFO → filter: bipolar modulation
-        if (lfo1Target == 0) cutoffMod *= (1.0f + lastLfo1Val * 2.0f);
-        if (lfo2Target == 0) cutoffMod *= (1.0f + lastLfo2Val * 2.0f);
+        // LFO → filter: bipolar, depth-scaled
+        if (lfo1Target == 0) cutoffMod *= (1.0f + lastLfo1Val);
+        if (lfo2Target == 0) cutoffMod *= (1.0f + lastLfo2Val);
 
         cutoffMod = juce::jlimit(20.0f, 20000.0f, cutoffMod);
 
@@ -624,9 +690,13 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     if (delayEnabled)
     {
-        delay.setTime(parameters.getRawParameterValue("delay_time")->load());
-        delay.setFeedback(parameters.getRawParameterValue("delay_feedback")->load());
-        delay.setMix(parameters.getRawParameterValue("delay_mix")->load());
+        float baseDelayTime = parameters.getRawParameterValue("delay_time")->load();
+        float baseDelayFb = parameters.getRawParameterValue("delay_feedback")->load();
+        float baseDelayMix = parameters.getRawParameterValue("delay_mix")->load();
+        // Apply modulation offsets to delay params
+        delay.setTime(juce::jlimit(1.0f, 5000.0f, baseDelayTime * (1.0f + modDelayTime)));
+        delay.setFeedback(juce::jlimit(0.0f, 0.95f, baseDelayFb + modDelayFb * baseDelayFb));
+        delay.setMix(juce::jlimit(0.0f, 1.0f, baseDelayMix + modDelayMix));
         delay.setDamp(parameters.getRawParameterValue("delay_damp")->load());
     }
 
@@ -653,7 +723,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 lastReverbIr = irIndex;
             }
         }
-        reverb.setMix(parameters.getRawParameterValue("reverb_mix")->load());
+        float baseRevMix = parameters.getRawParameterValue("reverb_mix")->load();
+        reverb.setMix(juce::jlimit(0.0f, 1.0f, baseRevMix + modReverbMix));
     }
 
     // Parallel processing: delay and reverb each get a copy of the source signal.
