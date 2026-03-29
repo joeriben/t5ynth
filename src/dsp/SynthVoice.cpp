@@ -104,6 +104,21 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     float lfo1Val = globalLfo1Val;
     float lfo2Val = globalLfo2Val;
 
+    // Pitch modulation: env/LFO → pitch (target index 3 for env, 2 for LFO)
+    float pitchMod = 0.0f;
+    if (p.mod1Target == 3) pitchMod += mod1EnvVal;
+    if (p.mod2Target == 3) pitchMod += mod2EnvVal;
+    if (p.lfo1Target == 2) pitchMod += lfo1Val;
+    if (p.lfo2Target == 2) pitchMod += lfo2Val;
+
+    if (pitchMod != 0.0f)
+    {
+        float pitchFactor = 1.0f + pitchMod;
+        if (p.engineIsWavetable && osc.hasFrames())
+            osc.setFrequency(osc.getFrequency() * pitchFactor);
+        // Looper pitch mod is handled via transposeRatio (block-rate is fine)
+    }
+
     // Generate audio sample
     float sample = 0.0f;
 

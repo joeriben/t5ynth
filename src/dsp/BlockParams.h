@@ -42,6 +42,9 @@ struct BlockParams
     float baseScan = 0.0f;
     float driftScanOffset = 0.0f;
 
+    // Pitch modulation (accumulated from env/LFO → pitch targets)
+    float modPitch = 0.0f;
+
     // Engine
     bool engineIsWavetable = false;
 };

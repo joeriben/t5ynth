@@ -494,6 +494,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         arpeggiator.reset();
     }
 
+    // Consume bar-start flag (for future background regen integration)
+    stepSequencer.barStartFlag.exchange(false);
+
     // ── MIDI → VoiceManager (polyphonic) ──────────────────────────────────
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo1_mode")->load()) == 1;
     bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo2_mode")->load()) == 1;
@@ -564,30 +567,26 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float lastLfo1Val = lfo1Buf.empty() ? 0.0f : lfo1Buf.back();
     float lastLfo2Val = lfo2Buf.empty() ? 0.0f : lfo2Buf.back();
 
-    // ── Accumulate block-rate modulation for delay/reverb/pitch ─────────────
+    // ── Accumulate block-rate modulation for delay/reverb ─────────────────
+    // (Pitch modulation is handled per-sample in SynthVoice::renderSample)
     float modDelayTime = 0.0f, modDelayFb = 0.0f, modDelayMix = 0.0f, modReverbMix = 0.0f;
-    float modPitch = 0.0f;
 
     if (bp.mod1Target == 4) modDelayTime += lastMod1Val;
     if (bp.mod1Target == 5) modDelayFb += lastMod1Val;
     if (bp.mod1Target == 6) modDelayMix += lastMod1Val;
     if (bp.mod1Target == 7) modReverbMix += lastMod1Val;
-    if (bp.mod1Target == 3) modPitch += lastMod1Val;
     if (bp.mod2Target == 4) modDelayTime += lastMod2Val;
     if (bp.mod2Target == 5) modDelayFb += lastMod2Val;
     if (bp.mod2Target == 6) modDelayMix += lastMod2Val;
     if (bp.mod2Target == 7) modReverbMix += lastMod2Val;
-    if (bp.mod2Target == 3) modPitch += lastMod2Val;
     if (bp.lfo1Target == 3) modDelayTime += lastLfo1Val;
     if (bp.lfo1Target == 4) modDelayFb += lastLfo1Val;
     if (bp.lfo1Target == 5) modDelayMix += lastLfo1Val;
     if (bp.lfo1Target == 6) modReverbMix += lastLfo1Val;
-    if (bp.lfo1Target == 2) modPitch += lastLfo1Val;
     if (bp.lfo2Target == 3) modDelayTime += lastLfo2Val;
     if (bp.lfo2Target == 4) modDelayFb += lastLfo2Val;
     if (bp.lfo2Target == 5) modDelayMix += lastLfo2Val;
     if (bp.lfo2Target == 6) modReverbMix += lastLfo2Val;
-    if (bp.lfo2Target == 2) modPitch += lastLfo2Val;
 
     // ── Effects (parallel send-bus: dry + delay + reverb → limiter) ───────
     bool delayEnabled = parameters.getRawParameterValue("delay_enabled")->load() > 0.5f;

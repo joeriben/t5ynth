@@ -33,6 +33,7 @@ public:
 
     /** Set playback frequency in Hz. */
     void setFrequency(float hz) { targetFrequency = hz; glideFreqSamplesLeft = 0; }
+    float getFrequency() const { return targetFrequency; }
 
     /** Smooth frequency ramp to target Hz over durationMs (portamento). */
     void glideToFrequency(float hz, float durationMs);
