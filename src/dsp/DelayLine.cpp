@@ -26,8 +26,9 @@ void T5ynthDelayLine::processBlock(juce::AudioBuffer<float>& buffer)
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
-    // Parallel send-bus: wet signal is ADDED to dry (not crossfaded).
-    // Dry compensation: reduce dry by mix * 0.3 to prevent clipping.
+    // Parallel send-bus (reference: useEffects.ts).
+    // dryGain = 1 - mix * 0.3: at mix=1.0 dry=0.7, wet=1.0 → peak sum ~1.7x.
+    // Limiter at end of chain is the final safety net.
     const float dryGain = 1.0f - wetMix * 0.3f;
 
     for (int ch = 0; ch < numChannels; ++ch)

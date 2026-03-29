@@ -50,7 +50,6 @@ private:
 
     float currentLevel   = 0.0f;
     float targetVelocity = 1.0f;
-    float amount         = 1.0f; // Set externally via processBlock
 
     // Attack/Decay: linear ramp targets and per-sample increment
     float attackTarget   = 1.0f;

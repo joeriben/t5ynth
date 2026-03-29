@@ -316,10 +316,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{"arp_octaves", 1}, "Arp Octaves", 1, 4, 1));
 
-    // Master volume
+    // Master volume: purely attenuative (0dB max). DAW fader handles boost.
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"master_vol", 1}, "Master Volume",
-        juce::NormalisableRange<float>(-60.0f, 6.0f, 0.1f), 0.0f));
+        juce::NormalisableRange<float>(-60.0f, 0.0f, 0.1f), 0.0f));
 
     return { params.begin(), params.end() };
 }
@@ -358,6 +358,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
+
+    // ── GAIN STAGING ────────────────────────────────────────────────────────
+    // Per Voice: Osc +-1.0 → VCA up to +-4.0 → Filter (gain-neutral, reso +12dB)
+    // Sum:       N voices * 1/sqrt(N) scaling → ~constant perceived loudness
+    // Post-Sum:  Delay+Reverb up to ~2.7x → Master 0dB max → Limiter -3dB
+    // ────────────────────────────────────────────────────────────────────────
 
     // ── Read all parameters at block start ──────────────────────────────────
     // Amp envelope
@@ -653,7 +659,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
             float sample = wavetableOsc.processSample();
 
-            // DCA
+            // DCA: multiplicative mod routing (reference behavior).
+            // Worst case both mods→DCA at max amount: 4.0x gain. Limiter catches it.
             float vca = ampEnv;
             if (mod1Target == 0) vca *= (1.0f + mod1Env);
             if (mod2Target == 0) vca *= (1.0f + mod2Env);
@@ -685,6 +692,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             lastLfo1Val = lfo1Val;
             lastLfo2Val = lfo2Val;
 
+            // DCA: multiplicative mod routing (reference behavior).
+            // Worst case both mods→DCA at max amount: 4.0x gain. Limiter catches it.
             float vca = ampEnv;
             if (mod1Target == 0) vca *= (1.0f + mod1Env);
             if (mod2Target == 0) vca *= (1.0f + mod2Env);
@@ -830,6 +839,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     //   source → dry(compensated) ──→ sum → limiter
     //          → delaySend ─────────→ sum
     //          → reverbSend ────────→ sum
+    // Combined peak: delay ~1.7x + reverb wet additive → up to ~2.7x before master.
     //
     // Delay already implements send-bus internally (dry*comp + wet*mix).
     // When both FX are active, reverb needs the ORIGINAL source, not delay output.

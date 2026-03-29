@@ -11,7 +11,6 @@
 #include "dsp/DelayLine.h"
 #include "dsp/ConvolutionReverb.h"
 #include "dsp/Limiter.h"
-#include "dsp/ModulationMatrix.h"
 #include "sequencer/StepSequencer.h"
 #include "sequencer/Arpeggiator.h"
 #include "backend/BackendManager.h"
@@ -94,7 +93,6 @@ private:
     T5ynthDelayLine delay;
     ConvolutionReverb reverb;
     T5ynthLimiter limiter;
-    ModulationMatrix modMatrix;
 
     // Sequencer
     T5ynthStepSequencer stepSequencer;

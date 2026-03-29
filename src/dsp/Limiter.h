@@ -15,7 +15,7 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer);
     void reset();
 
-    /** Set threshold in dB (default: -0.3 dB). */
+    /** Set threshold in dB (default: -3.0 dB). */
     void setThreshold(float dB);
 
     /** Set release time in ms (default: 100 ms). */
