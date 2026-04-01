@@ -26,8 +26,10 @@ static const auto kPca6    = juce::Colour(0xff8bc34a);  // Light green
 
 // Section accent colors (for headers/highlights per module)
 static const auto kFilterCol = juce::Colour(0xff00bcd4);  // Cyan
-static const auto kModCol    = juce::Colour(0xffff9800);  // Orange
-static const auto kDriftCol  = juce::Colour(0xff9c27b0);  // Purple
+static const auto kEnvCol    = juce::Colour(0xffffb74d);  // Light orange (envelopes)
+static const auto kModCol    = juce::Colour(0xffff9800);  // Medium orange (LFOs) — also used for section header
+static const auto kLfoCol    = juce::Colour(0xffff9800);  // Medium orange (LFOs)
+static const auto kDriftCol  = juce::Colour(0xffe65100);  // Dark orange (drift)
 
 /** Paint a rounded card background with subtle border. */
 inline void paintCard(juce::Graphics& g, juce::Rectangle<int> bounds, float cornerSize = 6.0f)

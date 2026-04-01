@@ -87,7 +87,7 @@ def generate(pipe, request):
 
     if seed < 0:
         import random
-        seed = random.randint(0, 2**32 - 1)
+        seed = random.randint(0, 2**31 - 1)
 
     sr = 44100
     generator = torch.Generator("cpu").manual_seed(seed)

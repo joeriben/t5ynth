@@ -19,7 +19,7 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
                           juce::AudioProcessorValueTreeState& apvts)
 {
     env.header.setText(name, juce::dontSendNotification);
-    env.header.setColour(juce::Label::textColourId, kModCol);
+    env.header.setColour(juce::Label::textColourId, kEnvCol);
     addAndMakeVisible(env.header);
 
     env.targetBox.addItemList({"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
@@ -32,11 +32,11 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.loopToggle.setColour(juce::ToggleButton::tickColourId, kAccent);
     addAndMakeVisible(env.loopToggle);
 
-    env.aRow   = std::make_unique<SliderRow>("A",   fmtMs, kModCol);
-    env.dRow   = std::make_unique<SliderRow>("D",   fmtMs, kModCol);
-    env.sRow   = std::make_unique<SliderRow>("S",   fmtF2, kModCol);
-    env.rRow   = std::make_unique<SliderRow>("R",   fmtMs, kModCol);
-    env.amtRow = std::make_unique<SliderRow>("Amt", fmtF2, kModCol);
+    env.aRow   = std::make_unique<SliderRow>("A",   fmtMs, kEnvCol);
+    env.dRow   = std::make_unique<SliderRow>("D",   fmtMs, kEnvCol);
+    env.sRow   = std::make_unique<SliderRow>("S",   fmtF2, kEnvCol);
+    env.rRow   = std::make_unique<SliderRow>("R",   fmtMs, kEnvCol);
+    env.amtRow = std::make_unique<SliderRow>("Amt", fmtF2, kEnvCol);
 
     for (auto* row : { env.aRow.get(), env.dRow.get(), env.sRow.get(),
                        env.rRow.get(), env.amtRow.get() })
@@ -66,7 +66,7 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
                           juce::AudioProcessorValueTreeState& apvts)
 {
     lfo.header.setText(name, juce::dontSendNotification);
-    lfo.header.setColour(juce::Label::textColourId, kModCol);
+    lfo.header.setColour(juce::Label::textColourId, kLfoCol);
     addAndMakeVisible(lfo.header);
 
     lfo.targetBox.addItemList({"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
@@ -81,8 +81,8 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.modeBox.addItemList({"Free", "Trig"}, 1);
     addAndMakeVisible(lfo.modeBox);
 
-    lfo.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF1, kModCol);
-    lfo.depthRow = std::make_unique<SliderRow>("Depth", fmtF2,   kModCol);
+    lfo.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF1, kLfoCol);
+    lfo.depthRow = std::make_unique<SliderRow>("Depth", fmtF2,   kLfoCol);
     addAndMakeVisible(*lfo.rateRow);
     addAndMakeVisible(*lfo.depthRow);
 
@@ -239,7 +239,6 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     };
     makeHeader(filterHeader, "FILTER", kFilterCol);
     makeHeader(modHeader, "MODULATION", kModCol);
-    makeHeader(driftHeader, "DRIFT", kDriftCol);
 
     // ── Filter ──
     filterToggle.setColour(juce::ToggleButton::textColourId, kDim);
@@ -574,15 +573,16 @@ void SynthPanel::paint(juce::Graphics& g)
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
     }
 
-    // Card: Modulation (all ENVs + LFOs)
+    // Card: Modulation (ENVs + LFOs + Drift)
     {
         int top = modHeader.getY() - inset;
         int bot = juce::jmax(ampEnv.amtRow->getBottom(), mod1Env.amtRow->getBottom(),
                              mod2Env.amtRow->getBottom());
         bot = juce::jmax(bot, lfo1.depthRow->getBottom(), lfo2.depthRow->getBottom());
+        bot = juce::jmax(bot, drift1.depthRow->getBottom(), drift2.depthRow->getBottom());
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
 
-        // Subtle separator lines between ENV/LFO sub-sections
+        // Subtle separator lines between sub-sections
         g.setColour(kModCol.withAlpha(0.15f));
         int lineL = padX + 8;
         int lineR = getWidth() - padX - 8;
@@ -591,13 +591,10 @@ void SynthPanel::paint(juce::Graphics& g)
             int y = hdr->getY() - 2;
             g.drawHorizontalLine(y, static_cast<float>(lineL), static_cast<float>(lineR));
         }
-    }
-
-    // Card: Drift
-    {
-        int top = driftHeader.getY() - inset;
-        int bot = juce::jmax(drift1.depthRow->getBottom(), drift2.depthRow->getBottom());
-        paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
+        // Drift separator
+        g.setColour(kDriftCol.withAlpha(0.15f));
+        int driftY = driftRegenToggle.getY() - 2;
+        g.drawHorizontalLine(driftY, static_cast<float>(lineL), static_cast<float>(lineR));
     }
 }
 
@@ -702,13 +699,9 @@ void SynthPanel::resized()
     layoutLfo(lfo1, area, f, rowH, gap);
     layoutLfo(lfo2, area, f, rowH, gap);
 
-    // ── DRIFT section header ──
-    area.removeFromTop(sectionGap);
-    driftHeader.setFont(juce::FontOptions(f * 0.85f));
-    driftHeader.setBounds(area.removeFromTop(juce::roundToInt(f * 1.1f)));
+    // ── Drift (part of modulation section) ──
+    area.removeFromTop(gap);
     driftRegenToggle.setBounds(area.removeFromTop(rowH));
-
-    // ── Drift ──
     layoutDrift(drift1, area, f, rowH, gap);
     layoutDrift(drift2, area, f, rowH, gap);
 
