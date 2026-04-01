@@ -4,7 +4,7 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate;
     osc.prepare(sampleRate, samplesPerBlock);
-    looper.prepare(sampleRate, samplesPerBlock);
+    sampler.prepare(sampleRate, samplesPerBlock);
     ampEnv.prepare(sampleRate);
     modEnv1.prepare(sampleRate);
     modEnv2.prepare(sampleRate);
@@ -16,7 +16,7 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
 void SynthVoice::reset()
 {
     osc.reset();
-    looper.reset();
+    sampler.reset();
     filter.reset();
     active = false;
     noteHeld = false;
@@ -43,7 +43,7 @@ void SynthVoice::noteOn(int note, float velocity, bool legato)
     if (engineMode == EngineMode::Wavetable)
         osc.setFrequency(baseFrequency);
     else
-        looper.setMidiNote(note);
+        sampler.setMidiNote(note);
 }
 
 void SynthVoice::noteOff()
@@ -61,7 +61,7 @@ void SynthVoice::glideToNote(int note, float glideMs)
     if (engineMode == EngineMode::Wavetable)
         osc.glideToFrequency(baseFrequency, glideMs);
     else
-        looper.glideToSemitones(note - 60, glideMs);
+        sampler.glideToSemitones(note - 60, glideMs);
 }
 
 void SynthVoice::configureForBlock(const BlockParams& p)
@@ -120,20 +120,6 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     // Generate audio sample
     float sample = 0.0f;
 
-    // DEBUG: which branch runs?
-    {
-        static bool branchLogged = false;
-        if (!branchLogged) {
-            auto dbg = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                           .getChildFile("t5ynth_debug.txt");
-            dbg.appendText("VOICE: isWT=" + juce::String(p.engineIsWavetable?1:0)
-                + " hasFrames=" + juce::String(osc.hasFrames()?1:0)
-                + " hasAudio=" + juce::String(looper.hasAudio()?1:0)
-                + " engineMode=" + juce::String(static_cast<int>(engineMode)) + "\n");
-            branchLogged = true;
-        }
-    }
-
     if (p.engineIsWavetable && osc.hasFrames())
     {
         // Scan modulation
@@ -146,25 +132,9 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
 
         sample = osc.processSample();
     }
-    else if (!p.engineIsWavetable && looper.hasAudio())
+    else if (!p.engineIsWavetable && sampler.hasAudio())
     {
-        sample = looper.processSample();
-        static bool logged = false;
-        if (!logged) {
-            FILE* f = fopen("/Users/joerissen/Desktop/t5ynth_voice.txt", "w");
-            if (f) { fprintf(f, "SAMPLER branch, sample=%.6f\n", sample); fclose(f); }
-            logged = true;
-        }
-    }
-    else
-    {
-        static bool logged2 = false;
-        if (!logged2) {
-            FILE* f = fopen("/Users/joerissen/Desktop/t5ynth_voice.txt", "w");
-            if (f) { fprintf(f, "ELSE branch! isWT=%d hasAudio=%d hasFrames=%d\n",
-                p.engineIsWavetable?1:0, looper.hasAudio()?1:0, osc.hasFrames()?1:0); fclose(f); }
-            logged2 = true;
-        }
+        sample = sampler.processSample();
     }
 
     // DCA: multiplicative mod routing (reference behavior).
@@ -174,6 +144,43 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     if (p.mod2Target == 0) vca *= (1.0f + mod2EnvVal);
     sample *= vca;
 
+    // Per-voice filter with envelope/LFO modulation
+    if (p.filterEnabled)
+    {
+        float cutoffMod = p.baseCutoff;
+
+        // Keyboard tracking
+        if (p.kbdTrack > 0.0f && currentNote >= 0)
+            cutoffMod *= std::pow(2.0f, (static_cast<float>(currentNote) - 60.0f) / 12.0f * p.kbdTrack);
+
+        // Mod envelope → filter (target index 1)
+        if (p.mod1Target == 1)
+        {
+            float startFactor = 1.0f - p.mod1Amount;
+            float peakFactor  = 1.0f + p.mod1Amount * 8.0f;
+            cutoffMod *= startFactor + (peakFactor - startFactor) * mod1EnvVal;
+        }
+        if (p.mod2Target == 1)
+        {
+            float startFactor = 1.0f - p.mod2Amount;
+            float peakFactor  = 1.0f + p.mod2Amount * 8.0f;
+            cutoffMod *= startFactor + (peakFactor - startFactor) * mod2EnvVal;
+        }
+
+        // LFO → filter (target index 0)
+        if (p.lfo1Target == 0) cutoffMod *= (1.0f + lfo1Val);
+        if (p.lfo2Target == 0) cutoffMod *= (1.0f + lfo2Val);
+
+        cutoffMod = juce::jlimit(20.0f, 20000.0f, cutoffMod);
+
+        filter.setCutoff(cutoffMod);
+        filter.setResonance(p.baseReso);
+        filter.setType(p.filterType);
+        filter.setSlope(p.filterSlope);
+        filter.setMix(p.filterMix);
+        sample = filter.processSample(sample);
+    }
+
     // Check if voice has finished (envelope idle after release)
     if (ampEnv.isIdle() && !noteHeld)
         active = false;
@@ -182,42 +189,3 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     return result;
 }
 
-void SynthVoice::processFilter(const BlockParams& p, float lastMod1Val, float lastMod2Val,
-                                float lastLfo1Val, float lastLfo2Val)
-{
-    if (!p.filterEnabled) return;
-
-    float cutoffMod = p.baseCutoff;
-
-    // Keyboard tracking
-    if (p.kbdTrack > 0.0f && currentNote >= 0)
-        cutoffMod *= std::pow(2.0f, (static_cast<float>(currentNote) - 60.0f) / 12.0f * p.kbdTrack);
-
-    // DCF Envelope: subtractive sweep (reference useModulation.ts:272-290)
-    if (p.mod1Target == 1 && !modEnv1.isIdle())
-    {
-        float startFactor = 1.0f - p.mod1Amount;
-        float peakFactor = 1.0f + p.mod1Amount * 8.0f;
-        float envFactor = startFactor + (peakFactor - startFactor) * lastMod1Val;
-        cutoffMod *= envFactor;
-    }
-    if (p.mod2Target == 1 && !modEnv2.isIdle())
-    {
-        float startFactor = 1.0f - p.mod2Amount;
-        float peakFactor = 1.0f + p.mod2Amount * 8.0f;
-        float envFactor = startFactor + (peakFactor - startFactor) * lastMod2Val;
-        cutoffMod *= envFactor;
-    }
-
-    // LFO → filter: bipolar, depth-scaled
-    if (p.lfo1Target == 0) cutoffMod *= (1.0f + lastLfo1Val);
-    if (p.lfo2Target == 0) cutoffMod *= (1.0f + lastLfo2Val);
-
-    cutoffMod = juce::jlimit(20.0f, 20000.0f, cutoffMod);
-
-    filter.setCutoff(cutoffMod);
-    filter.setResonance(p.baseReso);
-    filter.setType(p.filterType);
-    filter.setSlope(p.filterSlope);
-    filter.setMix(p.filterMix);
-}

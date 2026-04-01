@@ -116,75 +116,82 @@ void T5ynthStepSequencer::processBlock(juce::AudioBuffer<float>& buffer,
 
     while (samplePos < numSamples)
     {
-        // Check gate-off before next step
+        // How many samples remain in this block?
+        int remaining = numSamples - samplePos;
+
+        // Find the next event: step boundary or gate-off
+        double nextEvent = samplesUntilNextStep;
+        bool gateOffFirst = false;
         if (samplesUntilGateOff >= 0.0 && samplesUntilGateOff <= samplesUntilNextStep)
         {
-            int gateOffPos = samplePos + static_cast<int>(samplesUntilGateOff);
-            gateOffPos = juce::jmin(gateOffPos, numSamples - 1);
+            nextEvent = samplesUntilGateOff;
+            gateOffFirst = true;
+        }
+
+        // If the next event is beyond this block, just advance to block end
+        if (nextEvent > static_cast<double>(remaining))
+        {
+            samplesUntilNextStep -= remaining;
+            if (samplesUntilGateOff >= 0.0)
+                samplesUntilGateOff -= remaining;
+            samplePos = numSamples;
+            break;
+        }
+
+        // Advance to the event
+        int advance = std::max(0, static_cast<int>(nextEvent));
+        samplePos += advance;
+        samplesUntilNextStep -= advance;
+        if (samplesUntilGateOff >= 0.0)
+            samplesUntilGateOff -= advance;
+
+        int eventPos = juce::jmin(samplePos, numSamples - 1);
+
+        if (gateOffFirst)
+        {
+            // Gate-off event
             if (lastPlayedNote >= 0)
             {
-                midi.addEvent(juce::MidiMessage::noteOff(1, lastPlayedNote), gateOffPos);
+                midi.addEvent(juce::MidiMessage::noteOff(1, lastPlayedNote), eventPos);
                 lastPlayedNote = -1;
             }
-            samplesUntilNextStep -= samplesUntilGateOff;
-            samplePos += static_cast<int>(samplesUntilGateOff);
             samplesUntilGateOff = -1.0;
             continue;
         }
 
-        if (samplesUntilNextStep <= 0.0)
+        // Step boundary event
+        int stepIdx = scheduledStep % numSteps;
+        if (stepIdx == 0 && scheduledStep > 0)
+            barStartFlag.store(true, std::memory_order_relaxed);
+
+        auto& step = steps[static_cast<size_t>(stepIdx)];
+
+        // Note-off for previous (if gate didn't already end it)
+        if (lastPlayedNote >= 0)
         {
-            // Bar boundary detection
-            int stepIdx = scheduledStep % numSteps;
-            if (stepIdx == 0 && scheduledStep > 0)
-                barStartFlag.store(true, std::memory_order_relaxed);
-
-            auto& step = steps[static_cast<size_t>(stepIdx)];
-
-            // Note-off for previous (if gate didn't already end it)
-            if (lastPlayedNote >= 0)
-            {
-                midi.addEvent(juce::MidiMessage::noteOff(1, lastPlayedNote), samplePos);
-                lastPlayedNote = -1;
-            }
-
-            // Note-on for current step if enabled
-            if (step.enabled)
-            {
-                int vel = juce::jlimit(1, 127, juce::roundToInt(step.velocity * 127.0f));
-
-                // Encode glide flag in MIDI channel: ch1 = normal, ch2 = glide
-                int channel = step.glide ? 2 : 1;
-                midi.addEvent(juce::MidiMessage::noteOn(channel, step.note,
-                              static_cast<juce::uint8>(vel)), samplePos);
-                lastPlayedNote = step.note;
-
-                // Schedule gate-off at step.gate * stepDuration
-                samplesUntilGateOff = step.gate * stepDur;
-            }
-            else
-            {
-                samplesUntilGateOff = -1.0;
-            }
-
-            currentStep = stepIdx;
-            currentStepForGui.store(currentStep, std::memory_order_relaxed);
-
-            scheduledStep++;
-            samplesUntilNextStep += stepDur;
+            midi.addEvent(juce::MidiMessage::noteOff(1, lastPlayedNote), eventPos);
+            lastPlayedNote = -1;
         }
 
-        // Advance by minimum of remaining step time and gate-off time
-        double advance = samplesUntilNextStep;
-        if (samplesUntilGateOff >= 0.0)
-            advance = std::min(advance, samplesUntilGateOff);
-        int samplesToProcess = juce::jmin(numSamples - samplePos,
-                                          static_cast<int>(std::ceil(advance)));
-        samplesToProcess = std::max(1, samplesToProcess);
-        samplesUntilNextStep -= samplesToProcess;
-        if (samplesUntilGateOff >= 0.0)
-            samplesUntilGateOff -= samplesToProcess;
-        samplePos += samplesToProcess;
+        // Note-on for current step if enabled
+        if (step.enabled)
+        {
+            int vel = juce::jlimit(1, 127, juce::roundToInt(step.velocity * 127.0f));
+            int channel = step.glide ? 2 : 1;
+            midi.addEvent(juce::MidiMessage::noteOn(channel, step.note,
+                          static_cast<juce::uint8>(vel)), eventPos);
+            lastPlayedNote = step.note;
+            samplesUntilGateOff = step.gate * stepDur;
+        }
+        else
+        {
+            samplesUntilGateOff = -1.0;
+        }
+
+        currentStep = stepIdx;
+        currentStepForGui.store(currentStep, std::memory_order_relaxed);
+        scheduledStep++;
+        samplesUntilNextStep += stepDur;
     }
 }
 

@@ -127,3 +127,21 @@ void T5ynthFilter::setSlope(int slope)
 {
     currentSlope = (slope == 1) ? 1 : 0;
 }
+
+float T5ynthFilter::processSample(float sample)
+{
+    if (!prepared || currentMix < 0.001f)
+        return sample;
+
+    float wet = filter1.processSample(0, sample);
+    if (currentSlope == 1)
+        wet = filter2.processSample(0, wet);
+
+    if (currentMix > 0.999f)
+        return wet;
+
+    const float halfPi = juce::MathConstants<float>::halfPi;
+    float wetGain = std::sin(currentMix * halfPi);
+    float dryGain = std::cos(currentMix * halfPi);
+    return sample * dryGain + wet * wetGain;
+}

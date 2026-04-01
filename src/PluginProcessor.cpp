@@ -121,7 +121,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Engine mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"engine_mode", 1}, "Engine Mode",
-        juce::StringArray{"Looper", "Wavetable"}, 0));
+        juce::StringArray{"Sampler", "Wavetable"}, 0));
 
     // Mod Envelope 1 (reference defaults: atk=0, dec=0, sus=1, rel=0, amt=0.5)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -270,7 +270,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"delay_damp", 1}, "Delay Damp",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
 
-    // Looper controls
+    // Sampler controls
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"loop_mode", 1}, "Loop Mode",
         juce::StringArray{"One-shot", "Loop", "Ping-Pong"}, 1));
@@ -354,15 +354,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
 
 void T5ynthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
-    // DEBUG: confirm prepareToPlay runs
-    {
-        auto dbg = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                       .getChildFile("t5ynth_debug.txt");
-        dbg.appendText("prepareToPlay: sr=" + juce::String(sampleRate)
-            + " blockSize=" + juce::String(samplesPerBlock) + "\n");
-    }
     masterOsc.prepare(sampleRate, samplesPerBlock);
-    masterLooper.prepare(sampleRate, samplesPerBlock);
+    masterSampler.prepare(sampleRate, samplesPerBlock);
     voiceManager.prepare(sampleRate, samplesPerBlock);
     lfo1.prepare(sampleRate);
     lfo2.prepare(sampleRate);
@@ -384,7 +377,7 @@ void T5ynthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 void T5ynthProcessor::releaseResources()
 {
     masterOsc.reset();
-    masterLooper.reset();
+    masterSampler.reset();
     voiceManager.reset();
 }
 
@@ -396,70 +389,6 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
-    // ══════ DEBUG: MINIMAL SAMPLER + SEQUENCER — BYPASS EVERYTHING ══════
-    // 1970s-style: timer counts samples, fires noteOn/noteOff, plays sample.
-    if (debugSampleBuf.getNumSamples() > 0)
-    {
-        double sr = getSampleRate();
-        double bpm = static_cast<double>(parameters.getRawParameterValue("seq_bpm")->load());
-        double samplesPerStep = sr * 60.0 / bpm * 0.5;  // 1/8 note
-        double gateLen = samplesPerStep * 0.8;           // 80% gate
-
-        // Notes: C major scale from C3
-        static constexpr int SEQ_NOTES[] = { 48, 50, 52, 53, 55, 57, 59, 60 };
-        static constexpr int SEQ_LEN = 8;
-
-        double srcLen = static_cast<double>(debugSampleBuf.getNumSamples());
-        int srcCh = debugSampleBuf.getNumChannels();
-        const float* src0 = debugSampleBuf.getReadPointer(0);
-        const float* src1 = srcCh > 1 ? debugSampleBuf.getReadPointer(1) : src0;
-
-        for (int i = 0; i < numSamples; ++i)
-        {
-            // Sequencer: check if we hit a step boundary
-            if (debugSeqCounter >= samplesPerStep)
-            {
-                debugSeqCounter -= samplesPerStep;
-                debugSeqStep = (debugSeqStep + 1) % SEQ_LEN;
-
-                // NoteOn: retrigger sample at new pitch
-                int note = SEQ_NOTES[debugSeqStep];
-                debugSampleReadPos = 0.0;
-                debugSampleSpeed = (44100.0 / sr) * std::pow(2.0, (note - 60) / 12.0);
-                debugSamplePos = 0;
-                debugSeqGateCounter = 0.0;
-            }
-
-            // Gate off
-            if (debugSamplePos >= 0 && debugSeqGateCounter >= gateLen)
-                debugSamplePos = -1;
-
-            // Render sample
-            if (debugSamplePos >= 0)
-            {
-                double pos = debugSampleReadPos;
-                if (pos < srcLen - 1.0)
-                {
-                    int idx = static_cast<int>(pos);
-                    float frac = static_cast<float>(pos - idx);
-                    float L = src0[idx] + (src0[idx+1] - src0[idx]) * frac;
-                    float R = src1[idx] + (src1[idx+1] - src1[idx]) * frac;
-                    buffer.addSample(0, i, L);
-                    if (numChannels > 1) buffer.addSample(1, i, R);
-                    debugSampleReadPos += debugSampleSpeed;
-                }
-                else
-                {
-                    debugSamplePos = -1;
-                }
-            }
-
-            debugSeqCounter += 1.0;
-            debugSeqGateCounter += 1.0;
-        }
-        return;
-    }
-    // ══════ END DEBUG ══════
 
     // ── GAIN STAGING ────────────────────────────────────────────────────────
     // Per Voice: Osc +-1.0 → VCA up to +-4.0 → Filter (gain-neutral, reso +12dB)
@@ -545,11 +474,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // Apply drift to scan if targeted (APVTS target 5 = WtScan)
     bp.driftScanOffset = driftLfo.getOffsetForTarget(5); // WtScan
 
-    // ── Looper settings ─────────────────────────────────────────────────────
+    // ── Sampler settings ─────────────────────────────────────────────────────
     int loopModeIdx = static_cast<int>(parameters.getRawParameterValue("loop_mode")->load());
-    masterLooper.setLoopMode(static_cast<AudioLooper::LoopMode>(loopModeIdx));
-    masterLooper.setCrossfadeMs(parameters.getRawParameterValue("crossfade_ms")->load());
-    masterLooper.setNormalize(parameters.getRawParameterValue("normalize")->load() > 0.5f);
+    masterSampler.setLoopMode(static_cast<SamplePlayer::LoopMode>(loopModeIdx));
+    masterSampler.setCrossfadeMs(parameters.getRawParameterValue("crossfade_ms")->load());
+    masterSampler.setNormalize(parameters.getRawParameterValue("normalize")->load() > 0.5f);
 
     // ── Sequencer / Arpeggiator (in series: Seq → Arp → synth) ─────────────
     bool seqRunning = parameters.getRawParameterValue("seq_running")->load() > 0.5f;
@@ -625,37 +554,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo1_mode")->load()) == 1;
     bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo2_mode")->load()) == 1;
 
-    // DEBUG: log state once via JUCE File API (fopen is sandboxed)
-    {
-        static bool midiDebugOnce = false;
-        if (!midiDebugOnce) {
-            auto dbg = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                           .getChildFile("t5ynth_debug.txt");
-            dbg.appendText("processBlock: midi=" + juce::String(midiMessages.getNumEvents())
-                + " engineMode=" + juce::String(static_cast<int>(parameters.getRawParameterValue("engine_mode")->load()))
-                + " arpEnabled=" + juce::String(parameters.getRawParameterValue("arp_enabled")->load() > 0.5f ? 1 : 0)
-                + " seqRunning=" + juce::String(parameters.getRawParameterValue("seq_running")->load() > 0.5f ? 1 : 0)
-                + " masterHasAudio=" + juce::String(masterLooper.hasAudio() ? 1 : 0)
-                + "\n");
-            midiDebugOnce = true;
-        }
-    }
-
     for (const auto metadata : midiMessages)
     {
         const auto msg = metadata.getMessage();
         if (msg.isNoteOn())
         {
-            // DEBUG: log first noteOn
-            static bool noteOnLogged = false;
-            if (!noteOnLogged) {
-                auto dbg = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                               .getChildFile("t5ynth_debug.txt");
-                dbg.appendText("noteOn: note=" + juce::String(msg.getNoteNumber())
-                    + " vel=" + juce::String(msg.getFloatVelocity())
-                    + " ch=" + juce::String(msg.getChannel()) + "\n");
-                noteOnLogged = true;
-            }
             int note = msg.getNoteNumber();
             float velocity = msg.getFloatVelocity();
             bool isGlide = (msg.getChannel() == 2);
@@ -681,12 +584,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float baseLfo1Depth = parameters.getRawParameterValue("lfo1_depth")->load();
     float baseLfo2Depth = parameters.getRawParameterValue("lfo2_depth")->load();
 
-    // Re-prepare master looper if settings changed, then distribute to all voices
-    if (masterLooper.hasAudio())
+    // Re-prepare master sampler if settings changed, then distribute to all voices
+    if (masterSampler.hasAudio())
     {
-        if (masterLooper.needsReprepare())
-            masterLooper.preparePlaybackBuffer();
-        voiceManager.distributeLooperBuffer(masterLooper);
+        if (masterSampler.needsReprepare())
+            masterSampler.preparePlaybackBuffer();
+        voiceManager.distributeSamplerBuffer(masterSampler);
     }
 
     // Pre-compute global LFO values for the block (needed by VoiceManager)
@@ -717,44 +620,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float lastLfo1Val = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
     float lastLfo2Val = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
 
-    // ── Post-sum filter ───────────────────────────────────────────────────
-    if (bp.filterEnabled)
-    {
-        float cutoffMod = bp.baseCutoff;
-
-        if (voiceOut.hasActiveVoices)
-        {
-            // Keyboard tracking (uses newest voice's note)
-            if (bp.kbdTrack > 0.0f && lastTriggeredNote >= 0)
-                cutoffMod *= std::pow(2.0f, (static_cast<float>(lastTriggeredNote) - 60.0f) / 12.0f * bp.kbdTrack);
-
-            // Mod envelope → filter (target index 1)
-            if (bp.mod1Target == 1)
-            {
-                float startFactor = 1.0f - bp.mod1Amount;
-                float peakFactor  = 1.0f + bp.mod1Amount * 8.0f;
-                cutoffMod *= startFactor + (peakFactor - startFactor) * lastMod1Val;
-            }
-            if (bp.mod2Target == 1)
-            {
-                float startFactor = 1.0f - bp.mod2Amount;
-                float peakFactor  = 1.0f + bp.mod2Amount * 8.0f;
-                cutoffMod *= startFactor + (peakFactor - startFactor) * lastMod2Val;
-            }
-
-            // LFO → filter (target index 0)
-            if (bp.lfo1Target == 0) cutoffMod *= (1.0f + lastLfo1Val);
-            if (bp.lfo2Target == 0) cutoffMod *= (1.0f + lastLfo2Val);
-        }
-
-        cutoffMod = juce::jlimit(20.0f, 20000.0f, cutoffMod);
-        postFilter.setCutoff(cutoffMod);
-        postFilter.setResonance(bp.baseReso);
-        postFilter.setType(bp.filterType);
-        postFilter.setSlope(bp.filterSlope);
-        postFilter.setMix(bp.filterMix);
-        postFilter.processBlock(buffer);
-    }
+    // Filter is now per-voice (in SynthVoice::renderSample)
 
     // ── Accumulate block-rate modulation for delay/reverb ─────────────────
     // (Pitch modulation is handled per-sample in SynthVoice::renderSample)
@@ -884,16 +750,10 @@ bool T5ynthProcessor::isSamplerMode() const
 
 void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBuffer, double sr)
 {
-    // Feed debug sampler bypass (the working playback path)
-    debugSampleBuf.makeCopyOf(audioBuffer);
-    debugSamplePos = -1;  // don't auto-play, wait for note/seq trigger
-    debugSampleReadPos = 0.0;
-    debugSampleSpeed = sr / getSampleRate();  // default: original pitch
-
-    // Also feed the original looper/voice chain (still broken, but keeps waveform display working)
-    masterLooper.loadBuffer(audioBuffer, sr);
+    // Feed the sampler/voice chain
+    masterSampler.loadBuffer(audioBuffer, sr);
     masterOsc.extractFramesFromBuffer(audioBuffer, sr);
-    voiceManager.distributeLooperBuffer(masterLooper);
+    voiceManager.distributeSamplerBuffer(masterSampler);
     voiceManager.distributeWavetableFrames(masterOsc);
 
     // Snapshot channel 0 for waveform display
@@ -1082,8 +942,8 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     engine->setProperty("mode", isSamplerMode() ? "sampler" : "wavetable");
     int lm = static_cast<int>(get("loop_mode"));
     engine->setProperty("loopMode", lm == 0 ? "oneshot" : (lm == 1 ? "loop" : "pingpong"));
-    engine->setProperty("loopStartFrac", static_cast<double>(masterLooper.getLoopStart()));
-    engine->setProperty("loopEndFrac", static_cast<double>(masterLooper.getLoopEnd()));
+    engine->setProperty("loopStartFrac", static_cast<double>(masterSampler.getLoopStart()));
+    engine->setProperty("loopEndFrac", static_cast<double>(masterSampler.getLoopEnd()));
     engine->setProperty("crossfadeMs", get("crossfade_ms"));
     root->setProperty("engine", engine.get());
 
@@ -1237,8 +1097,8 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         int loopModeIdx = (lm == "loop") ? 1 : (lm == "pingpong" ? 2 : 0);
         setParam(parameters, "loop_mode", static_cast<float>(loopModeIdx));
 
-        masterLooper.setLoopStart(static_cast<float>(engine->getProperty("loopStartFrac")));
-        masterLooper.setLoopEnd(static_cast<float>(engine->getProperty("loopEndFrac")));
+        masterSampler.setLoopStart(static_cast<float>(engine->getProperty("loopStartFrac")));
+        masterSampler.setLoopEnd(static_cast<float>(engine->getProperty("loopEndFrac")));
         setParam(parameters, "crossfade_ms", static_cast<float>(engine->getProperty("crossfadeMs")));
     }
 

@@ -1,12 +1,12 @@
-#include "AudioLooper.h"
+#include "SamplePlayer.h"
 #include <cmath>
 
-void AudioLooper::prepare(double sampleRate, int /*samplesPerBlock*/)
+void SamplePlayer::prepare(double sampleRate, int /*samplesPerBlock*/)
 {
     playbackSampleRate = sampleRate;
 }
 
-void AudioLooper::reset()
+void SamplePlayer::reset()
 {
     originalBuffer.setSize(0, 0);
     playBuffer.setSize(0, 0);
@@ -15,9 +15,9 @@ void AudioLooper::reset()
     readPosition = 0.0;
 }
 
-void AudioLooper::loadBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate)
+void SamplePlayer::loadBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate)
 {
-    if (sharedMode) return; // shared-mode loopers don't own audio
+    if (sharedMode) return; // shared-mode players don't own audio
     originalBuffer.makeCopyOf(buffer);
     bufferOriginalSR = bufferSampleRate;
     audioLoaded = true;
@@ -25,8 +25,9 @@ void AudioLooper::loadBuffer(const juce::AudioBuffer<float>& buffer, double buff
     playing = true;
 }
 
-void AudioLooper::shareBufferFrom(const AudioLooper& master)
+void SamplePlayer::shareBufferFrom(const SamplePlayer& master)
 {
+    bool wasShared = sharedMode;
     sharedMode = true;
     sharedPlayBuffer = &master.playBuffer;
     bufferOriginalSR = master.bufferOriginalSR;
@@ -35,17 +36,19 @@ void AudioLooper::shareBufferFrom(const AudioLooper& master)
     coldStart = master.coldStart;
     loopMode = master.loopMode;
     audioLoaded = master.audioLoaded;
-    readPosition = static_cast<double>(coldStart);
+    // Only reset read position on first share, not on subsequent syncs
+    if (!wasShared)
+        readPosition = static_cast<double>(coldStart);
     needsReprepareFlag = false;
 }
 
-void AudioLooper::setMidiNote(int note)
+void SamplePlayer::setMidiNote(int note)
 {
     transposeRatio = std::pow(2.0, (note - 60) / 12.0);
     glideSamplesLeft = 0; // cancel any active glide
 }
 
-void AudioLooper::glideToSemitones(int semitones, float durationMs)
+void SamplePlayer::glideToSemitones(int semitones, float durationMs)
 {
     double targetRatio = std::pow(2.0, semitones / 12.0);
     double durationSamples = (durationMs / 1000.0) * playbackSampleRate;
@@ -56,13 +59,13 @@ void AudioLooper::glideToSemitones(int semitones, float durationMs)
     glideSamplesLeft = samples;
 }
 
-void AudioLooper::retrigger()
+void SamplePlayer::retrigger()
 {
     readPosition = static_cast<double>(coldStart);
     playing = true;
 }
 
-void AudioLooper::setLoopStart(float frac)
+void SamplePlayer::setLoopStart(float frac)
 {
     float clamped = juce::jlimit(0.0f, loopEndFrac - 0.01f, frac);
     if (clamped != loopStartFrac)
@@ -72,7 +75,7 @@ void AudioLooper::setLoopStart(float frac)
     }
 }
 
-void AudioLooper::setLoopEnd(float frac)
+void SamplePlayer::setLoopEnd(float frac)
 {
     float clamped = juce::jlimit(loopStartFrac + 0.01f, 1.0f, frac);
     if (clamped != loopEndFrac)
@@ -82,32 +85,32 @@ void AudioLooper::setLoopEnd(float frac)
     }
 }
 
-void AudioLooper::setLoopMode(LoopMode mode)
+void SamplePlayer::setLoopMode(LoopMode mode)
 {
     if (mode != loopMode) { loopMode = mode; needsReprepareFlag = true; }
 }
 
-void AudioLooper::setCrossfadeMs(float ms)
+void SamplePlayer::setCrossfadeMs(float ms)
 {
     float clamped = juce::jlimit(0.0f, 500.0f, ms);
     if (clamped != crossfadeMsVal) { crossfadeMsVal = clamped; needsReprepareFlag = true; }
 }
 
-void AudioLooper::setNormalize(bool on)
+void SamplePlayer::setNormalize(bool on)
 {
     if (on != normalizeOn) { normalizeOn = on; needsReprepareFlag = true; }
 }
 
-void AudioLooper::setLoopOptimize(bool on)
+void SamplePlayer::setLoopOptimize(bool on)
 {
     if (on != loopOptimizeOn) { loopOptimizeOn = on; needsReprepareFlag = true; }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Buffer preparation (mirrors useAudioLooper.ts prepareBuffer)
+// Buffer preparation (mirrors useSamplePlayer.ts prepareBuffer)
 // ═══════════════════════════════════════════════════════════════════
 
-void AudioLooper::preparePlaybackBuffer()
+void SamplePlayer::preparePlaybackBuffer()
 {
     if (originalBuffer.getNumSamples() == 0) return;
 
@@ -175,46 +178,10 @@ void AudioLooper::preparePlaybackBuffer()
 // processBlock
 // ═══════════════════════════════════════════════════════════════════
 
-float AudioLooper::processSample()
+float SamplePlayer::processSample()
 {
     const int regionLen = playEnd - playStart;
     if (regionLen <= 0 || !playing) return 0.0f;
-
-    // DEBUG: log once after retrigger
-    static bool debugLogged = false;
-    if (!debugLogged)
-    {
-        const auto& buf = sharedMode ? *sharedPlayBuffer : playBuffer;
-        auto dbg = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
-                       .getChildFile("t5ynth_debug.txt");
-        dbg.appendText("LOOPER: shared=" + juce::String(sharedMode?1:0)
-            + " bufSamples=" + juce::String(buf.getNumSamples())
-            + " playStart=" + juce::String(playStart)
-            + " playEnd=" + juce::String(playEnd)
-            + " coldStart=" + juce::String(coldStart)
-            + " regionLen=" + juce::String(regionLen)
-            + " srRatio=" + juce::String(bufferOriginalSR/playbackSampleRate)
-            + " transpose=" + juce::String(transposeRatio)
-            + " mode=" + juce::String(static_cast<int>(loopMode))
-            + " readPos=" + juce::String(readPosition) + "\n");
-        // Sample content at key positions
-        if (buf.getNumChannels() > 0 && buf.getNumSamples() > 10000) {
-            const float* d = buf.getReadPointer(0);
-            float rms0=0, rms1=0, rms2=0;
-            for(int i=0;i<1000;i++) { rms0+=d[i]*d[i]; rms1+=d[i+50000]*d[i+50000]; rms2+=d[i+100000]*d[i+100000]; }
-            dbg.appendText("RMS: start=" + juce::String(std::sqrt(rms0/1000.0f))
-                + " mid=" + juce::String(std::sqrt(rms1/1000.0f))
-                + " end=" + juce::String(std::sqrt(rms2/1000.0f)) + "\n");
-            dbg.appendText("@coldStart: " + juce::String(d[coldStart]) + " " + juce::String(d[coldStart+1])
-                + " " + juce::String(d[coldStart+2]) + "\n");
-            // Log 20 evenly spaced samples
-            juce::String spaced = "spaced20: ";
-            int step = buf.getNumSamples() / 20;
-            for(int i=0;i<20;i++) spaced += juce::String(d[i*step], 4) + " ";
-            dbg.appendText(spaced + "\n");
-        }
-        debugLogged = true;
-    }
 
     // Apply pitch glide (per-sample linear ramp)
     if (glideSamplesLeft > 0)
@@ -265,12 +232,12 @@ float AudioLooper::processSample()
     return result;
 }
 
-void AudioLooper::processBlock(juce::AudioBuffer<float>& output)
+void SamplePlayer::processBlock(juce::AudioBuffer<float>& output)
 {
     if (!audioLoaded || !playing || playBuffer.getNumSamples() == 0)
         return;
 
-    // Re-prepare if settings changed (shared-mode loopers skip this)
+    // Re-prepare if settings changed (shared-mode players skip this)
     if (needsReprepareFlag && !sharedMode)
         preparePlaybackBuffer();
 
@@ -288,10 +255,10 @@ void AudioLooper::processBlock(juce::AudioBuffer<float>& output)
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Cross-correlation loop optimizer (from useAudioLooper.ts)
+// Cross-correlation loop optimizer (from useSamplePlayer.ts)
 // ═══════════════════════════════════════════════════════════════════
 
-int AudioLooper::optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen) const
+int SamplePlayer::optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen) const
 {
     int win = std::min(XCORR_WINDOW, (loopEnd - loopStart) / 4);
     if (win < 16) return loopEnd;
@@ -329,10 +296,10 @@ int AudioLooper::optimizeLoopEnd(const float* data, int loopStart, int loopEnd, 
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Equal-power crossfade at loop boundary (from useAudioLooper.ts)
+// Equal-power crossfade at loop boundary (from useSamplePlayer.ts)
 // ═══════════════════════════════════════════════════════════════════
 
-void AudioLooper::applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopStart, int& loopEnd) const
+void SamplePlayer::applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopStart, int& loopEnd) const
 {
     int loopLen = loopEnd - loopStart;
     int fadeSamples = std::min(
@@ -365,10 +332,10 @@ void AudioLooper::applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopStar
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Palindrome for ping-pong (from useAudioLooper.ts)
+// Palindrome for ping-pong (from useSamplePlayer.ts)
 // ═══════════════════════════════════════════════════════════════════
 
-void AudioLooper::createPalindrome(const juce::AudioBuffer<float>& src, int loopStart, int loopEnd,
+void SamplePlayer::createPalindrome(const juce::AudioBuffer<float>& src, int loopStart, int loopEnd,
                                     juce::AudioBuffer<float>& dest, int& palindromeEnd) const
 {
     int loopLen = loopEnd - loopStart;
@@ -407,10 +374,10 @@ void AudioLooper::createPalindrome(const juce::AudioBuffer<float>& src, int loop
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Peak normalize to 0.95 (from useAudioLooper.ts)
+// Peak normalize to 0.95 (from useSamplePlayer.ts)
 // ═══════════════════════════════════════════════════════════════════
 
-void AudioLooper::normalizeBuffer(juce::AudioBuffer<float>& buf) const
+void SamplePlayer::normalizeBuffer(juce::AudioBuffer<float>& buf) const
 {
     float peak = 0.0f;
     for (int ch = 0; ch < buf.getNumChannels(); ++ch)

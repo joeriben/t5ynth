@@ -197,10 +197,10 @@ void VoiceManager::setEngineMode(SynthVoice::EngineMode mode)
         v.setEngineMode(mode);
 }
 
-void VoiceManager::distributeLooperBuffer(const AudioLooper& masterLooper)
+void VoiceManager::distributeSamplerBuffer(const SamplePlayer& master)
 {
     for (auto& v : voices)
-        v.getSampler().shareBufferFrom(masterLooper);
+        v.getSampler().shareBufferFrom(master);
 }
 
 void VoiceManager::distributeWavetableFrames(const WavetableOscillator& masterOsc)

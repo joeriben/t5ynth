@@ -72,7 +72,7 @@ target_sources(T5ynth PRIVATE
     src/dsp/DelayLine.cpp
     src/dsp/ConvolutionReverb.cpp
     src/dsp/Limiter.cpp
-    src/dsp/AudioLooper.cpp
+    src/dsp/SamplePlayer.cpp
     src/dsp/SynthVoice.cpp
     src/dsp/VoiceManager.cpp
     src/dsp/ModulationMatrix.cpp

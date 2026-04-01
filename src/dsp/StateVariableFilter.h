@@ -34,6 +34,9 @@ public:
     /** Set filter slope: 0=12dB/oct (single), 1=24dB/oct (cascade). */
     void setSlope(int slope);
 
+    /** Process a single mono sample (channel 0). For per-voice use. */
+    float processSample(float sample);
+
     /** Map UI resonance 0-1 to filter Q 0.5-18 (exponential). */
     static float resonanceToQ(float r)
     {

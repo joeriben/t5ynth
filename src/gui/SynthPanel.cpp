@@ -22,7 +22,7 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.header.setColour(juce::Label::textColourId, kModCol);
     addAndMakeVisible(env.header);
 
-    env.targetBox.addItemList({"DCA", "Filter", "Scan", "---"}, 1);
+    env.targetBox.addItemList({"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "---"}, 1);
     env.targetBox.setSelectedId(defaultTarget, juce::dontSendNotification);
     env.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(env.targetBox);
@@ -68,8 +68,9 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.header.setColour(juce::Label::textColourId, kModCol);
     addAndMakeVisible(lfo.header);
 
-    lfo.targetBox.addItemList({"Filter", "Scan", "Alpha", "---"}, 1);
-    lfo.targetBox.setSelectedId(4, juce::dontSendNotification);
+    lfo.targetBox.addItemList({"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                               "Xmod Rate", "Xmod Depth", "---"}, 1);
+    lfo.targetBox.setSelectedId(10, juce::dontSendNotification);
     lfo.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(lfo.targetBox);
 
@@ -161,7 +162,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     addAndMakeVisible(waveformDisplay);
 
-    // Wire bracket handles to looper
+    // Wire bracket handles to sampler
     waveformDisplay.onLoopRegionChanged = [this](float start, float end) {
         processorRef.getSampler().setLoopStart(start);
         processorRef.getSampler().setLoopEnd(end);
@@ -376,7 +377,7 @@ void SynthPanel::updateVisibility()
     crossfadeRow->setEnabled(!isOneshot);
 
     auto setEnvDimmed = [dimAlpha](EnvSection& env) {
-        bool active = env.targetBox.getSelectedId() != 4;
+        bool active = env.targetBox.getSelectedId() != env.targetBox.getNumItems();
         float alpha = active ? 1.0f : dimAlpha;
         env.loopToggle.setAlpha(alpha);
         env.loopToggle.setEnabled(active);
@@ -389,7 +390,7 @@ void SynthPanel::updateVisibility()
     setEnvDimmed(mod2Env);
 
     auto setLfoDimmed = [dimAlpha](LfoSection& lfo) {
-        bool active = lfo.targetBox.getSelectedId() != 4;
+        bool active = lfo.targetBox.getSelectedId() != lfo.targetBox.getNumItems();
         float alpha = active ? 1.0f : dimAlpha;
         lfo.waveBox.setAlpha(alpha);
         lfo.modeBox.setAlpha(alpha);

@@ -2,7 +2,7 @@
 #include <JuceHeader.h>
 
 /**
- * Sample playback engine (ported from useAudioLooper.ts).
+ * Sample playback engine (ported from useSamplePlayer.ts).
  *
  * Features:
  *   - Forward loop, one-shot, ping-pong (palindrome buffer)
@@ -13,12 +13,12 @@
  *   - MIDI transposition via playback rate
  *   - Retrigger (hard restart for non-legato)
  */
-class AudioLooper
+class SamplePlayer
 {
 public:
     enum class LoopMode { OneShot, Loop, PingPong };
 
-    AudioLooper() = default;
+    SamplePlayer() = default;
 
     void prepare(double sampleRate, int samplesPerBlock);
     void reset();
@@ -57,10 +57,10 @@ public:
     float getLoopStart() const { return loopStartFrac; }
     float getLoopEnd()   const { return loopEndFrac; }
 
-    /** Share playback buffer from a master looper (for polyphonic voices).
-     *  Shared-mode loopers have their own read position but read from the
+    /** Share playback buffer from a master player (for polyphonic voices).
+     *  Shared-mode players have their own read position but read from the
      *  master's prepared buffer. loadBuffer/preparePlaybackBuffer are no-ops. */
-    void shareBufferFrom(const AudioLooper& master);
+    void shareBufferFrom(const SamplePlayer& master);
 
     // ─── Modes and processing ───
     void setLoopMode(LoopMode mode);

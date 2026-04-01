@@ -42,7 +42,7 @@ public:
 
     // ── Engine data distribution ──
     void setEngineMode(SynthVoice::EngineMode mode);
-    void distributeLooperBuffer(const AudioLooper& masterLooper);
+    void distributeSamplerBuffer(const SamplePlayer& master);
     void distributeWavetableFrames(const WavetableOscillator& masterOsc);
 
     // ── Query ──

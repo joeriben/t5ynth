@@ -77,7 +77,7 @@ public:
     bool importJsonPreset(const juce::String& json);
 
     // Sampler access for preset import (loop region brackets)
-    AudioLooper& getSampler() { return masterLooper; }
+    SamplePlayer& getSampler() { return masterSampler; }
 
 private:
     juce::AudioProcessorValueTreeState parameters;
@@ -90,7 +90,7 @@ private:
 
     // Master data holders (own the audio/frame data, voices share from these)
     WavetableOscillator masterOsc;
-    AudioLooper masterLooper;
+    SamplePlayer masterSampler;
 
     // DSP — global (shared across voices, post-sum)
     LFO lfo1;
@@ -129,14 +129,6 @@ private:
     int lastReverbIr = -1;
     int lastSeqPreset = -1;
 
-    // DEBUG: direct sample playback + sequencer bypass
-    juce::AudioBuffer<float> debugSampleBuf;
-    int debugSamplePos = 0;
-    double debugSampleReadPos = 0.0;
-    double debugSampleSpeed = 1.0;
-    double debugSeqCounter = 0.0;
-    double debugSeqGateCounter = 0.0;
-    int debugSeqStep = 0;
 
 public:
     // MIDI monitor (audio thread writes, GUI reads)

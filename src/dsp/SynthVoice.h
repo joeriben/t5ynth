@@ -1,6 +1,6 @@
 #pragma once
 #include "WavetableOscillator.h"
-#include "AudioLooper.h"
+#include "SamplePlayer.h"
 #include "ADSREnvelope.h"
 #include "LFO.h"
 #include "StateVariableFilter.h"
@@ -8,7 +8,7 @@
 
 /**
  * Single synthesizer voice — owns all per-voice DSP state:
- * oscillator, looper, envelopes, per-voice LFOs, and filter.
+ * oscillator, sample player, envelopes, per-voice LFOs, and filter.
  *
  * Signal chain: Osc → VCA (ampEnv * modulation) → Filter (SVF) → output
  */
@@ -37,11 +37,6 @@ public:
 
     RenderResult renderSample(const BlockParams& p, float globalLfo1Val, float globalLfo2Val);
 
-    /** Apply block-rate filter modulation and process filter for this voice.
-     *  Called once per block after all samples have been rendered into voiceBuffer. */
-    void processFilter(const BlockParams& p, float lastMod1Val, float lastMod2Val,
-                       float lastLfo1Val, float lastLfo2Val);
-
     // ── State queries ──
     bool isActive() const { return active; }
     bool isReleasing() const { return active && !noteHeld; }
@@ -55,7 +50,7 @@ public:
 
     // ── Access to sub-components ──
     WavetableOscillator& getOsc() { return osc; }
-    AudioLooper& getSampler() { return looper; }
+    SamplePlayer& getSampler() { return sampler; }
     ADSREnvelope& getAmpEnvelope() { return ampEnv; }
     ADSREnvelope& getModEnvelope1() { return modEnv1; }
     ADSREnvelope& getModEnvelope2() { return modEnv2; }
@@ -68,7 +63,7 @@ public:
 
 private:
     WavetableOscillator osc;
-    AudioLooper looper;
+    SamplePlayer sampler;
     ADSREnvelope ampEnv;
     ADSREnvelope modEnv1;
     ADSREnvelope modEnv2;

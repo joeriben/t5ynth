@@ -12,8 +12,8 @@ void EffectsPanel::initEnv(EnvSection& env, const juce::String& name,
     env.header.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(env.header);
 
-    env.targetBox.addItemList({"DCA", "Filter", "Scan", "---"}, 1);
-    env.targetBox.setSelectedId(name == "AMP" ? 1 : 4, juce::dontSendNotification);
+    env.targetBox.addItemList({"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "---"}, 1);
+    env.targetBox.setSelectedId(name == "AMP" ? 1 : 9, juce::dontSendNotification);
     env.targetBox.onChange = [this] { resized(); };
     addAndMakeVisible(env.targetBox);
 
@@ -50,8 +50,9 @@ void EffectsPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.header.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(lfo.header);
 
-    lfo.targetBox.addItemList({"Filter", "Scan", "Alpha", "---"}, 1);
-    lfo.targetBox.setSelectedId(4, juce::dontSendNotification);
+    lfo.targetBox.addItemList({"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                               "Xmod Rate", "Xmod Depth", "---"}, 1);
+    lfo.targetBox.setSelectedId(10, juce::dontSendNotification);
     lfo.targetBox.onChange = [this] { resized(); };
     addAndMakeVisible(lfo.targetBox);
 
@@ -134,7 +135,7 @@ void EffectsPanel::layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float 
     env.header.setBounds(hdr.removeFromLeft(juce::roundToInt(hdr.getWidth() * 0.35f)));
     env.targetBox.setBounds(hdr.removeFromLeft(juce::roundToInt(hdr.getWidth() * 0.7f)));
 
-    bool active = env.targetBox.getSelectedId() != 4; // 4 = "—"
+    bool active = env.targetBox.getSelectedId() != env.targetBox.getNumItems();
     for (auto* c : std::initializer_list<juce::Component*>{ &env.a, &env.d, &env.s, &env.r,
                      &env.aL, &env.dL, &env.sL, &env.rL })
         c->setVisible(active);
@@ -175,7 +176,7 @@ void EffectsPanel::layoutLfo(LfoSection& lfo, juce::Rectangle<int>& area, float 
     lfo.header.setBounds(hdr.removeFromLeft(juce::roundToInt(hdr.getWidth() * 0.3f)));
     lfo.targetBox.setBounds(hdr.removeFromLeft(juce::roundToInt(hdr.getWidth() * 0.5f)));
 
-    bool active = lfo.targetBox.getSelectedId() != 4;
+    bool active = lfo.targetBox.getSelectedId() != lfo.targetBox.getNumItems();
     for (auto* c : std::initializer_list<juce::Component*>{ &lfo.rate, &lfo.depth,
                      &lfo.rateL, &lfo.depthL, &lfo.waveBox })
         c->setVisible(active);
