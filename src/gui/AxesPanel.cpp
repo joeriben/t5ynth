@@ -3,50 +3,43 @@
 
 static const juce::Colour kAxisColors[] = { kAxis1, kAxis2, kAxis3 };
 
-static const juce::StringArray kSemanticAxes {
+// Top 8 axes validated for 1-3s samples (Mel cosine distance > 0.70 at 1s).
+// Ranked by effectiveness at short duration. PCA axes excluded (collapse at 1s).
+static const juce::StringArray kEffectiveAxes {
     "---",
-    "tonal / noisy (d=4.81)",
-    "rhythmic / sustained (d=2.60)",
-    "bright / dark (d=1.28)",
-    "loud / quiet (d=1.02)",
-    "smooth / harsh (d=0.81)",
-    "fast / slow (d=0.80)",
-    "close / distant (d=0.76)",
-    "dense / sparse (d=0.74)"
+    "music / noise",
+    "acoustic / electronic",
+    "improvised / composed",
+    "refined / raw",
+    "solo / ensemble",
+    "sacred / secular",
+    "tonal / noisy",
+    "rhythmic / sustained"
 };
 
-static const juce::StringArray kPcaAxes {
-    "---",
-    "PC1: natural / synthetic",
-    "PC2: sonic / physical",
-    "PC3: tonal / atonal",
-    "PC4: continuous / impulsive",
-    "PC5: harmonic / inharmonic",
-    "PC6: wet / dry",
-    "PC7: melodic / percussive",
-    "PC8: soft / aggressive",
-    "PC9: clean / distorted",
-    "PC10: ambient / direct"
-};
+// Map display names → backend axis keys (cross_aesthetic_backend.py SEMANTIC_AXES)
+static juce::String axisDisplayToKey(const juce::String& display)
+{
+    if (display.contains("music / noise"))          return "music_noise";
+    if (display.contains("acoustic / electronic"))  return "acoustic_electronic";
+    if (display.contains("improvised / composed"))  return "improvised_composed";
+    if (display.contains("refined / raw"))           return "refined_raw";
+    if (display.contains("solo / ensemble"))         return "solo_ensemble";
+    if (display.contains("sacred / secular"))        return "sacred_secular";
+    if (display.contains("tonal / noisy"))           return "tonal_noisy";
+    if (display.contains("rhythmic / sustained"))    return "rhythmic_sustained";
+    return {};
+}
 
 AxesPanel::AxesPanel()
 {
-    semHeader.setText("SEMANTIC AXES", juce::dontSendNotification);
-    semHeader.setColour(juce::Label::textColourId, kDim);
-    addAndMakeVisible(semHeader);
+    header.setText("AXES", juce::dontSendNotification);
+    header.setColour(juce::Label::textColourId, kDim);
+    addAndMakeVisible(header);
 
-    pcaHeader.setText("PCA AXES", juce::dontSendNotification);
-    pcaHeader.setColour(juce::Label::textColourId, kDim);
-    addAndMakeVisible(pcaHeader);
-
-    semSlots.resize(3);
-    for (size_t i = 0; i < semSlots.size(); ++i)
-        initSlot(semSlots[i], kSemanticAxes, static_cast<int>(i));
-
-    static const juce::Colour kPcaColors[] = { kPca1, kPca2, kPca3, kPca4, kPca5, kPca6 };
-    pcaSlots.resize(6);
-    for (size_t i = 0; i < pcaSlots.size(); ++i)
-        initSlot(pcaSlots[i], kPcaAxes, static_cast<int>(i + 3)); // 3+ = PCA color indices
+    slots.resize(3);
+    for (size_t i = 0; i < slots.size(); ++i)
+        initSlot(slots[i], kEffectiveAxes, static_cast<int>(i));
 }
 
 void AxesPanel::initSlot(AxisSlot& slot, const juce::StringArray& options, int axisIndex)
@@ -56,17 +49,10 @@ void AxesPanel::initSlot(AxisSlot& slot, const juce::StringArray& options, int a
     slot.dropdown = std::make_unique<juce::ComboBox>();
     slot.dropdown->addItemList(options, 1);
     slot.dropdown->setSelectedId(1, juce::dontSendNotification); // "---"
-    slot.dropdown->onChange = [this] { resized(); };
     addAndMakeVisible(*slot.dropdown);
 
-    static const juce::Colour kPcaColors[] = { kPca1, kPca2, kPca3, kPca4, kPca5, kPca6 };
-    juce::Colour sliderColor;
-    if (axisIndex >= 0 && axisIndex < 3)
-        sliderColor = kAxisColors[axisIndex];
-    else if (axisIndex >= 3 && axisIndex < 9)
-        sliderColor = kPcaColors[axisIndex - 3];
-    else
-        sliderColor = kAccent;
+    juce::Colour sliderColor = (axisIndex >= 0 && axisIndex < 3)
+        ? kAxisColors[axisIndex] : kAccent;
 
     slot.slider = std::make_unique<juce::Slider>();
     slot.slider->setSliderStyle(juce::Slider::LinearHorizontal);
@@ -96,19 +82,13 @@ void AxesPanel::initSlot(AxisSlot& slot, const juce::StringArray& options, int a
         slot.valueLabel->setText(juce::String(slot.slider->getValue(), 2), juce::dontSendNotification);
     };
 
-    // Update pole labels when dropdown changes
     slot.dropdown->onChange = [this, &slot] {
         auto text = slot.dropdown->getText();
-        // Parse "pole_a / pole_b (d=...)" format
         auto slashIdx = text.indexOf(" / ");
         if (slashIdx >= 0)
         {
-            auto poleA = text.substring(0, slashIdx).trim();
-            auto rest = text.substring(slashIdx + 3);
-            auto parenIdx = rest.indexOf(" (");
-            auto poleB = (parenIdx >= 0) ? rest.substring(0, parenIdx).trim() : rest.trim();
-            slot.poleLabelA->setText(poleA, juce::dontSendNotification);
-            slot.poleLabelB->setText(poleB, juce::dontSendNotification);
+            slot.poleLabelA->setText(text.substring(0, slashIdx).trim(), juce::dontSendNotification);
+            slot.poleLabelB->setText(text.substring(slashIdx + 3).trim(), juce::dontSendNotification);
         }
         else
         {
@@ -130,26 +110,23 @@ void AxesPanel::paint(juce::Graphics& g)
 {
     g.fillAll(kBg);
 
-    // Card behind semantic axes
     int pad = juce::roundToInt(static_cast<float>(getWidth()) * 0.04f);
-    if (!semSlots.empty() && semSlots[0].dropdown->isVisible())
+    if (!slots.empty() && slots[0].dropdown->isVisible())
     {
-        int top = semHeader.getY() - 4;
-        int lastY = semSlots.back().dropdown->getBottom();
-        for (auto& slot : semSlots)
+        int top = header.getY() - 4;
+        int lastY = slots.back().dropdown->getBottom();
+        for (auto& slot : slots)
             if (slot.slider->isVisible())
                 lastY = juce::jmax(lastY, slot.slider->getBottom());
         paintCard(g, juce::Rectangle<int>(pad, top, getWidth() - pad * 2, lastY - top + 8));
     }
 
-    // Draw color dots for all axis slots
-    static const juce::Colour kPcaColors[] = { kPca1, kPca2, kPca3, kPca4, kPca5, kPca6 };
     float f = fs();
     int dotSize = juce::roundToInt(f * 0.55f);
 
-    for (size_t i = 0; i < semSlots.size(); ++i)
+    for (size_t i = 0; i < slots.size(); ++i)
     {
-        auto& slot = semSlots[i];
+        auto& slot = slots[i];
         auto dropBounds = slot.dropdown->getBounds();
         int dotX = dropBounds.getX() - dotSize - 4;
         int dotY = dropBounds.getCentreY() - dotSize / 2;
@@ -157,33 +134,22 @@ void AxesPanel::paint(juce::Graphics& g)
         g.fillEllipse(static_cast<float>(dotX), static_cast<float>(dotY),
                        static_cast<float>(dotSize), static_cast<float>(dotSize));
     }
-
-    for (size_t i = 0; i < pcaSlots.size(); ++i)
-    {
-        auto& slot = pcaSlots[i];
-        auto dropBounds = slot.dropdown->getBounds();
-        int dotX = dropBounds.getX() - dotSize - 4;
-        int dotY = dropBounds.getCentreY() - dotSize / 2;
-        g.setColour(kPcaColors[i]);
-        g.fillEllipse(static_cast<float>(dotX), static_cast<float>(dotY),
-                       static_cast<float>(dotSize), static_cast<float>(dotSize));
-    }
 }
 
-void AxesPanel::layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f, int dotOffset)
+void AxesPanel::layoutSlots(std::vector<AxisSlot>& slotsVec, juce::Rectangle<int>& area, float f, int dotOffset)
 {
     int rowH = juce::roundToInt(f * 1.4f);
     int sliderH = juce::roundToInt(f * 1.2f);
     int gap = juce::roundToInt(f * 0.2f);
     int valW = juce::roundToInt(f * 3.0f);
 
-    for (auto& slot : slots)
+    for (auto& slot : slotsVec)
     {
         bool active = slot.dropdown->getSelectedId() != 1; // 1 = "---"
 
         auto dropRow = area.removeFromTop(rowH);
         if (dotOffset > 0)
-            dropRow.removeFromLeft(dotOffset); // space for color dot
+            dropRow.removeFromLeft(dotOffset);
         slot.dropdown->setBounds(dropRow);
 
         slot.slider->setVisible(active);
@@ -193,7 +159,6 @@ void AxesPanel::layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& 
 
         if (active)
         {
-            // Pole labels + slider row
             int poleH = juce::roundToInt(f * 0.9f);
             auto poleRow = area.removeFromTop(poleH);
             if (dotOffset > 0)
@@ -224,31 +189,24 @@ void AxesPanel::resized()
     auto area = getLocalBounds().reduced(pad, juce::roundToInt(h * 0.01f));
     float f = fs();
     int headerH = juce::roundToInt(f * 1.3f);
-    int dotOffset = juce::roundToInt(f * 0.8f); // space for color dot
+    int dotOffset = juce::roundToInt(f * 0.8f);
 
-    semHeader.setFont(juce::FontOptions(f * 0.85f));
-    semHeader.setBounds(area.removeFromTop(headerH));
-    layoutSlots(semSlots, area, f * 0.75f, dotOffset);
-
-    area.removeFromTop(juce::roundToInt(f * 0.5f));
-
-    pcaHeader.setFont(juce::FontOptions(f * 0.85f));
-    pcaHeader.setBounds(area.removeFromTop(headerH));
-    layoutSlots(pcaSlots, area, f * 0.65f, dotOffset); // colored dots for PCA too
+    header.setFont(juce::FontOptions(f * 0.85f));
+    header.setBounds(area.removeFromTop(headerH));
+    layoutSlots(slots, area, f * 0.75f, dotOffset);
 }
 
 std::map<juce::String, float> AxesPanel::getAxisValues() const
 {
     std::map<juce::String, float> vals;
-    for (auto& slot : semSlots)
+    for (auto& slot : slots)
     {
         if (slot.dropdown->getSelectedId() > 1)
-            vals[slot.dropdown->getText()] = static_cast<float>(slot.slider->getValue());
-    }
-    for (auto& slot : pcaSlots)
-    {
-        if (slot.dropdown->getSelectedId() > 1)
-            vals[slot.dropdown->getText()] = static_cast<float>(slot.slider->getValue());
+        {
+            auto key = axisDisplayToKey(slot.dropdown->getText());
+            if (key.isNotEmpty())
+                vals[key] = static_cast<float>(slot.slider->getValue());
+        }
     }
     return vals;
 }

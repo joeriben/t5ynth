@@ -4,9 +4,11 @@
 #include <map>
 
 /**
- * Semantic + PCA axes with color-coded slots.
- * Semantic: 3 slots with pink/blue/green dots and colored sliders.
- * PCA: 6 slots, neutral accent color.
+ * 3 semantic axis slots — each choosable from the 8 most effective axes
+ * for short (1-3s) audio samples. Color-coded with pink/blue/green dots.
+ *
+ * Validated via spectral analysis: these 8 axes show Mel-distance > 0.70
+ * at 1s duration. PCA axes collapse at short durations and are not offered.
  */
 class AxesPanel : public juce::Component
 {
@@ -29,12 +31,11 @@ private:
         std::unique_ptr<juce::Label> valueLabel;
         std::unique_ptr<juce::Label> poleLabelA; // left pole
         std::unique_ptr<juce::Label> poleLabelB; // right pole
-        int axisIndex = -1; // 0/1/2 for semantic (color), -1 for PCA
+        int axisIndex = -1;
     };
 
-    juce::Label semHeader, pcaHeader;
-    std::vector<AxisSlot> semSlots;  // 3
-    std::vector<AxisSlot> pcaSlots;  // 6
+    juce::Label header;
+    std::vector<AxisSlot> slots;  // 3
 
     void initSlot(AxisSlot& slot, const juce::StringArray& options, int axisIndex);
     void layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f, int dotOffset);
