@@ -323,11 +323,9 @@ void PromptPanel::triggerGeneration()
     auto promptA = promptAEditor.getText().trim();
     if (promptA.isEmpty()) return;
 
-    bool useNative = processorRef.isInferenceReady();
-
-    if (!useNative && !processorRef.getBackendConnection().isConnected())
+    if (!processorRef.isInferenceReady())
     {
-        infoLabel.setText("no models loaded", juce::dontSendNotification);
+        infoLabel.setText("No model loaded — open Settings", juce::dontSendNotification);
         return;
     }
 
@@ -336,7 +334,6 @@ void PromptPanel::triggerGeneration()
     infoLabel.setText("generating...", juce::dontSendNotification);
 
     auto& apvts = processorRef.getValueTreeState();
-    // Convert UI alpha (-2..+2) to backend range (0..1): alpha/2 + 0.5
     float rawAlpha = apvts.getRawParameterValue("gen_alpha")->load();
     float alpha = rawAlpha / 2.0f + 0.5f;
     float magnitude = apvts.getRawParameterValue("gen_magnitude")->load();
@@ -348,68 +345,34 @@ void PromptPanel::triggerGeneration()
     int seed = randomSeedToggle.getToggleState() ? -1 : seedEditor.getText().getIntValue();
     auto promptB = promptBEditor.getText().trim();
 
-    if (useNative)
-    {
-        // Native LibTorch inference on background thread
-        T5ynthInference::Request req;
-        req.promptA = promptA;
-        if (promptB.isNotEmpty()) req.promptB = promptB;
-        req.alpha = alpha;
-        req.magnitude = magnitude;
-        req.noiseSigma = noiseSigma;
-        req.durationSeconds = duration;
-        req.startPosition = startPos;
-        req.steps = steps;
-        req.cfgScale = cfgScale;
-        req.seed = seed;
+    T5ynthInference::Request req;
+    req.promptA = promptA;
+    if (promptB.isNotEmpty()) req.promptB = promptB;
+    req.alpha = alpha;
+    req.magnitude = magnitude;
+    req.noiseSigma = noiseSigma;
+    req.durationSeconds = duration;
+    req.startPosition = startPos;
+    req.steps = steps;
+    req.cfgScale = cfgScale;
+    req.seed = seed;
 
-        auto* processor = &processorRef;
-        std::thread([this, processor, req]()
+    auto* processor = &processorRef;
+    std::thread([this, processor, req]()
+    {
+        auto result = processor->getInference().generate(req);
+        juce::MessageManager::callAsync([this, processor, result = std::move(result)]()
         {
-            auto result = processor->getInference().generate(req);
-            juce::MessageManager::callAsync([this, processor, result = std::move(result)]()
+            generating = false;
+            generateButton.setEnabled(true);
+            if (result.success)
             {
-                generating = false;
-                generateButton.setEnabled(true);
-                if (result.success)
-                {
-                    processor->loadGeneratedAudio(result.audio, 44100.0);
-                    infoLabel.setText(juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
-                                      + juce::String(result.seed), juce::dontSendNotification);
-                }
-                else
-                    infoLabel.setText(result.errorMessage, juce::dontSendNotification);
-            });
-        }).detach();
-    }
-    else
-    {
-        // Legacy HTTP backend fallback
-        GenerationRequest request;
-        request.setPromptA(promptA);
-        if (promptB.isNotEmpty()) request.setPromptB(promptB);
-        request.setAlpha(alpha);
-        request.setMagnitude(magnitude);
-        request.setNoiseSigma(noiseSigma);
-        request.setDurationSeconds(duration);
-        request.setStartPosition(startPos);
-        request.setSteps(steps);
-        request.setCfgScale(cfgScale);
-        request.setSeed(seed);
-
-        processorRef.getBackendConnection().requestGeneration(request,
-            [this](BackendConnection::GenerationResult result)
-            {
-                generating = false;
-                generateButton.setEnabled(true);
-                if (result.success)
-                {
-                    processorRef.loadGeneratedAudio(result.audioBuffer, result.sampleRate);
-                    infoLabel.setText(juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
-                                      + juce::String(result.seed), juce::dontSendNotification);
-                }
-                else
-                    infoLabel.setText(result.errorMessage, juce::dontSendNotification);
-            });
-    }
+                processor->loadGeneratedAudio(result.audio, 44100.0);
+                infoLabel.setText(juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
+                                  + juce::String(result.seed), juce::dontSendNotification);
+            }
+            else
+                infoLabel.setText(result.errorMessage, juce::dontSendNotification);
+        });
+    }).detach();
 }

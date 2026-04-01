@@ -61,49 +61,8 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
 
     synthPanel.onExploreClicked = [this] { showDimExplorer(); };
 
-    // When model becomes available (download/browse), start backend automatically
-    settingsPage.onModelReady = [this] {
-        if (!processorRef.getBackendManager().isRunning())
-        {
-            statusBar.setStatusText("Starting backend...");
-            processorRef.getBackendManager().start();
-        }
-    };
-
-    // Try loading native inference models
+    // Load native inference models
     tryLoadInferenceModels();
-
-    // Legacy backend status
-    processorRef.getBackendManager().setStatusCallback(
-        [this](BackendManager::Status s)
-        {
-            juce::MessageManager::callAsync([this, s]()
-            {
-                if (processorRef.isInferenceReady()) return;
-
-                bool running = (s == BackendManager::Status::Running);
-                statusBar.setConnected(running);
-                settingsPage.setBackendConnected(running);
-
-                if (running)
-                    processorRef.getBackendConnection().checkHealth();
-
-                switch (s)
-                {
-                    case BackendManager::Status::Stopped:  statusBar.setStatusText("Backend stopped"); break;
-                    case BackendManager::Status::Starting:  statusBar.setStatusText("Starting..."); break;
-                    case BackendManager::Status::Running:   statusBar.setStatusText("Ready (HTTP)"); break;
-                    case BackendManager::Status::Failed:    statusBar.setStatusText("Backend failed"); break;
-                }
-            });
-        });
-
-    processorRef.getBackendConnection().setConnectionCallback(
-        [this](bool connected) {
-            if (processorRef.isInferenceReady()) return;
-            statusBar.setConnected(connected);
-            settingsPage.setBackendConnected(connected);
-        });
 }
 
 void MainPanel::showDimExplorer()
@@ -134,8 +93,14 @@ void MainPanel::tryLoadInferenceModels()
 {
     auto home = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
 
+    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
+
     std::vector<juce::File> candidates = {
+        // App data (where the GUI downloads/exports to)
+        appData.getChildFile("T5ynth/exported_models"),
+        // Project-local
         juce::File::getCurrentWorkingDirectory().getChildFile("exported_models"),
+        // Legacy locations
         home.getChildFile("t5ynth/exported_models"),
         home.getChildFile("ai/t5ynth/exported_models"),
     };
@@ -169,16 +134,8 @@ void MainPanel::tryLoadInferenceModels()
         }
     }
 
-    // No native models — start the Python backend if the HF model is available
-    if (settingsPage.scanForModel().exists())
-    {
-        statusBar.setStatusText("Starting backend...");
-        processorRef.getBackendManager().start();
-    }
-    else
-    {
-        statusBar.setStatusText("No model found — open Settings");
-    }
+    // No exported models found
+    statusBar.setStatusText("No model — open Settings to download");
 }
 
 void MainPanel::paint(juce::Graphics& g)
