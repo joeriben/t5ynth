@@ -827,7 +827,12 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
 {
     // Feed the sampler/voice chain
     masterSampler.loadBuffer(audioBuffer, sr);
-    masterOsc.extractFramesFromBuffer(audioBuffer, sr);
+
+    // Wavetable extraction respects the bracket region
+    float extractStart = masterSampler.getLoopStart();
+    float extractEnd   = masterSampler.getLoopEnd();
+    masterOsc.extractFramesFromBuffer(audioBuffer, sr, extractStart, extractEnd);
+
     voiceManager.distributeSamplerBuffer(masterSampler);
     voiceManager.distributeWavetableFrames(masterOsc);
 
@@ -837,6 +842,17 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
         waveformSnapshot.setSize(1, audioBuffer.getNumSamples(), false, false, true);
         waveformSnapshot.copyFrom(0, 0, audioBuffer, 0, 0, audioBuffer.getNumSamples());
         newWaveformReady.store(true, std::memory_order_release);
+    }
+}
+
+void T5ynthProcessor::reextractWavetable()
+{
+    if (waveformSnapshot.getNumSamples() > 0)
+    {
+        float start = masterSampler.getLoopStart();
+        float end   = masterSampler.getLoopEnd();
+        masterOsc.extractFramesFromBuffer(waveformSnapshot, getSampleRate(), start, end);
+        voiceManager.distributeWavetableFrames(masterOsc);
     }
 }
 

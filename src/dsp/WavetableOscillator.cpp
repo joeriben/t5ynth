@@ -210,15 +210,25 @@ float WavetableOscillator::lanczosSample(const float* src, int srcLen, double po
 
 // ─── Frame extraction from audio buffer ───
 
-void WavetableOscillator::extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSr)
+void WavetableOscillator::extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSr,
+                                                   float startFrac, float endFrac)
 {
     if (sharedMode) return; // shared-mode oscillators don't own frame data
-    const float* data = buffer.getReadPointer(0);
-    const int totalSamples = buffer.getNumSamples();
+    const int bufferLen = buffer.getNumSamples();
+
+    // Apply extraction region (brackets)
+    startFrac = juce::jlimit(0.0f, 1.0f, startFrac);
+    endFrac   = juce::jlimit(0.0f, 1.0f, endFrac);
+    if (endFrac <= startFrac) endFrac = 1.0f;
+
+    const int regionStart = static_cast<int>(startFrac * bufferLen);
+    const int regionEnd   = static_cast<int>(endFrac * bufferLen);
+    const float* data = buffer.getReadPointer(0) + regionStart;
+    const int totalSamples = regionEnd - regionStart;
 
     if (totalSamples < FRAME_SIZE) return;
 
-    // Detect pitch
+    // Detect pitch within the extraction region
     const int analysisLen = std::min(4096, totalSamples);
     float detectedPitch = detectPitch(data, analysisLen, bufferSr);
 

@@ -28,8 +28,10 @@ public:
     void prepare(double sampleRate, int samplesPerBlock);
     void reset();
 
-    /** Extract wavetable frames from an audio buffer (pitch-synchronous or windowed). */
-    void extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate);
+    /** Extract wavetable frames from an audio buffer (pitch-synchronous or windowed).
+     *  startFrac/endFrac define the extraction region as fraction of the buffer (0–1). */
+    void extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate,
+                                 float startFrac = 0.0f, float endFrac = 1.0f);
 
     /** Set playback frequency in Hz. */
     void setFrequency(float hz) { targetFrequency = hz; glideFreqSamplesLeft = 0; }

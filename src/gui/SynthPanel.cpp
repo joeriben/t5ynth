@@ -165,10 +165,14 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     addAndMakeVisible(waveformDisplay);
 
-    // Wire bracket handles to sampler
+    // Wire bracket handles to sampler + wavetable extraction
     waveformDisplay.onLoopRegionChanged = [this](float start, float end) {
         processorRef.getSampler().setLoopStart(start);
         processorRef.getSampler().setLoopEnd(end);
+
+        // In wavetable mode, re-extract frames from the new region
+        if (processorRef.isWavetableMode())
+            processorRef.reextractWavetable();
     };
 
     // ── Loop mode ──

@@ -79,6 +79,9 @@ public:
     // Sampler access for preset import (loop region brackets)
     SamplePlayer& getSampler() { return masterSampler; }
 
+    /** Re-extract wavetable frames using current bracket region. */
+    void reextractWavetable();
+
 private:
     juce::AudioProcessorValueTreeState parameters;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
