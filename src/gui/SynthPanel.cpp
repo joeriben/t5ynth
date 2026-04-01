@@ -294,12 +294,6 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     addAndMakeVisible(driftRegenToggle);
     driftRegenA = std::make_unique<BA>(apvts, "drift_regen", driftRegenToggle);
 
-    // ── Explore button ──
-    exploreBtn.setColour(juce::TextButton::buttonColourId, kSurface);
-    exploreBtn.setColour(juce::TextButton::textColourOffId, kAccent);
-    exploreBtn.onClick = [this] { if (onExploreClicked) onExploreClicked(); };
-    addAndMakeVisible(exploreBtn);
-
     // All components are now set up — enable callbacks and trigger initial state
     initialized = true;
 
@@ -709,7 +703,4 @@ void SynthPanel::resized()
     layoutDrift(drift1, area, f, rowH, gap);
     layoutDrift(drift2, area, f, rowH, gap);
 
-    // ── Explore button ──
-    area.removeFromTop(sectionGap);
-    exploreBtn.setBounds(area.removeFromTop(juce::roundToInt(f * 1.6f)));
 }

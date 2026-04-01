@@ -56,8 +56,12 @@ public:
         juce::String errorMessage;
     };
 
-    /** Blocking generation — call from background thread. */
+    /** Blocking generation — call from background thread.
+     *  Auto-restarts Python if subprocess died. */
     Result generate(const Request& request);
+
+    /** Check if the Python subprocess is still alive. */
+    bool isChildAlive() const;
 
 private:
     std::atomic<bool> ready_ { false };
@@ -67,10 +71,12 @@ private:
 
     juce::StringArray availableDevices_;
     juce::String defaultDevice_;
+    juce::File backendDir_;   // remembered for auto-restart
 
     juce::String findPython(const juce::File& backendDir) const;
     bool readExact(void* dest, int numBytes, int timeoutMs = 120000);
     bool writeExact(const void* src, int numBytes);
+    bool tryRestart();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PipeInference)
 };

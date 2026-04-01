@@ -21,15 +21,16 @@ public:
                        int seed, bool randomSeed,
                        const juce::String& device)> onPresetLoaded;
 
+    /** Trigger import/export (called from StatusBar buttons). */
+    void importPreset();
+    void exportPreset();
+
 private:
     T5ynthProcessor& processor;
 
     juce::TextButton importButton { "Import Preset" };
     juce::TextButton exportButton { "Export Preset" };
     juce::Label statusLabel;
-
-    void importPreset();
-    void exportPreset();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PresetPanel)
 };

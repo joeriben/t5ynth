@@ -15,9 +15,9 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     addAndMakeVisible(axesPanel);
     addAndMakeVisible(synthPanel);
     addAndMakeVisible(fxPanel);
-    addAndMakeVisible(presetPanel);
     addAndMakeVisible(sequencerPanel);
     addAndMakeVisible(statusBar);
+    // PresetPanel is kept as logic handler but not shown — buttons are in StatusBar
 
     // Wire preset import callback
     presetPanel.onPresetLoaded = [this](const juce::String& pA, const juce::String& pB,
@@ -25,6 +25,11 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
                                         const juce::String& device) {
         promptPanel.loadPresetData(pA, pB, seed, randomSeed, device);
     };
+
+    // StatusBar buttons → PresetPanel logic
+    statusBar.onImportClicked  = [this] { presetPanel.importPreset(); };
+    statusBar.onExportClicked  = [this] { presetPanel.exportPreset(); };
+    statusBar.onSettingsClicked = [this] { toggleSettings(); };
 
     // Master volume
     masterVolKnob.setSliderStyle(juce::Slider::RotaryVerticalDrag);
@@ -44,9 +49,11 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     masterVolA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.getValueTreeState(), "master_vol", masterVolKnob);
 
-    // DimExplorer overlay
-    dimensionExplorer.setVisible(false);
-    addChildComponent(dimensionExplorer);
+    // DimExplorer — always visible (mini-view in left column, overlay on click)
+    addAndMakeVisible(dimensionExplorer);
+    dimensionExplorer.onClicked = [this] {
+        if (!dimExplorerVisible) showDimExplorer();
+    };
 
     dimExplorerClose.setColour(juce::TextButton::buttonColourId, kSurface);
     dimExplorerClose.setColour(juce::TextButton::textColourOffId, kAccent);
@@ -60,8 +67,6 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     dimExplorerReset.setVisible(false);
     addChildComponent(dimExplorerReset);
 
-    synthPanel.onExploreClicked = [this] { showDimExplorer(); };
-
     // Load native inference models
     tryLoadInferenceModels();
 }
@@ -69,7 +74,6 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
 void MainPanel::showDimExplorer()
 {
     dimExplorerVisible = true;
-    dimensionExplorer.setVisible(true);
     dimExplorerClose.setVisible(true);
     dimExplorerReset.setVisible(true);
     dimensionExplorer.toFront(false);
@@ -82,9 +86,9 @@ void MainPanel::showDimExplorer()
 void MainPanel::hideDimExplorer()
 {
     dimExplorerVisible = false;
-    dimensionExplorer.setVisible(false);
     dimExplorerClose.setVisible(false);
     dimExplorerReset.setVisible(false);
+    resized();  // repositions DimExplorer back to mini-view
     repaint();
 }
 
@@ -214,7 +218,6 @@ void MainPanel::resized()
     auto footer = b.removeFromBottom(footerH);
     int volW = juce::roundToInt(w * 0.06f);
     int fxW = juce::roundToInt(w * 0.30f);
-    int presetH = 36;
     auto volArea = footer.removeFromRight(volW);
     int knobSize = juce::jmin(volArea.getWidth(), volArea.getHeight() - 16);
     masterVolKnob.setBounds(volArea.getCentreX() - knobSize / 2, volArea.getY() + 2,
@@ -223,16 +226,18 @@ void MainPanel::resized()
     masterVolLabel.setBounds(volArea.getX(), masterVolKnob.getBottom() - 2,
                              volArea.getWidth(), 14);
     fxPanel.setBounds(footer.removeFromRight(fxW));
-    presetPanel.setBounds(footer.removeFromTop(presetH));
     sequencerPanel.setBounds(footer);
 
-    // Col 1: Settings button + GENERATION
+    // Col 1: GENERATION + AXES + DIM EXPLORER
     int col1W = juce::roundToInt(w * 0.25f);
     auto genCol = b.removeFromLeft(col1W);
 
-    int promptH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.55f);
+    int promptH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.50f);
+    int axesH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.30f);
     promptPanel.setBounds(genCol.removeFromTop(promptH));
-    axesPanel.setBounds(genCol);
+    axesPanel.setBounds(genCol.removeFromTop(axesH));
+    if (!dimExplorerVisible)
+        dimensionExplorer.setBounds(genCol);
 
     // Col 2: ENGINE
     synthPanel.setBounds(b);

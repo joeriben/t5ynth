@@ -20,9 +20,6 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    /** Called by MainPanel to toggle DimExplorer overlay. */
-    std::function<void()> onExploreClicked;
-
 private:
     void timerCallback() override;
     float fs() const;
@@ -92,9 +89,6 @@ private:
     };
     DriftSection drift1, drift2;
     juce::ToggleButton driftRegenToggle { "Regen" };
-
-    // ── Explore button ──
-    juce::TextButton exploreBtn { "Explore" };
 
     // ── APVTS attachments ──
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;

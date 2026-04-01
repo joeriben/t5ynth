@@ -56,3 +56,9 @@ void DimensionExplorer::clear()
     selectedIndex = -1;
     repaint();
 }
+
+void DimensionExplorer::mouseUp(const juce::MouseEvent&)
+{
+    if (onClicked)
+        onClicked();
+}

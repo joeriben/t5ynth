@@ -17,10 +17,7 @@ void WavetableOscillator::reset()
 
 void WavetableOscillator::shareFramesFrom(const WavetableOscillator& source)
 {
-    sharedMode = true;
-    sharedMipFrames = &source.mipFrames;
-    numFrames = source.numFrames;
-    numLevels = source.numLevels;
+    sharedSource_ = &source;
 }
 
 // ─── FFT (Radix-2 Cooley-Tukey, in-place) ───
@@ -78,13 +75,18 @@ void WavetableOscillator::ifft(std::vector<double>& re, std::vector<double>& im)
 void WavetableOscillator::generateMipLevels(const std::vector<std::vector<float>>& srcFrames)
 {
     const int nFrames = static_cast<int>(srcFrames.size());
-    mipFrames.clear();
-    mipFrames.resize(NUM_MIP_LEVELS);
+
+    // Write into the INACTIVE slot (audio thread reads from active slot)
+    int writeSlot = 1 - activeSlot_.load(std::memory_order_relaxed);
+    auto& dest = mipSlots_[writeSlot];
+
+    dest.frames.clear();
+    dest.frames.resize(NUM_MIP_LEVELS);
 
     // Level 0 = original frames
-    mipFrames[0].resize(nFrames);
+    dest.frames[0].resize(nFrames);
     for (int f = 0; f < nFrames; f++)
-        mipFrames[0][f] = srcFrames[f];
+        dest.frames[0][f] = srcFrames[f];
 
     // FFT buffers (reused)
     std::vector<double> re(FRAME_SIZE), im(FRAME_SIZE);
@@ -92,7 +94,7 @@ void WavetableOscillator::generateMipLevels(const std::vector<std::vector<float>
     for (int level = 1; level < NUM_MIP_LEVELS; level++)
     {
         const int maxHarmonic = HALF_FRAME >> level;
-        mipFrames[level].resize(nFrames);
+        dest.frames[level].resize(nFrames);
 
         for (int f = 0; f < nFrames; f++)
         {
@@ -110,14 +112,17 @@ void WavetableOscillator::generateMipLevels(const std::vector<std::vector<float>
 
             ifft(re, im);
 
-            mipFrames[level][f].resize(FRAME_SIZE);
+            dest.frames[level][f].resize(FRAME_SIZE);
             for (int i = 0; i < FRAME_SIZE; i++)
-                mipFrames[level][f][i] = static_cast<float>(re[i]);
+                dest.frames[level][f][i] = static_cast<float>(re[i]);
         }
     }
 
-    numFrames = nFrames;
-    numLevels = NUM_MIP_LEVELS;
+    dest.numFrames = nFrames;
+    dest.numLevels = NUM_MIP_LEVELS;
+
+    // Atomically swap — audio thread will pick up the new data on next sample
+    activeSlot_.store(writeSlot, std::memory_order_release);
 }
 
 // ─── Pitch detection (simplified YIN autocorrelation) ───
@@ -213,7 +218,7 @@ float WavetableOscillator::lanczosSample(const float* src, int srcLen, double po
 void WavetableOscillator::extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSr,
                                                    float startFrac, float endFrac)
 {
-    if (sharedMode) return; // shared-mode oscillators don't own frame data
+    if (sharedSource_ != nullptr) return; // shared-mode oscillators don't own frame data
     const int bufferLen = buffer.getNumSamples();
 
     // Apply extraction region (brackets)
@@ -310,7 +315,9 @@ void WavetableOscillator::glideToFrequency(float hz, float durationMs)
 
 float WavetableOscillator::processSample()
 {
-    if (numFrames == 0) return 0.0f;
+    // Snapshot the active mip data — lock-free, consistent for this sample
+    const auto& mip = getActiveMipData();
+    if (mip.numFrames == 0) return 0.0f;
 
     // Apply frequency glide (per-sample linear ramp)
     if (glideFreqSamplesLeft > 0)
@@ -327,11 +334,12 @@ float WavetableOscillator::processSample()
     // Select mip level based on frequency
     const float invBaseFreq = FRAME_SIZE / static_cast<float>(sampleRate);
     const float rawLevel = std::log2(targetFrequency * invBaseFreq);
-    const int mipLevel = juce::jlimit(0, numLevels - 1, static_cast<int>(std::ceil(rawLevel)));
-    const auto& frames = getActiveFrames()[mipLevel];
+    const int mipLevel = juce::jlimit(0, mip.numLevels - 1, static_cast<int>(std::ceil(rawLevel)));
+    const auto& frames = mip.frames[mipLevel];
+    const int nf = mip.numFrames;
 
     // Frame selection
-    const float framePos = smoothedScan * (numFrames - 1);
+    const float framePos = smoothedScan * (nf - 1);
     const int frameA = static_cast<int>(std::floor(framePos));
 
     // Sample position via phase accumulator
@@ -339,7 +347,7 @@ float WavetableOscillator::processSample()
     const int idx1 = (idx0 + 1) % FRAME_SIZE;
     const float phaseFrac = static_cast<float>(phase - std::floor(phase));
 
-    const auto& fA = frames[juce::jlimit(0, numFrames - 1, frameA)];
+    const auto& fA = frames[juce::jlimit(0, nf - 1, frameA)];
     const float sampleA = fA[idx0] + (fA[idx1] - fA[idx0]) * phaseFrac;
 
     float output;
@@ -348,10 +356,10 @@ float WavetableOscillator::processSample()
     {
         // Catmull-Rom cubic interpolation across 4 frames
         const float frameMix = framePos - frameA;
-        const int i0 = juce::jlimit(0, numFrames - 1, frameA - 1);
-        const int i1 = juce::jlimit(0, numFrames - 1, frameA);
-        const int i2 = juce::jlimit(0, numFrames - 1, frameA + 1);
-        const int i3 = juce::jlimit(0, numFrames - 1, frameA + 2);
+        const int i0 = juce::jlimit(0, nf - 1, frameA - 1);
+        const int i1 = juce::jlimit(0, nf - 1, frameA);
+        const int i2 = juce::jlimit(0, nf - 1, frameA + 1);
+        const int i3 = juce::jlimit(0, nf - 1, frameA + 2);
 
         const auto& f0 = frames[i0];
         const auto& f1 = frames[i1];

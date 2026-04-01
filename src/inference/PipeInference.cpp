@@ -30,12 +30,34 @@ juce::String PipeInference::findPython(const juce::File& backendDir) const
     return "python3";
 }
 
+bool PipeInference::isChildAlive() const
+{
+#ifdef _WIN32
+    return false;
+#else
+    if (childPid_ <= 0) return false;
+    int status = 0;
+    pid_t result = waitpid(childPid_, &status, WNOHANG);
+    return result == 0;  // 0 = still running
+#endif
+}
+
+bool PipeInference::tryRestart()
+{
+    juce::Logger::writeToLog("PipeInference: attempting restart...");
+    shutdown();
+    if (backendDir_.exists())
+        return launch(backendDir_);
+    return false;
+}
+
 bool PipeInference::launch(const juce::File& backendDir)
 {
 #ifdef _WIN32
     juce::Logger::writeToLog("PipeInference: not supported on Windows yet");
     return false;
 #else
+    backendDir_ = backendDir;
     auto script = backendDir.getChildFile("pipe_inference.py");
     if (!script.existsAsFile())
     {
@@ -207,6 +229,18 @@ PipeInference::Result PipeInference::generate(const Request& request)
 {
     Result result;
 
+    // Check if subprocess is alive, auto-restart if dead
+    if (ready_ && !isChildAlive())
+    {
+        juce::Logger::writeToLog("PipeInference: subprocess died, restarting...");
+        if (!tryRestart())
+        {
+            result.errorMessage = "Inference crashed — restart failed";
+            return result;
+        }
+        juce::Logger::writeToLog("PipeInference: restarted successfully");
+    }
+
     if (!ready_ || stdinFd_ < 0)
     {
         result.errorMessage = "Inference not ready";
@@ -235,15 +269,29 @@ PipeInference::Result PipeInference::generate(const Request& request)
     // Write request
     if (!writeExact(jsonStr.toRawUTF8(), static_cast<int>(jsonStr.getNumBytesAsUTF8())))
     {
-        result.errorMessage = "Failed to write request";
+        // Write failed — subprocess likely dead
+        if (tryRestart())
+        {
+            result.errorMessage = "Inference restarted — try again";
+        }
+        else
+            result.errorMessage = "Inference crashed — restart failed";
         return result;
     }
 
-    // Read response status byte
+    // Read response status byte (3 min timeout for dual-pipeline startup)
     char status = 0;
     if (!readExact(&status, 1, 180000))
     {
-        result.errorMessage = "Timeout waiting for response";
+        // Timeout or dead process
+        if (!isChildAlive())
+        {
+            juce::Logger::writeToLog("PipeInference: subprocess died during generation");
+            tryRestart();
+            result.errorMessage = "Inference crashed — restarted, try again";
+        }
+        else
+            result.errorMessage = "Timeout waiting for response";
         return result;
     }
 

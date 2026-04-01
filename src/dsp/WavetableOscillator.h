@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include <vector>
 #include <cmath>
+#include <atomic>
 
 /**
  * Mip-mapped wavetable oscillator.
@@ -14,6 +15,11 @@
  * - Phase accumulator with Catmull-Rom cubic interpolation between frames
  * - Scan position smoothing (one-pole lowpass, ~5ms)
  * - Mip level selection based on playback frequency
+ *
+ * Thread safety:
+ * - Double-buffer (two MipData slots + atomic index) allows the GUI thread
+ *   to rebuild frames without blocking the audio thread.
+ * - Shared-mode voices read from the master's active slot via pointer.
  */
 class WavetableOscillator
 {
@@ -29,7 +35,8 @@ public:
     void reset();
 
     /** Extract wavetable frames from an audio buffer (pitch-synchronous or windowed).
-     *  startFrac/endFrac define the extraction region as fraction of the buffer (0–1). */
+     *  startFrac/endFrac define the extraction region as fraction of the buffer (0–1).
+     *  Thread-safe: builds into inactive slot, then atomically swaps. */
     void extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate,
                                  float startFrac = 0.0f, float endFrac = 1.0f);
 
@@ -50,9 +57,9 @@ public:
     float processSample();
 
     /** True if frames have been loaded. */
-    bool hasFrames() const { return numFrames > 0; }
+    bool hasFrames() const { return getActiveMipData().numFrames > 0; }
 
-    int getNumFrames() const { return numFrames; }
+    int getNumFrames() const { return getActiveMipData().numFrames; }
 
     /** Share mip-mapped frames from a master oscillator (for polyphonic voices).
      *  Shared-mode oscillators have their own phase/frequency/scan but read
@@ -60,13 +67,20 @@ public:
     void shareFramesFrom(const WavetableOscillator& source);
 
 private:
-    // Mip-mapped frames: mipFrames[level][frameIndex] = vector<float>(FRAME_SIZE)
-    std::vector<std::vector<std::vector<float>>> mipFrames;
-    const std::vector<std::vector<std::vector<float>>>* sharedMipFrames = nullptr;
-    bool sharedMode = false;
+    /** Immutable snapshot of mip-mapped frame data.
+     *  GUI thread writes to inactive slot, audio thread reads active slot. */
+    struct MipData {
+        std::vector<std::vector<std::vector<float>>> frames; // [level][frameIdx][sample]
+        int numFrames = 0;
+        int numLevels = 0;
+    };
 
-    int numFrames = 0;
-    int numLevels = 0;
+    MipData mipSlots_[2];
+    std::atomic<int> activeSlot_ { 0 };
+
+    // Shared mode: voice reads from master oscillator's active slot
+    const WavetableOscillator* sharedSource_ = nullptr;
+
     double sampleRate = 44100.0;
 
     // Phase accumulator
@@ -85,10 +99,12 @@ private:
 
     bool doInterpolate = true;
 
-    /** Return the active frames (own or shared). */
-    const std::vector<std::vector<std::vector<float>>>& getActiveFrames() const
+    /** Return the active mip data (own or shared master's). Lock-free for audio thread. */
+    const MipData& getActiveMipData() const
     {
-        return sharedMode ? *sharedMipFrames : mipFrames;
+        if (sharedSource_ != nullptr)
+            return sharedSource_->mipSlots_[sharedSource_->activeSlot_.load(std::memory_order_acquire)];
+        return mipSlots_[activeSlot_.load(std::memory_order_acquire)];
     }
 
     // FFT helpers for mip-level generation

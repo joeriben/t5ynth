@@ -21,6 +21,11 @@ public:
     /** Clear all points. */
     void clear();
 
+    /** Called when the mini-view is clicked (to open overlay). */
+    std::function<void()> onClicked;
+
+    void mouseUp(const juce::MouseEvent& e) override;
+
 private:
     struct Point { float x, y; int seed; };
     std::vector<Point> points;
