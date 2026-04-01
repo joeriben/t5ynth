@@ -72,6 +72,7 @@ private:
     torch::Tensor diffusionLoop(const torch::Tensor& encoderHidden,
                                 const torch::Tensor& globalHidden,
                                 const torch::Tensor& attentionMask,
+                                int latentSeqLen,
                                 int steps, float cfgScale, int seed);
     juce::AudioBuffer<float> decodeLatent(const torch::Tensor& latent);
 
@@ -95,7 +96,7 @@ private:
 
     static constexpr int kMaxTokenLength = 128;
     static constexpr int kLatentChannels = 64;
-    static constexpr int kLatentSeqLen = 1024;  // ~47s at 44100/2048
+    static constexpr int kMaxLatentSeqLen = 1024;  // ~47s at 44100/2048
     static constexpr int kTextDim = 768;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(T5ynthInference)

@@ -8,10 +8,9 @@ static torch::Device detectBestDevice()
 {
     if (torch::cuda::is_available())
         return torch::kCUDA;
-#ifdef __APPLE__
-    if (torch::mps::is_available())
-        return torch::kMPS;
-#endif
+    // MPS: torch::mps::is_available() returns true on Apple Silicon, but
+    // C++ LibTorch TorchScript loading/inference on MPS is broken.
+    // Force CPU until PyTorch ships stable MPS JIT support.
     return torch::kCPU;
 }
 
@@ -200,14 +199,15 @@ torch::Tensor T5ynthInference::manipulateEmbedding(const torch::Tensor& embA,
 torch::Tensor T5ynthInference::diffusionLoop(const torch::Tensor& encoderHidden,
                                              const torch::Tensor& globalHidden,
                                              const torch::Tensor& attentionMask,
+                                             int latentSeqLen,
                                              int steps, float cfgScale, int seed)
 {
     torch::NoGradGuard noGrad;
     scheduler_.setTimesteps(steps);
 
-    // Initial noise
+    // Initial noise — length matches requested duration, not always full 47s
     torch::manual_seed(seed);
-    auto latent = torch::randn({1, kLatentChannels, kLatentSeqLen},
+    auto latent = torch::randn({1, kLatentChannels, latentSeqLen},
                                torch::TensorOptions().dtype(torch::kFloat32).device(device_));
 
     // Scale initial latent by sigma_max
@@ -284,8 +284,8 @@ juce::AudioBuffer<float> T5ynthInference::decodeLatent(const torch::Tensor& late
 {
     torch::NoGradGuard noGrad;
 
-    auto scaled = latent / vaeScalingFactor_;
-    auto audio = vaeDecoder_.forward({scaled}).toTensor();
+    // Note: exported vae_decoder.pt wrapper already divides by scaling_factor
+    auto audio = vaeDecoder_.forward({latent}).toTensor();
 
     // audio shape: [1, 2, N] — stereo
     audio = audio.squeeze(0).cpu().contiguous();  // [2, N]
@@ -384,12 +384,28 @@ T5ynthInference::Result T5ynthInference::generate(const Request& request)
         auto attentionMask = torch::ones({1, encoderHidden.size(1)},
                                          torch::TensorOptions().dtype(torch::kBool).device(device_));
 
-        // 5. Diffusion loop
-        auto latent = diffusionLoop(encoderHidden, globalHidden, attentionMask,
-                                    request.steps, request.cfgScale, seed);
+        // 5. Compute latent length from requested duration
+        int latentSeqLen = std::max(1,
+            std::min(static_cast<int>(std::ceil(duration * sampleRate_ / vaeHopLength_)),
+                     kMaxLatentSeqLen));
 
-        // 6. VAE decode
+        // 6. Diffusion loop
+        auto latent = diffusionLoop(encoderHidden, globalHidden, attentionMask,
+                                    latentSeqLen, request.steps, request.cfgScale, seed);
+
+        // 7. VAE decode
         result.audio = decodeLatent(latent);
+
+        // 8. Trim to requested duration
+        int requestedSamples = static_cast<int>(std::ceil(duration * sampleRate_));
+        if (result.audio.getNumSamples() > requestedSamples)
+        {
+            juce::AudioBuffer<float> trimmed(result.audio.getNumChannels(), requestedSamples);
+            for (int ch = 0; ch < trimmed.getNumChannels(); ++ch)
+                trimmed.copyFrom(ch, 0, result.audio, ch, 0, requestedSamples);
+            result.audio = std::move(trimmed);
+        }
+
         result.success = true;
     }
     catch (const std::exception& e)
