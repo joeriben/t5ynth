@@ -10,7 +10,7 @@ juce::Rectangle<float> WaveformDisplay::getWaveformArea() const
 {
     return getLocalBounds().toFloat()
         .withTrimmedTop(LABEL_HEIGHT)
-        .reduced(HANDLE_RADIUS, 2.0f);
+        .reduced(HANDLE_RADIUS, HANDLE_RADIUS);
 }
 
 float WaveformDisplay::fracToX(float frac) const

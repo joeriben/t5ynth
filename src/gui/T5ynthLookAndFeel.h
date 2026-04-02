@@ -13,6 +13,11 @@ public:
     T5ynthLookAndFeel();
     ~T5ynthLookAndFeel() override = default;
 
+    void drawButtonBackground(juce::Graphics& g, juce::Button& btn,
+                              const juce::Colour& backgroundColour,
+                              bool shouldDrawButtonAsHighlighted,
+                              bool shouldDrawButtonAsDown) override;
+
     void drawToggleButton(juce::Graphics& g, juce::ToggleButton& btn,
                           bool shouldDrawButtonAsHighlighted,
                           bool shouldDrawButtonAsDown) override;

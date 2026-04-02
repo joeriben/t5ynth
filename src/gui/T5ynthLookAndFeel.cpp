@@ -61,6 +61,23 @@ T5ynthLookAndFeel::T5ynthLookAndFeel()
     setDefaultSansSerifTypefaceName("Inter");
 }
 
+void T5ynthLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& btn,
+                                              const juce::Colour& backgroundColour,
+                                              bool highlighted, bool /*down*/)
+{
+    auto bounds = btn.getLocalBounds().toFloat();
+    auto baseColour = backgroundColour;
+
+    if (btn.getToggleState())
+        baseColour = btn.findColour(juce::TextButton::buttonOnColourId);
+
+    if (highlighted)
+        baseColour = baseColour.brighter(0.05f);
+
+    g.setColour(baseColour);
+    g.fillRect(bounds);
+}
+
 void T5ynthLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& btn,
                                           bool /*highlighted*/, bool /*down*/)
 {
