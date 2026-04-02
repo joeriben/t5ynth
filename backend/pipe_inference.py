@@ -202,9 +202,18 @@ def decode_cached(pipe, request):
 
 # ─── Generation ─────────────────────────────────────────────────────
 
-def generate(pipe, request):
-    """Run generation from request dict. Returns (audio_np, sample_rate, seed, elapsed).
+def _mean_pool(emb, mask):
+    """Mean-pool embedding [1, seq, 768] using attention mask → [768]."""
+    # mask: [1, seq] → [1, seq, 1]
+    m = mask.unsqueeze(-1).float()
+    pooled = (emb * m).sum(dim=1) / m.sum(dim=1).clamp(min=1.0)
+    return pooled.squeeze(0).cpu().float().numpy()  # [768]
 
+
+def generate(pipe, request):
+    """Run generation from request dict. Returns (audio_np, sample_rate, seed, elapsed, emb_stats).
+
+    emb_stats = (emb_a_pooled[768], emb_b_pooled[768] or zeros)
     If "cache_as" is set in the request, the pre-VAE latent is cached for
     fast interpolation via interpolate_and_decode().
     """
@@ -219,6 +228,7 @@ def generate(pipe, request):
     cfg_scale = request.get("cfg_scale", 7.0)
     seed = request.get("seed", -1)
     cache_as = request.get("cache_as")  # optional: cache latent under this name
+    dim_offsets = request.get("dimension_offsets")  # optional: [[idx, val], ...]
 
     if seed < 0:
         import random
@@ -247,8 +257,12 @@ def generate(pipe, request):
 
         emb_a, mask_a = encode_text(prompt_a)
 
+        # Mean-pool for DimensionExplorer stats (before manipulation)
+        emb_a_pooled = _mean_pool(emb_a, mask_a)
+
         if prompt_b:
-            emb_b, _ = encode_text(prompt_b)
+            emb_b, mask_b = encode_text(prompt_b)
+            emb_b_pooled = _mean_pool(emb_b, mask_b)
             manipulated = (1.0 - alpha) * emb_a + alpha * emb_b
             # Renormalize if extrapolating
             if alpha < 0.0 or alpha > 1.0:
@@ -258,6 +272,7 @@ def generate(pipe, request):
                 if res_norm > 1e-8:
                     manipulated = manipulated * (ref_norm / res_norm)
         else:
+            emb_b_pooled = np.zeros(768, dtype=np.float32)
             manipulated = emb_a.clone()
 
         # Magnitude scaling
@@ -271,14 +286,21 @@ def generate(pipe, request):
             noise = torch.from_numpy(noise_np).to(manipulated.device) * noise_sigma
             manipulated = manipulated + noise
 
+        # Apply dimension offsets from DimensionExplorer
+        if dim_offsets:
+            for idx, val in dim_offsets:
+                if 0 <= idx < manipulated.shape[-1]:
+                    manipulated[:, :, idx] += val
+
         # Generate via pipeline with pre-computed embeddings
         neg_embeds = torch.zeros_like(manipulated)
         neg_mask = torch.ones_like(mask_a)
 
         device = next(pipe.transformer.parameters()).device
         cache_str = f", cache_as='{cache_as}'" if cache_as else ""
+        offsets_str = f", {len(dim_offsets)} offsets" if dim_offsets else ""
         log.info(f"Generating on {device}: '{prompt_a[:60]}' ({duration}s, {steps} steps, "
-                 f"CFG={cfg_scale}, seed={seed}{cache_str})")
+                 f"CFG={cfg_scale}, seed={seed}{cache_str}{offsets_str})")
         t0 = time.time()
 
         # If caching requested: get latent first, then decode separately
@@ -320,7 +342,8 @@ def generate(pipe, request):
         elapsed = time.time() - t0
         log.info(f"Generated in {elapsed:.1f}s")
 
-        return audio_np, sr, seed, elapsed
+        emb_stats = (emb_a_pooled, emb_b_pooled)
+        return audio_np, sr, seed, elapsed, emb_stats
 
 
 # ─── Protocol ───────────────────────────────────────────────────────
@@ -334,14 +357,26 @@ def send_ready(devices, default_device):
     sys.stdout.buffer.flush()
 
 
-def send_audio(audio_np, sr, seed, elapsed_ms):
-    """Send audio response: \x01 + header + PCM + seed(i32) + time_ms(f32)."""
+def send_audio(audio_np, sr, seed, elapsed_ms, emb_stats=None):
+    """Send audio response: \x01 + header + PCM [+ embedding stats].
+
+    If emb_stats is (emb_a[768], emb_b[768]), appends:
+        uint16(num_dims) + float32[num_dims] emb_a + float32[num_dims] emb_b
+    """
     channels, samples = audio_np.shape
     pcm = audio_np.astype(np.float32).tobytes()
     header = struct.pack('<iiiiif', 1, samples, channels, sr, seed, elapsed_ms * 1000)
     sys.stdout.buffer.write(b'\x01')
     sys.stdout.buffer.write(header)
     sys.stdout.buffer.write(pcm)
+    if emb_stats is not None:
+        emb_a, emb_b = emb_stats
+        num_dims = len(emb_a)
+        sys.stdout.buffer.write(struct.pack('<H', num_dims))
+        sys.stdout.buffer.write(emb_a.astype(np.float32).tobytes())
+        sys.stdout.buffer.write(emb_b.astype(np.float32).tobytes())
+    else:
+        sys.stdout.buffer.write(struct.pack('<H', 0))
     sys.stdout.buffer.flush()
 
 
@@ -390,15 +425,16 @@ def main():
             pipe = pipelines[device]
 
             mode = request.get("mode", "generate")
+            emb_stats = None
 
             if mode == "interpolate":
                 audio, sr, seed, elapsed = interpolate_and_decode(pipe, request)
             elif mode == "decode_cached":
                 audio, sr, seed, elapsed = decode_cached(pipe, request)
             else:
-                audio, sr, seed, elapsed = generate(pipe, request)
+                audio, sr, seed, elapsed, emb_stats = generate(pipe, request)
 
-            send_audio(audio, sr, seed, elapsed)
+            send_audio(audio, sr, seed, elapsed, emb_stats)
         except Exception as e:
             log.error(f"Request failed (mode={request.get('mode', 'generate')}): {e}")
             import traceback

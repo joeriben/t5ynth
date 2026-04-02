@@ -263,6 +263,20 @@ PipeInference::Result PipeInference::generate(const Request& request)
     if (request.device.isNotEmpty())
         json->setProperty("device", request.device);
 
+    // Serialize dimension offsets from DimensionExplorer
+    if (!request.dimensionOffsets.empty())
+    {
+        juce::Array<juce::var> offsets;
+        for (auto& [idx, val] : request.dimensionOffsets)
+        {
+            juce::Array<juce::var> pair;
+            pair.add(idx);
+            pair.add(val);
+            offsets.add(juce::var(pair));
+        }
+        json->setProperty("dimension_offsets", juce::var(offsets));
+    }
+
     auto jsonStr = juce::JSON::toString(juce::var(json.get()), true);
     jsonStr = jsonStr.removeCharacters("\n\r") + "\n";
 
@@ -343,5 +357,16 @@ PipeInference::Result PipeInference::generate(const Request& request)
     result.success = true;
     result.seed = header.seed;
     result.generationTimeMs = header.timeMs;
+
+    // Read embedding stats (uint16 num_dims + float32[dims] A + float32[dims] B)
+    uint16_t numDims = 0;
+    if (readExact(&numDims, 2, 5000) && numDims > 0)
+    {
+        result.embeddingA.resize(numDims);
+        result.embeddingB.resize(numDims);
+        readExact(result.embeddingA.data(), numDims * static_cast<int>(sizeof(float)), 5000);
+        readExact(result.embeddingB.data(), numDims * static_cast<int>(sizeof(float)), 5000);
+    }
+
     return result;
 }

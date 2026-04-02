@@ -1,6 +1,8 @@
 #pragma once
 #include <JuceHeader.h>
 #include <atomic>
+#include <vector>
+#include <utility>
 
 /**
  * Pipe-based inference — runs diffusers in a Python subprocess.
@@ -45,6 +47,7 @@ public:
         float cfgScale = 7.0f;
         int seed = -1;
         juce::String device;       // "mps", "cuda", "cpu", or empty for default
+        std::vector<std::pair<int, float>> dimensionOffsets;  // DimensionExplorer offsets
     };
 
     struct Result
@@ -54,6 +57,8 @@ public:
         float generationTimeMs = 0.0f;
         int seed = -1;
         juce::String errorMessage;
+        std::vector<float> embeddingA;   // mean-pooled prompt A (768 dims)
+        std::vector<float> embeddingB;   // mean-pooled prompt B (768 dims, zeros if no B)
     };
 
     /** Blocking generation — call from background thread.
