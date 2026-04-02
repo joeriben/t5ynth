@@ -276,7 +276,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Sampler controls
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"loop_mode", 1}, "Loop Mode",
-        juce::StringArray{"One-shot", "Loop", "Ping-Pong"}, 1));
+        juce::StringArray{"One-shot", "Loop", "Ping-Pong"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"crossfade_ms", 1}, "Crossfade",
         juce::NormalisableRange<float>(0.0f, 500.0f, 10.0f), 150.0f));
@@ -320,7 +320,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Sequencer note division (reference: 1/1, 1/2, 1/4, 1/8, 1/16)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"seq_division", 1}, "Seq Division",
-        juce::StringArray{"1/1", "1/2", "1/4", "1/8", "1/16"}, 3)); // default 1/8
+        juce::StringArray{"1/1", "1/2", "1/4", "1/8", "1/16"}, 4)); // default 1/16
     // Sequencer glide time (reference: 10-500ms, default 80)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"seq_glide_time", 1}, "Glide Time",
@@ -828,6 +828,63 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     // Feed the sampler/voice chain
     masterSampler.loadBuffer(audioBuffer, sr);
 
+    // In wavetable mode, auto-position brackets to the active signal region
+    // (trim leading/trailing silence so extraction doesn't produce useless frames)
+    if (isWavetableMode())
+    {
+        const int numSamples = audioBuffer.getNumSamples();
+        if (numSamples > 0)
+        {
+            const float* data = audioBuffer.getReadPointer(0);
+            const int windowSize = 256;
+            const float threshold = 0.002f; // Peak threshold (~-54dB)
+
+            int firstActive = 0;
+            int lastActive = numSamples;
+
+            // Find first window with peak above threshold
+            for (int pos = 0; pos + windowSize <= numSamples; pos += windowSize)
+            {
+                float peak = 0.0f;
+                for (int i = 0; i < windowSize; ++i)
+                    peak = std::max(peak, std::abs(data[pos + i]));
+                if (peak > threshold)
+                {
+                    firstActive = pos;
+                    break;
+                }
+            }
+
+            // Find last window with peak above threshold
+            for (int pos = numSamples - windowSize; pos >= 0; pos -= windowSize)
+            {
+                float peak = 0.0f;
+                int len = juce::jmin(windowSize, numSamples - pos);
+                for (int i = 0; i < len; ++i)
+                    peak = std::max(peak, std::abs(data[pos + i]));
+                if (peak > threshold)
+                {
+                    lastActive = juce::jmin(pos + windowSize, numSamples);
+                    break;
+                }
+            }
+
+            // Small margin (one window each side)
+            firstActive = juce::jmax(0, firstActive - windowSize);
+            lastActive  = juce::jmin(numSamples, lastActive + windowSize);
+
+            float startFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
+            float endFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
+
+            // Only apply if the detected region is meaningful
+            if (endFrac - startFrac >= 0.05f)
+            {
+                masterSampler.setLoopStart(startFrac);
+                masterSampler.setLoopEnd(endFrac);
+            }
+        }
+    }
+
     // Wavetable extraction respects the bracket region
     float extractStart = masterSampler.getLoopStart();
     float extractEnd   = masterSampler.getLoopEnd();
@@ -841,6 +898,18 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     {
         waveformSnapshot.setSize(1, audioBuffer.getNumSamples(), false, false, true);
         waveformSnapshot.copyFrom(0, 0, audioBuffer, 0, 0, audioBuffer.getNumSamples());
+
+        // Normalize display to match wavetable frame normalization
+        if (isWavetableMode())
+        {
+            float peak = 0.0f;
+            const float* d = waveformSnapshot.getReadPointer(0);
+            for (int i = 0; i < waveformSnapshot.getNumSamples(); ++i)
+                peak = std::max(peak, std::abs(d[i]));
+            if (peak > 0.001f)
+                waveformSnapshot.applyGain(0.95f / peak);
+        }
+
         newWaveformReady.store(true, std::memory_order_release);
     }
 }

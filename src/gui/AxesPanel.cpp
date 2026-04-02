@@ -108,18 +108,7 @@ float AxesPanel::fs() const
 
 void AxesPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(kBg);
-
-    int pad = juce::roundToInt(static_cast<float>(getWidth()) * 0.04f);
-    if (!slots.empty() && slots[0].dropdown->isVisible())
-    {
-        int top = header.getY() - 4;
-        int lastY = slots.back().dropdown->getBottom();
-        for (auto& slot : slots)
-            if (slot.slider->isVisible())
-                lastY = juce::jmax(lastY, slot.slider->getBottom());
-        paintCard(g, juce::Rectangle<int>(pad, top, getWidth() - pad * 2, lastY - top + 8));
-    }
+    // Background + card painted by MainPanel
 
     float f = fs();
     int dotSize = juce::roundToInt(f * 0.55f);

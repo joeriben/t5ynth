@@ -187,7 +187,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     styleLoopBtn(oneshotBtn);
     styleLoopBtn(loopModeBtn);
     styleLoopBtn(pingpongBtn);
-    loopModeBtn.setToggleState(true, juce::dontSendNotification);
+    oneshotBtn.setToggleState(true, juce::dontSendNotification);
     addAndMakeVisible(oneshotBtn);
     addAndMakeVisible(loopModeBtn);
     addAndMakeVisible(pingpongBtn);
@@ -241,6 +241,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         lbl.setJustificationType(juce::Justification::centredLeft);
         addAndMakeVisible(lbl);
     };
+    makeHeader(engineHeader, "ENGINE", kAccent);
     makeHeader(filterHeader, "FILTER", kFilterCol);
     makeHeader(modHeader, "MODULATION", kModCol);
 
@@ -305,7 +306,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     lfo2TargetA = std::make_unique<CA>(apvts, "lfo2_target", lfo2.targetBox);
 
     updateVisibility();
-    startTimerHz(30);
+    startTimerHz(10);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -351,6 +352,15 @@ void SynthPanel::timerCallback()
         double sr = processorRef.getSampleRate();
         if (sr > 0)
             waveformDisplay.setBufferDuration(static_cast<float>(numSamples / sr));
+
+        // Sync auto-positioned brackets from processor (wavetable mode)
+        if (processorRef.isWavetableMode())
+        {
+            float s = processorRef.getSampler().getLoopStart();
+            float e = processorRef.getSampler().getLoopEnd();
+            waveformDisplay.setLoopStart(s);
+            waveformDisplay.setLoopEnd(e);
+        }
 
         processorRef.clearNewWaveformFlag();
     }
@@ -559,7 +569,7 @@ void SynthPanel::paint(juce::Graphics& g)
 
     // Card: Engine mode + Waveform + Loop controls + Scan
     {
-        int top = samplerBtn.getY() - inset;
+        int top = engineHeader.getY() - inset;
         int bot = scanHint.getBottom() + inset;
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top));
     }
@@ -612,6 +622,10 @@ void SynthPanel::resized()
     float f = fs();
     int rowH = juce::roundToInt(f * 1.4f);
     int gap = juce::roundToInt(f * 0.25f);
+
+    // ── ENGINE section header ──
+    engineHeader.setFont(juce::FontOptions(f * 0.85f));
+    engineHeader.setBounds(area.removeFromTop(juce::roundToInt(f * 1.1f)));
 
     // ── Engine mode: horizontal switch ──
     auto modeRow = area.removeFromTop(juce::roundToInt(f * 1.8f));

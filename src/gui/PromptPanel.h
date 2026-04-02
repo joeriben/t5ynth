@@ -1,12 +1,15 @@
 #pragma once
 #include <JuceHeader.h>
+#include <vector>
+#include <utility>
+#include <functional>
 
 class T5ynthProcessor;
 
 /**
  * GENERATION column: prompts, embedding controls, compact params, generate.
  */
-class PromptPanel : public juce::Component
+class PromptPanel : public juce::Component, private juce::Timer
 {
 public:
     explicit PromptPanel(T5ynthProcessor& processor);
@@ -20,7 +23,17 @@ public:
                         int seed, bool randomSeed,
                         const juce::String& device = {});
 
+    /** Trigger generation with optional dimension offsets from DimensionExplorer. */
+    void triggerGenerationWithOffsets(std::vector<std::pair<int, float>> offsets);
+
+    /** Called after generation with embedding stats (for DimensionExplorer). */
+    std::function<void(const std::vector<float>&, const std::vector<float>&)> onEmbeddingsReady;
+
+    /** Status callback — called with status text (e.g. "generating...", "12.3s | seed 42 | mps") */
+    std::function<void(const juce::String&, bool generating)> onStatusChanged;
+
 private:
+    void timerCallback() override;
     void triggerGeneration();
     float fs() const;
 
@@ -47,14 +60,18 @@ private:
     juce::TextEditor seedEditor;
     juce::ToggleButton randomSeedToggle { "Random" };
 
-    // Device selector
-    juce::Label deviceLabel;
-    juce::ComboBox deviceBox;
+    // Device selector (segmented toggle strip)
+    static constexpr int kMaxDevBtns = 4;
+    juce::TextButton deviceBtns[kMaxDevBtns];
+    int numDeviceBtns = 0;
+    bool devicesPopulated = false;
+    void populateDeviceButtons();
 
     juce::TextButton generateButton { "Generate" };
     juce::Label infoLabel;
 
     bool generating = false;
+    std::vector<std::pair<int, float>> pendingOffsets_;  // for DimensionExplorer
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<Attachment> alphaA, magA, noiseA, durA, startA, stepsA, cfgA;

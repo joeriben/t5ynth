@@ -9,10 +9,10 @@ class T5ynthProcessor;
  * SequencerPanel — sequencer + arpeggiator controls + step grid.
  *
  * Layout:
- *   Row 1: LED [>][||]  Steps:[5][8][10][16][32]  [Div▾]  BPM[=====] 120
- *   Row 2: [Preset▾]  Gate[=====] 80%  Glide[=====] 80ms  MIDI: D#2 v102
- *   Row 3: Step grid (note offset | active dot | G badge | velocity bar)
- *   Row 4: [Arp ✓]  [Up▾]  [1/16▾]  Oct[=====]  ArpGate[=====] 80%
+ *   Row 1: LED [>][||]  [Steps▾]  [1/4|1/8|1/16]  BPM[==] 120  MIDI: D#2 v102
+ *   Row 2: [Preset▾ wider]  Gate[==]  Glide[==]
+ *   Row 3: Step grid (dot | vertical note slider | glide dot | horiz velocity)
+ *   Row 4: [Arp ✓]  [Up▾]  [1/16▾]  Oct[==]  Gate[==]
  */
 class SequencerPanel : public juce::Component, private juce::Timer
 {
@@ -32,16 +32,17 @@ private:
     // Row 1: Transport + step config
     juce::TextButton playButton { ">" };
     juce::TextButton stopButton { "||" };
-    std::array<juce::TextButton, 5> stepCountBtns;
-    static constexpr int STEP_COUNTS[] = { 5, 8, 10, 16, 32 };
-    juce::ComboBox divisionBox;
+    juce::ComboBox stepCountBox;                  // dropdown 2-32
+    static constexpr int kNumDivBtns = 5;
+    juce::TextButton divBtns[kNumDivBtns];        // [1/1][1/2][1/4][1/8][1/16]
+    juce::ComboBox divisionHidden;                 // hidden, for APVTS attachment
     std::unique_ptr<SliderRow> bpmRow;
+    juce::Label midiMonitor;
 
     // Row 2: Seq params
     juce::ComboBox presetBox;
     std::unique_ptr<SliderRow> gateRow;
     std::unique_ptr<SliderRow> glideRow;
-    juce::Label midiMonitor;
 
     // Row 3: Step grid
     struct StepColumn : public juce::Component
@@ -49,9 +50,16 @@ private:
         int stepIndex = 0;
         T5ynthProcessor* processor = nullptr;
         bool isCurrentStep = false;
+        int dragZone = -1;        // 0=dot, 1=note, 2=glide, 3=velocity
+        float dragStartVal = 0.f;
         void paint(juce::Graphics& g) override;
         void mouseDown(const juce::MouseEvent& e) override;
         void mouseDrag(const juce::MouseEvent& e) override;
+        void mouseUp(const juce::MouseEvent& e) override;
+        // Zone geometry (set by paint based on bounds)
+        int noteBottom() const { return juce::roundToInt(getHeight() * 0.55f); }
+        int velBottom() const { return juce::roundToInt(getHeight() * 0.68f); }
+        // bottom 32%: [On][Glide] buttons
     };
     static constexpr int MAX_COLS = 32;
     std::array<std::unique_ptr<StepColumn>, MAX_COLS> stepCols;
@@ -62,15 +70,17 @@ private:
     juce::ToggleButton arpEnable { "Arp" };
     juce::ComboBox arpModeBox;
     juce::ComboBox arpRateBox;
-    std::unique_ptr<SliderRow> arpOctRow;
+    static constexpr int kNumOctBtns = 4;
+    juce::TextButton arpOctBtns[kNumOctBtns];  // [1][2][3][4]
+    juce::ComboBox arpOctHidden;                 // hidden, for APVTS
     std::unique_ptr<SliderRow> arpGateRow;
 
     // APVTS attachments
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SA> bpmA, gateA, glideA, arpOctA, arpGateA;
-    std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA;
+    std::unique_ptr<SA> bpmA, gateA, glideA, arpGateA;
+    std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA;
     std::unique_ptr<BA> arpEnableA;
 
     int currentStep = -1;

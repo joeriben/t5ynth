@@ -90,7 +90,9 @@ public:
     /** Set a ghost marker showing the modulated value. NaN = no ghost. */
     void setGhostValue(float v)
     {
-        if (ghostValue != v) { ghostValue = v; repaint(); }
+        // NaN != NaN is always true, so handle NaN explicitly to avoid constant repaints
+        bool bothNaN = std::isnan(ghostValue) && std::isnan(v);
+        if (!bothNaN && ghostValue != v) { ghostValue = v; repaint(); }
     }
     void clearGhost() { setGhostValue(std::numeric_limits<float>::quiet_NaN()); }
 
@@ -129,6 +131,10 @@ public:
 
         label.setBounds(b.removeFromLeft(labelW));
         value.setBounds(b.removeFromRight(valueW));
+        // Cap slider width to avoid absurdly long sliders at large window sizes
+        int maxSliderW = 400;
+        if (b.getWidth() > maxSliderW)
+            b = b.removeFromLeft(maxSliderW);
         slider.setBounds(b);
     }
 

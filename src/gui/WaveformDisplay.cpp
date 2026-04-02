@@ -3,7 +3,7 @@
 
 WaveformDisplay::WaveformDisplay()
 {
-    startTimerHz(30);
+    startTimerHz(5);
 }
 
 juce::Rectangle<float> WaveformDisplay::getWaveformArea() const
@@ -167,5 +167,7 @@ void WaveformDisplay::setWaveform(const float* data, int numSamples)
 
 void WaveformDisplay::timerCallback()
 {
-    repaint();
+    // Only repaint during active drag (bracket handles)
+    if (dragging != None)
+        repaint();
 }

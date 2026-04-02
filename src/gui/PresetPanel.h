@@ -18,8 +18,7 @@ public:
 
     /** Called after import so parent can update GUI-only state (prompts, seed, device). */
     std::function<void(const juce::String& promptA, const juce::String& promptB,
-                       int seed, bool randomSeed,
-                       const juce::String& device)> onPresetLoaded;
+                       int seed, const juce::String& device)> onPresetLoaded;
 
     /** Trigger import/export (called from StatusBar buttons). */
     void importPreset();

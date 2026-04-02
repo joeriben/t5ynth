@@ -60,3 +60,40 @@ T5ynthLookAndFeel::T5ynthLookAndFeel()
     // Default font
     setDefaultSansSerifTypefaceName("Inter");
 }
+
+void T5ynthLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& btn,
+                                          bool /*highlighted*/, bool /*down*/)
+{
+    auto b = btn.getLocalBounds().toFloat();
+    bool on = btn.getToggleState();
+    float h = b.getHeight();
+
+    // Glow dot (left side)
+    float dotR = juce::jmin(5.0f, h * 0.25f);
+    float dotX = b.getX() + dotR + 2.0f;
+    float dotY = b.getCentreY();
+
+    if (on)
+    {
+        // Outer glow
+        auto glowCol = btn.findColour(juce::ToggleButton::tickColourId).withAlpha(0.25f);
+        g.setColour(glowCol);
+        g.fillEllipse(dotX - dotR * 2.0f, dotY - dotR * 2.0f, dotR * 4.0f, dotR * 4.0f);
+        // Bright core
+        g.setColour(btn.findColour(juce::ToggleButton::tickColourId));
+        g.fillEllipse(dotX - dotR, dotY - dotR, dotR * 2.0f, dotR * 2.0f);
+    }
+    else
+    {
+        g.setColour(kDimmer);
+        g.fillEllipse(dotX - dotR, dotY - dotR, dotR * 2.0f, dotR * 2.0f);
+    }
+
+    // Label text
+    float textX = dotX + dotR + 4.0f;
+    g.setColour(btn.findColour(juce::ToggleButton::textColourId));
+    g.setFont(juce::FontOptions(juce::jmax(11.0f, h * 0.65f)));
+    g.drawText(btn.getButtonText(),
+               juce::Rectangle<float>(textX, b.getY(), b.getRight() - textX, h),
+               juce::Justification::centredLeft);
+}

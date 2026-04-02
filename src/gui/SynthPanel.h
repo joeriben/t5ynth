@@ -48,7 +48,7 @@ private:
     juce::Label scanHint;
 
     // ── Section headers ──
-    juce::Label filterHeader, modHeader, driftHeader;
+    juce::Label engineHeader, filterHeader, modHeader, driftHeader;
 
     // ── Filter ──
     juce::ToggleButton filterToggle { "Filter" };

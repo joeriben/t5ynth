@@ -20,6 +20,7 @@ public:
 
     void paint(juce::Graphics& g) override;
     void resized() override;
+    void mouseDown(const juce::MouseEvent& e) override;
     void toggleSettings();
     SettingsPage& getModelPanel() { return settingsPage; }
 
@@ -29,6 +30,8 @@ private:
     // Col 1: GENERATION
     PromptPanel promptPanel;
     AxesPanel axesPanel;
+    juce::TextButton mainGenerateBtn { "Generate" };
+    bool generateHighlight = false;
 
     // Col 2: ENGINE + FILTER + MODULATION
     SynthPanel synthPanel;
@@ -49,9 +52,18 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterVolA;
 
     // Overlay: Dimension Explorer
+    // Scrim catches clicks outside DimExplorer to close the overlay
+    struct Scrim : public juce::Component {
+        std::function<void()> onClick;
+        void mouseDown(const juce::MouseEvent&) override { if (onClick) onClick(); }
+        void paint(juce::Graphics& g) override { g.fillAll(juce::Colour(0xdd101016)); }
+    };
+    Scrim dimScrim;
     DimensionExplorer dimensionExplorer;
-    juce::TextButton dimExplorerClose { "Close" };
-    juce::TextButton dimExplorerReset { "Reset" };
+    juce::TextButton dimApplyBtn    { "Anwenden + generieren" };
+    juce::TextButton dimUndoBtn     { "Undo" };
+    juce::TextButton dimRedoBtn     { "Redo" };
+    juce::TextButton dimResetBtn    { juce::String::fromUTF8("Alle zur" "\xc3\xbc" "cksetzen") };
     bool dimExplorerVisible = false;
 
     void showDimExplorer();

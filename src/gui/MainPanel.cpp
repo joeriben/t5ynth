@@ -21,16 +21,15 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
 
     // Wire preset import callback
     presetPanel.onPresetLoaded = [this](const juce::String& pA, const juce::String& pB,
-                                        int seed, bool randomSeed,
-                                        const juce::String& device) {
-        promptPanel.loadPresetData(pA, pB, seed, randomSeed, device);
+                                        int seed, const juce::String& device) {
+        promptPanel.loadPresetData(pA, pB, seed, true, device);
     };
 
-    // Master volume
-    masterVolKnob.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    masterVolKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 14);
-    masterVolKnob.setColour(juce::Slider::rotarySliderFillColourId, kAccent);
-    masterVolKnob.setColour(juce::Slider::rotarySliderOutlineColourId, kSurface);
+    // Master volume — vertical slider
+    masterVolKnob.setSliderStyle(juce::Slider::LinearVertical);
+    masterVolKnob.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 50, 14);
+    masterVolKnob.setColour(juce::Slider::trackColourId, kAccent);
+    masterVolKnob.setColour(juce::Slider::backgroundColourId, kSurface);
     masterVolKnob.setColour(juce::Slider::textBoxTextColourId, kDim);
     masterVolKnob.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     masterVolKnob.setTextValueSuffix(" dB");
@@ -44,23 +43,72 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     masterVolA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.getValueTreeState(), "master_vol", masterVolKnob);
 
+    // Main Generate button at bottom of left column
+    mainGenerateBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1b5e20));
+    mainGenerateBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff4caf50));
+    mainGenerateBtn.onClick = [this] {
+        promptPanel.triggerGenerationWithOffsets({});
+    };
+    addAndMakeVisible(mainGenerateBtn);
+
+    // Status callback — show in Generate button
+    promptPanel.onStatusChanged = [this](const juce::String& text, bool isGenerating) {
+        if (isGenerating)
+        {
+            mainGenerateBtn.setButtonText("generating...");
+            mainGenerateBtn.setEnabled(false);
+        }
+        else
+        {
+            mainGenerateBtn.setButtonText("Re-Generate");
+            mainGenerateBtn.setEnabled(true);
+        }
+    };
+
+    // Scrim (click outside DimExplorer overlay to close)
+    dimScrim.onClick = [this] { hideDimExplorer(); };
+    dimScrim.setVisible(false);
+    addChildComponent(dimScrim);
+
     // DimExplorer — always visible (mini-view in left column, overlay on click)
     addAndMakeVisible(dimensionExplorer);
     dimensionExplorer.onClicked = [this] {
         if (!dimExplorerVisible) showDimExplorer();
     };
 
-    dimExplorerClose.setColour(juce::TextButton::buttonColourId, kSurface);
-    dimExplorerClose.setColour(juce::TextButton::textColourOffId, kAccent);
-    dimExplorerClose.onClick = [this] { hideDimExplorer(); };
-    dimExplorerClose.setVisible(false);
-    addChildComponent(dimExplorerClose);
+    // Wire PromptPanel → DimensionExplorer (embedding stats after generation)
+    promptPanel.onEmbeddingsReady = [this](const std::vector<float>& a, const std::vector<float>& b) {
+        dimensionExplorer.setEmbeddings(a, b);
+    };
 
-    dimExplorerReset.setColour(juce::TextButton::buttonColourId, kSurface);
-    dimExplorerReset.setColour(juce::TextButton::textColourOffId, kDim);
-    dimExplorerReset.onClick = [this] { dimensionExplorer.clear(); dimensionExplorer.repaint(); };
-    dimExplorerReset.setVisible(false);
-    addChildComponent(dimExplorerReset);
+    // "Anwenden + generieren" — green, triggers generation with offsets
+    dimApplyBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1b5e20));
+    dimApplyBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff4caf50));
+    dimApplyBtn.onClick = [this] {
+        auto offsets = dimensionExplorer.getDimensionOffsets();
+        promptPanel.triggerGenerationWithOffsets(std::move(offsets));
+    };
+    dimApplyBtn.setVisible(false);
+    addChildComponent(dimApplyBtn);
+
+    dimUndoBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    dimUndoBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    dimUndoBtn.onClick = [this] { dimensionExplorer.undo(); };
+    dimUndoBtn.setVisible(false);
+    addChildComponent(dimUndoBtn);
+
+    dimRedoBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    dimRedoBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    dimRedoBtn.onClick = [this] { dimensionExplorer.redo(); };
+    dimRedoBtn.setVisible(false);
+    addChildComponent(dimRedoBtn);
+
+    // "Alle zurücksetzen" — orange
+    dimResetBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff4e2700));
+    dimResetBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffff9800));
+    dimResetBtn.onClick = [this] { dimensionExplorer.clear(); dimensionExplorer.repaint(); };
+    dimResetBtn.setVisible(false);
+    addChildComponent(dimResetBtn);
 
     // Load native inference models
     tryLoadInferenceModels();
@@ -69,11 +117,18 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
 void MainPanel::showDimExplorer()
 {
     dimExplorerVisible = true;
-    dimExplorerClose.setVisible(true);
-    dimExplorerReset.setVisible(true);
+    dimensionExplorer.setOverlayMode(true);
+    dimScrim.setVisible(true);
+    dimScrim.toFront(false);
+    dimApplyBtn.setVisible(true);
+    dimUndoBtn.setVisible(true);
+    dimRedoBtn.setVisible(true);
+    dimResetBtn.setVisible(true);
     dimensionExplorer.toFront(false);
-    dimExplorerClose.toFront(false);
-    dimExplorerReset.toFront(false);
+    dimApplyBtn.toFront(false);
+    dimUndoBtn.toFront(false);
+    dimRedoBtn.toFront(false);
+    dimResetBtn.toFront(false);
     resized();
     repaint();
 }
@@ -81,10 +136,25 @@ void MainPanel::showDimExplorer()
 void MainPanel::hideDimExplorer()
 {
     dimExplorerVisible = false;
-    dimExplorerClose.setVisible(false);
-    dimExplorerReset.setVisible(false);
+    dimensionExplorer.setOverlayMode(false);
+    dimScrim.setVisible(false);
+    dimApplyBtn.setVisible(false);
+    dimUndoBtn.setVisible(false);
+    dimRedoBtn.setVisible(false);
+    dimResetBtn.setVisible(false);
     resized();  // repositions DimExplorer back to mini-view
     repaint();
+}
+
+void MainPanel::mouseDown(const juce::MouseEvent& e)
+{
+    // Close DimExplorer overlay on click outside
+    if (dimExplorerVisible)
+    {
+        auto dimBounds = dimensionExplorer.getBounds();
+        if (!dimBounds.contains(e.x, e.y))
+            hideDimExplorer();
+    }
 }
 
 void MainPanel::toggleSettings() {}
@@ -183,20 +253,30 @@ void MainPanel::paint(juce::Graphics& g)
     g.fillAll(kBg);
 
     float w = static_cast<float>(getWidth());
-    float h = static_cast<float>(getHeight());
-    float bottomH = h * 0.26f;
-    float topH = h - bottomH;
+    float footerTop = static_cast<float>(sequencerPanel.getY());
 
     g.setColour(kBorder);
-    float x1 = w * 0.25f;
-    g.drawVerticalLine(juce::roundToInt(x1), 0.0f, topH);
-    g.drawHorizontalLine(juce::roundToInt(topH), 0.0f, w);
+    float x1 = static_cast<float>(promptPanel.getRight() + 4);
+    g.drawVerticalLine(juce::roundToInt(x1), 0.0f, footerTop);
+    g.drawHorizontalLine(juce::roundToInt(footerTop), 0.0f, w);
 
-    if (dimExplorerVisible)
-    {
-        g.setColour(juce::Colour(0xdd101016));
-        g.fillRect(getLocalBounds());
-    }
+    // ── Left column: ONE card "OSCILLATOR" covering everything ──
+    int col1Left = promptPanel.getX();
+    int col1Right = promptPanel.getRight();
+    int col1Top = promptPanel.getY() - 22;
+    int col1Bot = mainGenerateBtn.getBottom() + 4;
+    int cardW = col1Right - col1Left;
+
+    // Card background
+    paintCard(g, juce::Rectangle<int>(col1Left, col1Top, cardW, col1Bot - col1Top));
+
+    // Header bar — green like Generate button
+    int headerH = 18;
+    g.setColour(juce::Colour(0xff4caf50).withAlpha(0.7f));
+    g.fillRect(col1Left + 1, col1Top + 1, cardW - 2, headerH);
+    g.setColour(juce::Colour(0xff0e1018));
+    g.setFont(juce::FontOptions(11.0f));
+    g.drawText(" OSCILLATOR", col1Left + 4, col1Top, cardW, headerH, juce::Justification::centredLeft);
 }
 
 void MainPanel::resized()
@@ -205,32 +285,48 @@ void MainPanel::resized()
     float w = static_cast<float>(b.getWidth());
     float h = static_cast<float>(b.getHeight());
 
-    int statusH = juce::jmax(22, juce::roundToInt(h * 0.03f));
-    int footerH = juce::roundToInt(h * 0.22f);
+    int statusH = 14;
+    int footerH = juce::jlimit(160, 280, juce::roundToInt(h * 0.24f));
     statusBar.setBounds(b.removeFromBottom(statusH));
+
+    // Gap between footer and main content
+    b.removeFromBottom(6);
 
     // Footer
     auto footer = b.removeFromBottom(footerH);
-    int volW = juce::roundToInt(w * 0.06f);
-    int fxW = juce::roundToInt(w * 0.30f);
+    int volW = juce::jlimit(40, 60, juce::roundToInt(w * 0.05f));
+    int fxW = juce::jlimit(180, 400, juce::roundToInt(w * 0.28f));
     auto volArea = footer.removeFromRight(volW);
-    int knobSize = juce::jmin(volArea.getWidth(), volArea.getHeight() - 16);
-    masterVolKnob.setBounds(volArea.getCentreX() - knobSize / 2, volArea.getY() + 2,
-                            knobSize, knobSize);
     masterVolLabel.setFont(juce::FontOptions(10.0f));
-    masterVolLabel.setBounds(volArea.getX(), masterVolKnob.getBottom() - 2,
-                             volArea.getWidth(), 14);
+    masterVolLabel.setBounds(volArea.removeFromTop(14));
+    masterVolKnob.setBounds(volArea);
+    footer.removeFromRight(6);  // gap Vol–FX
     fxPanel.setBounds(footer.removeFromRight(fxW));
+    footer.removeFromRight(6);  // gap FX–Seq
     sequencerPanel.setBounds(footer);
 
-    // Col 1: GENERATION + AXES + DIM EXPLORER
-    int col1W = juce::roundToInt(w * 0.25f);
-    auto genCol = b.removeFromLeft(col1W);
+    // ═══ Col 1: OSCILLATOR — one card, header at top ═══
+    int col1W = juce::jlimit(240, 420, juce::roundToInt(w * 0.25f));
+    auto genCol = b.removeFromLeft(col1W).reduced(6, 2);
+    genCol.removeFromTop(20); // header bar space
 
-    int promptH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.55f);
-    int axesH = juce::roundToInt(static_cast<float>(genCol.getHeight()) * 0.25f);
-    promptPanel.setBounds(genCol.removeFromTop(promptH));
-    axesPanel.setBounds(genCol.removeFromTop(axesH));
+    // Fixed heights — Prompt and Axes get exactly what they need, no more
+    constexpr int kPromptH   = 310;
+    constexpr int kAxesH     = 100;
+    constexpr int kGenBtnH   = 34;
+    constexpr int kGap       = 3;
+
+    promptPanel.setBounds(genCol.removeFromTop(kPromptH));
+    genCol.removeFromTop(kGap);
+
+    axesPanel.setBounds(genCol.removeFromTop(kAxesH));
+    genCol.removeFromTop(kGap);
+
+    // Generate button at bottom (same width as other content)
+    mainGenerateBtn.setBounds(genCol.removeFromBottom(kGenBtnH));
+    genCol.removeFromBottom(kGap);
+
+    // DimExplorer gets remaining
     if (!dimExplorerVisible)
         dimensionExplorer.setBounds(genCol);
 
@@ -239,20 +335,28 @@ void MainPanel::resized()
 
 
 
+    // Scrim covers everything
+    dimScrim.setBounds(getLocalBounds());
+
     // DimExplorer overlay
     if (dimExplorerVisible)
     {
         auto overlayBounds = getLocalBounds().reduced(40);
         int btnH = 30;
-        int btnW = 80;
+        int applyW = 180;
+        int smallW = 70;
+        int resetW = 140;
         int btnGap = 10;
 
         auto btnArea = overlayBounds.removeFromBottom(btnH + 10);
-        int totalBtnW = btnW * 2 + btnGap;
+        int totalBtnW = applyW + smallW * 2 + resetW + btnGap * 3;
         int startX = btnArea.getCentreX() - totalBtnW / 2;
+        int y = btnArea.getY();
 
-        dimExplorerReset.setBounds(startX, btnArea.getY(), btnW, btnH);
-        dimExplorerClose.setBounds(startX + btnW + btnGap, btnArea.getY(), btnW, btnH);
+        dimApplyBtn.setBounds(startX, y, applyW, btnH);
+        dimUndoBtn.setBounds(startX + applyW + btnGap, y, smallW, btnH);
+        dimRedoBtn.setBounds(startX + applyW + smallW + btnGap * 2, y, smallW, btnH);
+        dimResetBtn.setBounds(startX + applyW + smallW * 2 + btnGap * 3, y, resetW, btnH);
 
         dimensionExplorer.setBounds(overlayBounds.reduced(20, 10));
     }

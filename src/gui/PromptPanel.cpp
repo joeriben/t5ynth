@@ -5,7 +5,7 @@
 #include "../inference/T5ynthInference.h"
 #include <thread>
 
-// Colors from GuiHelpers.h (kAccent, kDim, kDimmer, kSurface)
+// Colors from GuiHelpers.h (kAccent, kDim, kDim, kSurface)
 
 static void makeSlider(juce::Slider& s, juce::Component* p)
 {
@@ -43,7 +43,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     makeSlider(alphaSlider, this);
     makeLabel(alphaLabel, "Alpha", kDim, juce::Justification::centredLeft, this);
     makeLabel(alphaValue, "0.00", kAccent, juce::Justification::centredRight, this);
-    makeLabel(alphaHint, "Interpolation: -1.0 = A only, 1.0 = B only", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(alphaHint, "Interpolation: -1.0 = A only, 1.0 = B only", kDim, juce::Justification::centredLeft, this);
     alphaSlider.onValueChange = [this] {
         alphaValue.setText(juce::String(alphaSlider.getValue(), 2), juce::dontSendNotification);
     };
@@ -52,7 +52,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     makeSlider(magnitudeSlider, this);
     makeLabel(magLabel, "Magnitude", kDim, juce::Justification::centredLeft, this);
     makeLabel(magValue, "1.00", kAccent, juce::Justification::centredRight, this);
-    makeLabel(magHint, "Embedding scale (1.0 = unchanged)", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(magHint, "Embedding scale (1.0 = unchanged)", kDim, juce::Justification::centredLeft, this);
     magnitudeSlider.onValueChange = [this] {
         magValue.setText(juce::String(magnitudeSlider.getValue(), 2), juce::dontSendNotification);
     };
@@ -61,7 +61,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     makeSlider(noiseSlider, this);
     makeLabel(noiseLabel, "Noise", kDim, juce::Justification::centredLeft, this);
     makeLabel(noiseValue, "0.00", kAccent, juce::Justification::centredRight, this);
-    makeLabel(noiseHint, "Gaussian noise on embedding (0 = none)", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(noiseHint, "Gaussian noise on embedding (0 = none)", kDim, juce::Justification::centredLeft, this);
     noiseSlider.onValueChange = [this] {
         noiseValue.setText(juce::String(noiseSlider.getValue(), 2), juce::dontSendNotification);
     };
@@ -69,48 +69,50 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // --- Compact params ---
     // Duration
     makeSlider(durationSlider, this);
-    makeLabel(durLabel, "Duration", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(durLabel, "Duration", kDim, juce::Justification::centredLeft, this);
     makeLabel(durValue, "1.0s", kAccent, juce::Justification::centredRight, this);
-    makeLabel(durHint, "Audio length (seconds)", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(durHint, "Audio length (seconds)", kDim, juce::Justification::centredLeft, this);
     durationSlider.onValueChange = [this] {
         durValue.setText(juce::String(durationSlider.getValue(), 1) + "s", juce::dontSendNotification);
     };
 
     // Start Position
     makeSlider(startSlider, this);
-    makeLabel(startLabel, "Start", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(startLabel, "Start", kDim, juce::Justification::centredLeft, this);
     makeLabel(startValue, "0%", kAccent, juce::Justification::centredRight, this);
-    makeLabel(startHint, "0% = attack, higher = sustained", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(startHint, "0% = attack, higher = sustained", kDim, juce::Justification::centredLeft, this);
     startSlider.onValueChange = [this] {
         startValue.setText(juce::String(juce::roundToInt(startSlider.getValue() * 100.0)) + "%", juce::dontSendNotification);
     };
 
     // Steps
     makeSlider(stepsSlider, this);
-    makeLabel(stepsLabel, "Steps", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(stepsLabel, "Steps", kDim, juce::Justification::centredLeft, this);
     makeLabel(stepsValue, "20", kAccent, juce::Justification::centredRight, this);
-    makeLabel(stepsHint, "More = higher quality", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(stepsHint, "More = higher quality", kDim, juce::Justification::centredLeft, this);
     stepsSlider.onValueChange = [this] {
         stepsValue.setText(juce::String(juce::roundToInt(stepsSlider.getValue())), juce::dontSendNotification);
     };
 
     // CFG
     makeSlider(cfgSlider, this);
-    makeLabel(cfgLabel, "CFG", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(cfgLabel, "CFG", kDim, juce::Justification::centredLeft, this);
     makeLabel(cfgValue, "7.0", kAccent, juce::Justification::centredRight, this);
-    makeLabel(cfgHint, "Classifier-free guidance", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(cfgHint, "Classifier-free guidance", kDim, juce::Justification::centredLeft, this);
     cfgSlider.onValueChange = [this] {
         cfgValue.setText(juce::String(cfgSlider.getValue(), 1), juce::dontSendNotification);
     };
 
     // Seed (text field + random toggle)
-    makeLabel(seedLabel, "Seed", kDimmer, juce::Justification::centredLeft, this);
+    makeLabel(seedLabel, "Seed", kDim, juce::Justification::centredLeft, this);
     seedEditor.setColour(juce::TextEditor::backgroundColourId, kSurface);
-    seedEditor.setColour(juce::TextEditor::textColourId, kAccent);
+    seedEditor.setColour(juce::TextEditor::textColourId, juce::Colours::white);
     seedEditor.setColour(juce::TextEditor::outlineColourId, kBorder);
     seedEditor.setInputRestrictions(12, "0123456789");
     seedEditor.setText("123456789", false);
     addAndMakeVisible(seedEditor);
+
+    seedEditor.onReturnKey = [this] { triggerGeneration(); };
 
     randomSeedToggle.setColour(juce::ToggleButton::textColourId, kDim);
     randomSeedToggle.setColour(juce::ToggleButton::tickColourId, kAccent);
@@ -123,20 +125,26 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     seedEditor.setEnabled(false);
     seedEditor.setAlpha(0.3f);
 
-    // Device selector — populated when inference launches
-    makeLabel(deviceLabel, "Device", kDimmer, juce::Justification::centredLeft, this);
-    deviceBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
-    deviceBox.setColour(juce::ComboBox::textColourId, kAccent);
-    deviceBox.setColour(juce::ComboBox::outlineColourId, kBorder);
-    deviceBox.addItem("Auto", 1);
-    deviceBox.setSelectedId(1, juce::dontSendNotification);
-    addAndMakeVisible(deviceBox);
+    // Device selector — segmented toggle strip (populated when Python reports devices)
+    for (int i = 0; i < kMaxDevBtns; ++i)
+    {
+        deviceBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        deviceBtns[i].setColour(juce::TextButton::buttonOnColourId, kAccent);
+        deviceBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        deviceBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        deviceBtns[i].setClickingTogglesState(true);
+        deviceBtns[i].setRadioGroupId(1003);
+        deviceBtns[i].setVisible(false);
+        addChildComponent(deviceBtns[i]);
+    }
+    // Start with just "Auto"
+    deviceBtns[0].setButtonText("Auto");
+    deviceBtns[0].setToggleState(true, juce::dontSendNotification);
+    deviceBtns[0].setVisible(true);
+    numDeviceBtns = 1;
 
-    // Generate — prominent green button like web UI
-    generateButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1b5e20));
-    generateButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff4caf50));
-    generateButton.onClick = [this] { triggerGeneration(); };
-    addAndMakeVisible(generateButton);
+    // Generate button is now in MainPanel — keep internal for triggerGeneration()
+    generateButton.setVisible(false);
 
     makeLabel(infoLabel, "", kDim, juce::Justification::centredLeft, this);
 
@@ -149,41 +157,32 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     startA  = std::make_unique<Attachment>(apvts, "gen_start", startSlider);
     stepsA  = std::make_unique<Attachment>(apvts, "gen_steps", stepsSlider);
     cfgA    = std::make_unique<Attachment>(apvts, "gen_cfg", cfgSlider);
+
+    startTimerHz(2);  // poll for device availability
+}
+
+void PromptPanel::timerCallback()
+{
+    if (!devicesPopulated && processorRef.isPipeInferenceReady())
+    {
+        populateDeviceButtons();
+        stopTimer();
+    }
 }
 
 float PromptPanel::fs() const
 {
-    // Derive font size from available height so all content fits.
-    // Content budget: ~32 f-units (labels + sliders + hints + device + generate + gaps).
     float h = static_cast<float>(getHeight());
     float w = static_cast<float>(getWidth());
     float pad = w * 0.04f;
     float available = h - 2.0f * pad;
-    float maxF = available / 32.0f;
-    return juce::jlimit(12.0f, 22.0f, maxF);
+    float maxF = available / 28.0f;
+    return juce::jlimit(12.0f, 20.0f, maxF);
 }
 
-void PromptPanel::paint(juce::Graphics& g)
+void PromptPanel::paint(juce::Graphics&)
 {
-    g.fillAll(kBg);
-
-    int pad = juce::roundToInt(static_cast<float>(getWidth()) * 0.04f);
-
-    // Card behind prompts A + B
-    if (promptALabel.isVisible())
-    {
-        int top = promptALabel.getY() - 4;
-        int bot = promptBEditor.getBottom() + 4;
-        paintCard(g, juce::Rectangle<int>(pad, top, getWidth() - pad * 2, bot - top));
-    }
-
-    // Card behind embedding controls (Alpha, Magnitude, Noise)
-    if (alphaLabel.isVisible())
-    {
-        int top = alphaLabel.getY() - 4;
-        int bot = noiseHint.getBottom() + 4;
-        paintCard(g, juce::Rectangle<int>(pad, top, getWidth() - pad * 2, bot - top));
-    }
+    // Background painted by MainPanel (uniform card system)
 }
 
 void PromptPanel::resized()
@@ -195,17 +194,57 @@ void PromptPanel::resized()
     auto area = b.reduced(pad);
 
     float f = fs();
-    float fSmall = f * 0.80f;
-    float fHint = f * 0.65f;
+    float fSmall = f;
+    float fHint = f * 0.85f;
     int rowH = juce::roundToInt(f * 1.4f);
     int sliderH = juce::roundToInt(f * 1.2f);
     int hintH = juce::roundToInt(fHint * 1.3f);
     int inputH = juce::roundToInt(f * 1.8f);
     int gap = juce::roundToInt(f * 0.3f);
+    int compactRowH = juce::roundToInt(fSmall * 1.2f);
 
     auto setFs = [](juce::Label& l, float size) { l.setFont(juce::FontOptions(size)); };
 
-    // --- Main slider layout: [Label ... Value] \n [slider] \n [hint] ---
+    // ── Reserve bottom: Info + Device + Seed ──
+    setFs(infoLabel, fSmall);
+    infoLabel.setBounds(area.removeFromBottom(rowH));
+    area.removeFromBottom(gap);
+
+    // Device row
+    {
+        auto devRow = area.removeFromBottom(compactRowH + 2);
+        int totalW = devRow.getWidth();
+        int maxBtnW = 80;
+        int perBtn = juce::jmin(maxBtnW, (numDeviceBtns > 0) ? totalW / numDeviceBtns : totalW);
+        for (int i = 0; i < numDeviceBtns; ++i)
+        {
+            int edges = 0;
+            if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+            if (i < numDeviceBtns - 1) edges |= juce::Button::ConnectedOnRight;
+            deviceBtns[i].setConnectedEdges(edges);
+            deviceBtns[i].setBounds(devRow.getX() + i * perBtn, devRow.getY(),
+                                     perBtn, devRow.getHeight());
+        }
+    }
+    area.removeFromBottom(gap);
+
+    // Seed row
+    {
+        setFs(seedLabel, fSmall);
+        auto seedRow = area.removeFromBottom(compactRowH + 2);
+        int seedLabelW = juce::roundToInt(seedRow.getWidth() * 0.10f);
+        int toggleW = juce::roundToInt(seedRow.getWidth() * 0.22f);
+        seedLabel.setBounds(seedRow.removeFromLeft(seedLabelW));
+        randomSeedToggle.setBounds(seedRow.removeFromRight(toggleW));
+        seedEditor.setFont(juce::FontOptions(fSmall));
+        seedEditor.setBounds(seedRow.reduced(0, 1));
+    }
+    area.removeFromBottom(gap);
+
+    // Show hints only if enough vertical space remains
+    bool showHints = area.getHeight() > 350;
+
+    // --- Main slider layout: [Label ... Value] \n [slider] \n [hint?] ---
     auto layoutSlider = [&](juce::Label& label, juce::Slider& slider, juce::Label& value,
                             juce::Label* hint, float labelSize)
     {
@@ -217,8 +256,14 @@ void PromptPanel::resized()
         slider.setBounds(area.removeFromTop(sliderH));
         if (hint != nullptr)
         {
-            setFs(*hint, fHint);
-            hint->setBounds(area.removeFromTop(hintH));
+            if (showHints)
+            {
+                setFs(*hint, fHint);
+                hint->setBounds(area.removeFromTop(hintH));
+                hint->setVisible(true);
+            }
+            else
+                hint->setVisible(false);
         }
         area.removeFromTop(gap);
     };
@@ -244,12 +289,8 @@ void PromptPanel::resized()
 
     area.removeFromTop(gap);
 
-    // --- Compact params: 2 columns x 3 rows ---
-    // Row 1: Duration | Start Position
-    // Row 2: Steps | CFG
-    // Row 3: Seed (full width)
+    // --- Compact params: 2 columns ---
     int compactSliderH = juce::roundToInt(f * 0.9f);
-    int compactRowH = juce::roundToInt(fSmall * 1.2f);
     int compactHintH = juce::roundToInt(fHint * 1.1f);
     int colGap = juce::roundToInt(w * 0.03f);
 
@@ -258,7 +299,6 @@ void PromptPanel::resized()
     {
         int colW = (area.getWidth() - colGap) / 2;
 
-        // Headers
         auto hdrRow = area.removeFromTop(compactRowH);
         auto leftHdr = hdrRow.removeFromLeft(colW);
         hdrRow.removeFromLeft(colGap);
@@ -271,20 +311,23 @@ void PromptPanel::resized()
         lbl2.setBounds(rightHdr.removeFromLeft(rightHdr.getWidth() * 2 / 3));
         val2.setBounds(rightHdr);
 
-        // Sliders
         auto slRow = area.removeFromTop(compactSliderH);
         sl1.setBounds(slRow.removeFromLeft(colW));
         slRow.removeFromLeft(colGap);
         sl2.setBounds(slRow);
 
-        // Hints
-        if (hint1 != nullptr || hint2 != nullptr)
+        if (showHints && (hint1 != nullptr || hint2 != nullptr))
         {
             auto hintRow = area.removeFromTop(compactHintH);
-            if (hint1) { setFs(*hint1, fHint); hint1->setBounds(hintRow.removeFromLeft(colW)); }
+            if (hint1) { setFs(*hint1, fHint); hint1->setBounds(hintRow.removeFromLeft(colW)); hint1->setVisible(true); }
             else hintRow.removeFromLeft(colW);
             hintRow.removeFromLeft(colGap);
-            if (hint2) { setFs(*hint2, fHint); hint2->setBounds(hintRow); }
+            if (hint2) { setFs(*hint2, fHint); hint2->setBounds(hintRow); hint2->setVisible(true); }
+        }
+        else
+        {
+            if (hint1) hint1->setVisible(false);
+            if (hint2) hint2->setVisible(false);
         }
         area.removeFromTop(gap);
     };
@@ -293,36 +336,6 @@ void PromptPanel::resized()
                       startLabel, startSlider, startValue, &startHint);
     layoutCompactPair(stepsLabel, stepsSlider, stepsValue, &stepsHint,
                       cfgLabel, cfgSlider, cfgValue, &cfgHint);
-
-    // Seed: label | text field | random toggle
-    setFs(seedLabel, fSmall);
-    auto seedRow = area.removeFromTop(compactRowH + 2);
-    int seedLabelW = juce::roundToInt(seedRow.getWidth() * 0.15f);
-    int toggleW = juce::roundToInt(seedRow.getWidth() * 0.35f);
-    seedLabel.setBounds(seedRow.removeFromLeft(seedLabelW));
-    randomSeedToggle.setBounds(seedRow.removeFromRight(toggleW));
-    seedEditor.setFont(juce::FontOptions(fSmall));
-    seedEditor.setBounds(seedRow.reduced(0, 1));
-    area.removeFromTop(gap);
-
-    // Device selector row
-    {
-        setFs(deviceLabel, fSmall);
-        auto devRow = area.removeFromTop(compactRowH + 2);
-        int devLabelW = juce::roundToInt(devRow.getWidth() * 0.15f);
-        deviceLabel.setBounds(devRow.removeFromLeft(devLabelW));
-        deviceBox.setBounds(devRow.reduced(0, 1));
-    }
-    area.removeFromTop(gap * 2);
-
-    // Generate button
-    int btnH = juce::roundToInt(f * 2.0f);
-    generateButton.setBounds(area.removeFromTop(btnH));
-    area.removeFromTop(gap);
-
-    // Info
-    setFs(infoLabel, fSmall);
-    infoLabel.setBounds(area.removeFromTop(rowH));
 }
 
 void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String& promptB,
@@ -336,19 +349,38 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
     seedEditor.setEnabled(!randomSeed);
     seedEditor.setAlpha(randomSeed ? 0.3f : 1.0f);
 
-    // Select device from preset (if available in device list)
+    // Select device from preset (if available in toggle strip)
     if (device.isNotEmpty())
     {
-        for (int i = 0; i < deviceBox.getNumItems(); ++i)
+        for (int i = 0; i < numDeviceBtns; ++i)
         {
-            if (deviceBox.getItemText(i).equalsIgnoreCase(device))
+            if (deviceBtns[i].getButtonText().equalsIgnoreCase(device))
             {
-                deviceBox.setSelectedItemIndex(i, juce::dontSendNotification);
+                deviceBtns[i].setToggleState(true, juce::dontSendNotification);
                 return;
             }
         }
     }
-    deviceBox.setSelectedId(1, juce::dontSendNotification);  // fallback to Auto
+    deviceBtns[0].setToggleState(true, juce::dontSendNotification);
+}
+
+void PromptPanel::populateDeviceButtons()
+{
+    auto& devs = processorRef.getPipeInference().getAvailableDevices();
+    numDeviceBtns = 1 + juce::jmin(static_cast<int>(devs.size()), kMaxDevBtns - 1);
+    for (int i = 0; i < devs.size() && i + 1 < kMaxDevBtns; ++i)
+    {
+        deviceBtns[i + 1].setButtonText(devs[i].toUpperCase());
+        deviceBtns[i + 1].setVisible(true);
+    }
+    devicesPopulated = true;
+    resized();  // re-layout with new buttons
+}
+
+void PromptPanel::triggerGenerationWithOffsets(std::vector<std::pair<int, float>> offsets)
+{
+    pendingOffsets_ = std::move(offsets);
+    triggerGeneration();
 }
 
 void PromptPanel::triggerGeneration()
@@ -359,13 +391,13 @@ void PromptPanel::triggerGeneration()
 
     if (!processorRef.isInferenceReady())
     {
-        infoLabel.setText("No model loaded — open Settings", juce::dontSendNotification);
+        if (onStatusChanged) onStatusChanged("No model loaded", false);
         return;
     }
 
     generating = true;
     generateButton.setEnabled(false);
-    infoLabel.setText("generating...", juce::dontSendNotification);
+    if (onStatusChanged) onStatusChanged("generating...", true);
 
     auto& apvts = processorRef.getValueTreeState();
     float rawAlpha = apvts.getRawParameterValue("gen_alpha")->load();
@@ -379,19 +411,21 @@ void PromptPanel::triggerGeneration()
     int seed = randomSeedToggle.getToggleState() ? -1 : seedEditor.getText().getIntValue();
     auto promptB = promptBEditor.getText().trim();
 
-    // Populate device box from Python if not yet done
+    // Populate device buttons from Python if not yet done
     auto& pipeInf = processorRef.getPipeInference();
-    if (deviceBox.getNumItems() == 1 && pipeInf.isReady())
-    {
-        auto& devs = pipeInf.getAvailableDevices();
-        for (int i = 0; i < devs.size(); ++i)
-            deviceBox.addItem(devs[i].toUpperCase(), i + 2);  // id 1 = Auto
-    }
+    if (!devicesPopulated && pipeInf.isReady())
+        populateDeviceButtons();
 
-    // Resolve selected device
+    // Resolve selected device from toggle strip
     juce::String selectedDevice;
-    if (deviceBox.getSelectedId() > 1)
-        selectedDevice = pipeInf.getAvailableDevices()[deviceBox.getSelectedId() - 2];
+    for (int i = 1; i < numDeviceBtns; ++i)
+    {
+        if (deviceBtns[i].getToggleState())
+        {
+            selectedDevice = pipeInf.getAvailableDevices()[i - 1];
+            break;
+        }
+    }
 
     // Use pipe inference (Python subprocess) if available, fall back to native
     if (processorRef.isPipeInferenceReady())
@@ -408,6 +442,7 @@ void PromptPanel::triggerGeneration()
         req.cfgScale = cfgScale;
         req.seed = seed;
         req.device = selectedDevice;
+        req.dimensionOffsets = std::move(pendingOffsets_);
 
         auto deviceForLabel = selectedDevice.isEmpty() ? pipeInf.getDefaultDevice() : selectedDevice;
         auto* processor = &processorRef;
@@ -422,12 +457,17 @@ void PromptPanel::triggerGeneration()
                 {
                     processor->loadGeneratedAudio(result.audio, 44100.0);
                     processor->setLastDevice(deviceForLabel);
-                    infoLabel.setText(juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
-                                      + juce::String(result.seed) + " | " + deviceForLabel,
-                                      juce::dontSendNotification);
+                    auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
+                                + juce::String(result.seed) + " | " + deviceForLabel;
+                    if (onStatusChanged) onStatusChanged(info, false);
+
+                    if (onEmbeddingsReady && !result.embeddingA.empty())
+                        onEmbeddingsReady(result.embeddingA, result.embeddingB);
                 }
                 else
-                    infoLabel.setText(result.errorMessage, juce::dontSendNotification);
+                {
+                    if (onStatusChanged) onStatusChanged(result.errorMessage, false);
+                }
             });
         }).detach();
     }

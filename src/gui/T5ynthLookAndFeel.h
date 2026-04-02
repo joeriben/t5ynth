@@ -13,6 +13,10 @@ public:
     T5ynthLookAndFeel();
     ~T5ynthLookAndFeel() override = default;
 
+    void drawToggleButton(juce::Graphics& g, juce::ToggleButton& btn,
+                          bool shouldDrawButtonAsHighlighted,
+                          bool shouldDrawButtonAsDown) override;
+
     // Colour IDs
     static constexpr juce::uint32 backgroundColourId = 0x1000000;
     static constexpr juce::uint32 accentColourId     = 0x1000001;

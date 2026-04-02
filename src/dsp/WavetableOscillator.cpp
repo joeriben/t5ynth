@@ -1,4 +1,5 @@
 #include "WavetableOscillator.h"
+#include <algorithm>
 
 void WavetableOscillator::prepare(double sr, int /*samplesPerBlock*/)
 {
@@ -287,6 +288,25 @@ void WavetableOscillator::extractFramesFromBuffer(const juce::AudioBuffer<float>
 
             frames.push_back(std::move(frame));
             pos += hop;
+        }
+    }
+
+    // Remove near-silent frames (peak below -40dB ≈ 0.01)
+    frames.erase(std::remove_if(frames.begin(), frames.end(), [](const std::vector<float>& f) {
+        float peak = 0.0f;
+        for (float s : f) peak = std::max(peak, std::abs(s));
+        return peak < 0.01f;
+    }), frames.end());
+
+    // Normalize each frame to peak 0.95 (essential for wavetable playback)
+    for (auto& frame : frames)
+    {
+        float peak = 0.0f;
+        for (float s : frame) peak = std::max(peak, std::abs(s));
+        if (peak > 0.001f)
+        {
+            float gain = 0.95f / peak;
+            for (float& s : frame) s *= gain;
         }
     }
 

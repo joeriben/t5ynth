@@ -1,6 +1,14 @@
 #include "SequencerPanel.h"
 #include "../PluginProcessor.h"
 
+// ─── Note name helper ──────────────────────────────────────────────
+static juce::String noteName(int n)
+{
+    static const char* names[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    int oct = n / 12 - 1;
+    return juce::String(names[n % 12]) + juce::String(oct);
+}
+
 // ─── StepColumn ────────────────────────────────────────────────────
 
 void SequencerPanel::StepColumn::paint(juce::Graphics& g)
@@ -8,7 +16,7 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
     if (!processor) return;
     auto step = processor->getStepSequencer().getStep(stepIndex);
     auto b = getLocalBounds().reduced(1);
-    int h = b.getHeight();
+    int w = b.getWidth();
 
     // Background
     g.setColour(isCurrentStep ? kAccent.withAlpha(0.35f)
@@ -23,39 +31,57 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
                    static_cast<float>(b.getX()), static_cast<float>(b.getBottom()), 1.0f);
     }
 
-    // Note offset (top 28%)
-    int noteH = juce::roundToInt(h * 0.28f);
-    auto noteR = b.removeFromTop(noteH);
-    int semi = step.note - 60;
-    g.setColour(step.enabled ? kAccent : kDim);
-    g.setFont(juce::FontOptions(juce::jmax(9.0f, noteH * 0.55f)));
-    g.drawText(juce::String(semi), noteR, juce::Justification::centred);
+    // ── Note vertical slider (top 55%) ──
+    int nB = noteBottom();
+    auto noteR = b.removeFromTop(nB);
+    {
+        int semi = step.note;
+        float frac = juce::jlimit(0.0f, 1.0f, static_cast<float>(semi - 36) / 48.0f);
+        int fillH = juce::roundToInt(frac * static_cast<float>(noteR.getHeight()));
 
-    // Active dot (12%)
-    int dotH = juce::roundToInt(h * 0.12f);
-    auto dotR = b.removeFromTop(dotH);
-    int ds = juce::jmin(8, dotR.getWidth() / 2);
-    g.setColour(step.enabled ? juce::Colour(0xff4caf50) : kDimmer);
-    g.fillEllipse(static_cast<float>(dotR.getCentreX() - ds / 2),
-                  static_cast<float>(dotR.getCentreY() - ds / 2),
-                  static_cast<float>(ds), static_cast<float>(ds));
+        g.setColour(kDimmer.withAlpha(0.3f));
+        g.fillRect(noteR);
+        g.setColour(step.enabled ? kAccent.withAlpha(0.5f) : kDim.withAlpha(0.3f));
+        g.fillRect(noteR.getX(), noteR.getBottom() - fillH, noteR.getWidth(), fillH);
 
-    // Glide badge (10%)
-    int glH = juce::roundToInt(h * 0.10f);
-    auto glR = b.removeFromTop(glH);
-    g.setColour(step.glide ? kAccent : kDimmer);
-    g.setFont(juce::FontOptions(juce::jmax(8.0f, glH * 0.7f)));
-    g.drawText("G", glR, juce::Justification::centred);
+        g.setColour(step.enabled ? juce::Colours::white : kDim);
+        float fs = juce::jmax(8.0f, static_cast<float>(w) * 0.38f);
+        g.setFont(juce::FontOptions(fs));
+        g.drawText(noteName(semi), noteR, juce::Justification::centred);
+    }
 
-    // Velocity bar (remaining 50%)
-    auto velR = b;
-    float velPx = step.velocity * static_cast<float>(velR.getHeight());
-    int barW = juce::jmax(3, velR.getWidth() / 3);
-    int barX = velR.getCentreX() - barW / 2;
-    g.setColour(kDimmer);
-    g.fillRect(barX, velR.getY(), barW, velR.getHeight());
-    g.setColour(step.enabled ? kAccent.withAlpha(0.7f) : kDim);
-    g.fillRect(barX, velR.getBottom() - juce::roundToInt(velPx), barW, juce::roundToInt(velPx));
+    // ── Velocity horizontal bar (55%–68%) ──
+    int vB = velBottom() - noteBottom();
+    auto velR = b.removeFromTop(vB);
+    if (velR.getHeight() > 2)
+    {
+        g.setColour(kDimmer.withAlpha(0.3f));
+        g.fillRect(velR);
+        float velPx = step.velocity * static_cast<float>(velR.getWidth());
+        g.setColour(step.enabled ? kAccent.withAlpha(0.7f) : kDim.withAlpha(0.4f));
+        g.fillRect(velR.getX(), velR.getY(), juce::roundToInt(velPx), velR.getHeight());
+    }
+
+    // ── Bottom buttons: [On][Glide] side by side (remaining 32%) ──
+    auto btnArea = b;
+    int halfW = btnArea.getWidth() / 2;
+    auto onR = btnArea.removeFromLeft(halfW);
+    auto glR = btnArea;
+    float btnFs = juce::jmax(7.0f, static_cast<float>(onR.getHeight()) * 0.45f);
+
+    // On button
+    g.setColour(step.enabled ? juce::Colour(0xff4caf50).withAlpha(0.6f) : kDimmer.withAlpha(0.15f));
+    g.fillRect(onR.reduced(1));
+    g.setColour(step.enabled ? juce::Colours::white : kDimmer);
+    g.setFont(juce::FontOptions(btnFs));
+    g.drawText("On", onR, juce::Justification::centred);
+
+    // Glide button
+    g.setColour(step.glide ? kAccent.withAlpha(0.6f) : kDimmer.withAlpha(0.15f));
+    g.fillRect(glR.reduced(1));
+    g.setColour(step.glide ? juce::Colours::white : kDimmer);
+    g.setFont(juce::FontOptions(btnFs));
+    g.drawText("Glide", glR, juce::Justification::centred);
 }
 
 void SequencerPanel::StepColumn::mouseDown(const juce::MouseEvent& e)
@@ -63,27 +89,30 @@ void SequencerPanel::StepColumn::mouseDown(const juce::MouseEvent& e)
     if (!processor) return;
     auto& seq = processor->getStepSequencer();
     auto step = seq.getStep(stepIndex);
-    int h = getHeight();
     int y = e.getPosition().getY();
 
-    int noteH = juce::roundToInt(h * 0.28f);
-    int dotH  = juce::roundToInt(h * 0.12f);
-    int glH   = juce::roundToInt(h * 0.10f);
-
-    if (y < noteH)
+    if (y < noteBottom())
     {
-        int semi = step.note - 60 + (e.mods.isShiftDown() ? -1 : 1);
-        seq.setStepNote(stepIndex, 60 + juce::jlimit(-24, 24, semi));
+        // Start note drag
+        dragZone = 1;
+        dragStartVal = static_cast<float>(step.note);
     }
-    else if (y < noteH + dotH)
-        seq.setStepEnabled(stepIndex, !step.enabled);
-    else if (y < noteH + dotH + glH)
-        seq.setStepGlide(stepIndex, !step.glide);
+    else if (y < velBottom())
+    {
+        // Velocity drag
+        dragZone = 3;
+        float vel = static_cast<float>(e.getPosition().getX() - 1)
+                    / static_cast<float>(juce::jmax(1, getWidth() - 2));
+        seq.setStepVelocity(stepIndex, juce::jlimit(0.0f, 1.0f, vel));
+    }
     else
     {
-        float vel = 1.0f - static_cast<float>(y - noteH - dotH - glH)
-                          / static_cast<float>(juce::jmax(1, h - noteH - dotH - glH));
-        seq.setStepVelocity(stepIndex, juce::jlimit(0.0f, 1.0f, vel));
+        // Bottom buttons: left half = On, right half = Glide
+        if (e.getPosition().getX() < getWidth() / 2)
+            seq.setStepEnabled(stepIndex, !step.enabled);
+        else
+            seq.setStepGlide(stepIndex, !step.glide);
+        dragZone = 2;
     }
     repaint();
 }
@@ -91,29 +120,35 @@ void SequencerPanel::StepColumn::mouseDown(const juce::MouseEvent& e)
 void SequencerPanel::StepColumn::mouseDrag(const juce::MouseEvent& e)
 {
     if (!processor) return;
-    int h = getHeight();
-    int noteH = juce::roundToInt(h * 0.28f);
-    int dotH  = juce::roundToInt(h * 0.12f);
-    int glH   = juce::roundToInt(h * 0.10f);
-    int velTop = noteH + dotH + glH;
-    int velH   = h - velTop;
+    auto& seq = processor->getStepSequencer();
 
-    if (e.getPosition().getY() >= velTop && velH > 0)
+    if (dragZone == 1)
     {
-        float vel = 1.0f - static_cast<float>(e.getPosition().getY() - velTop)
-                          / static_cast<float>(velH);
-        processor->getStepSequencer().setStepVelocity(stepIndex, juce::jlimit(0.0f, 1.0f, vel));
+        // Note: drag up = higher
+        int noteH = noteBottom();
+        if (noteH < 1) return;
+        float deltaY = static_cast<float>(e.getDistanceFromDragStartY());
+        float deltaSemi = -deltaY / static_cast<float>(noteH) * 48.0f;
+        int newNote = juce::jlimit(36, 84, juce::roundToInt(dragStartVal + deltaSemi));
+        seq.setStepNote(stepIndex, newNote);
+        repaint();
+    }
+    else if (dragZone == 3)
+    {
+        // Velocity: horizontal
+        float vel = static_cast<float>(e.getPosition().getX() - 1)
+                    / static_cast<float>(juce::jmax(1, getWidth() - 2));
+        seq.setStepVelocity(stepIndex, juce::jlimit(0.0f, 1.0f, vel));
         repaint();
     }
 }
 
-// ─── SequencerPanel ────────────────────────────────────────────────
-
-static juce::String noteName(int n)
+void SequencerPanel::StepColumn::mouseUp(const juce::MouseEvent&)
 {
-    static const char* names[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-    return juce::String(names[n % 12]) + juce::String(n / 12 - 1);
+    dragZone = -1;
 }
+
+// ─── SequencerPanel ────────────────────────────────────────────────
 
 SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     : processorRef(p)
@@ -138,27 +173,46 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     };
     addAndMakeVisible(stopButton);
 
-    // ── Step count buttons ──
-    for (int i = 0; i < 5; ++i)
-    {
-        auto& btn = stepCountBtns[static_cast<size_t>(i)];
-        btn.setButtonText(juce::String(STEP_COUNTS[i]));
-        btn.setColour(juce::TextButton::buttonColourId, kSurface);
-        btn.onClick = [this, i] {
-            if (auto* par = processorRef.getValueTreeState().getParameter("seq_steps"))
-            {
-                auto range = par->getNormalisableRange();
-                par->setValueNotifyingHost(range.convertTo0to1(static_cast<float>(STEP_COUNTS[i])));
-            }
-            syncStepCount();
-        };
-        addAndMakeVisible(btn);
-    }
+    // ── Step count dropdown (2-32) ──
+    for (int i = 2; i <= 32; ++i)
+        stepCountBox.addItem(juce::String(i), i);
+    stepCountBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
+    stepCountBox.setColour(juce::ComboBox::textColourId, kAccent);
+    stepCountBox.setColour(juce::ComboBox::outlineColourId, kBorder);
+    stepCountBox.onChange = [this] {
+        int steps = stepCountBox.getSelectedId();
+        if (steps < 2) return;
+        if (auto* par = processorRef.getValueTreeState().getParameter("seq_steps"))
+        {
+            auto range = par->getNormalisableRange();
+            par->setValueNotifyingHost(range.convertTo0to1(static_cast<float>(steps)));
+        }
+        syncStepCount();
+    };
+    addAndMakeVisible(stepCountBox);
 
-    // ── Division ──
-    divisionBox.addItemList({"1/1", "1/2", "1/4", "1/8", "1/16"}, 1);
-    addAndMakeVisible(divisionBox);
-    divA = std::make_unique<CA>(apvts, "seq_division", divisionBox);
+    // ── Division toggle strip (hidden ComboBox for APVTS) ──
+    divisionHidden.addItemList({"1/1", "1/2", "1/4", "1/8", "1/16"}, 1);
+    divisionHidden.onChange = [this] {
+        int id = divisionHidden.getSelectedId();
+        for (int i = 0; i < kNumDivBtns; ++i)
+            divBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+    };
+
+    static const char* divLabels[] = {"1/1","1/2","1/4","1/8","1/16"};
+    for (int i = 0; i < kNumDivBtns; ++i)
+    {
+        divBtns[i].setButtonText(divLabels[i]);
+        divBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        divBtns[i].setColour(juce::TextButton::buttonOnColourId, kAccent);
+        divBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        divBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        divBtns[i].setClickingTogglesState(true);
+        divBtns[i].setRadioGroupId(2001);
+        divBtns[i].onClick = [this, i] { divisionHidden.setSelectedId(i + 1); };
+        addAndMakeVisible(divBtns[i]);
+    }
+    divA = std::make_unique<CA>(apvts, "seq_division", divisionHidden);
 
     // ── BPM ──
     bpmRow = std::make_unique<SliderRow>("BPM", [](double v) { return juce::String(juce::roundToInt(v)); });
@@ -166,6 +220,11 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     bpmA = std::make_unique<SA>(apvts, "seq_bpm", bpmRow->getSlider());
     bpmRow->getSlider().onValueChange = [this] { bpmRow->updateValue(); };
     bpmRow->updateValue();
+
+    // ── MIDI monitor ──
+    midiMonitor.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
+    midiMonitor.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(midiMonitor);
 
     // ── Preset ──
     presetBox.addItemList({"East Coast","West Coast","Synthwave","Techno","Dub Techno",
@@ -187,11 +246,6 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     glideRow->getSlider().onValueChange = [this] { glideRow->updateValue(); };
     glideRow->updateValue();
 
-    // ── MIDI monitor ──
-    midiMonitor.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
-    midiMonitor.setJustificationType(juce::Justification::centredRight);
-    addAndMakeVisible(midiMonitor);
-
     // ── Arp controls ──
     arpEnable.setColour(juce::ToggleButton::textColourId, kDim);
     addAndMakeVisible(arpEnable);
@@ -205,11 +259,26 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     addAndMakeVisible(arpRateBox);
     arpRateA = std::make_unique<CA>(apvts, "arp_rate", arpRateBox);
 
-    arpOctRow = std::make_unique<SliderRow>("Oct", [](double v) { return juce::String(juce::roundToInt(v)); });
-    addAndMakeVisible(*arpOctRow);
-    arpOctA = std::make_unique<SA>(apvts, "arp_octaves", arpOctRow->getSlider());
-    arpOctRow->getSlider().onValueChange = [this] { arpOctRow->updateValue(); };
-    arpOctRow->updateValue();
+    // Arp octaves: toggle buttons [1][2][3][4] with hidden ComboBox for APVTS
+    arpOctHidden.addItemList({"1","2","3","4"}, 1);
+    arpOctHidden.onChange = [this] {
+        int id = arpOctHidden.getSelectedId();
+        for (int i = 0; i < kNumOctBtns; ++i)
+            arpOctBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+    };
+    for (int i = 0; i < kNumOctBtns; ++i)
+    {
+        arpOctBtns[i].setButtonText(juce::String(i + 1));
+        arpOctBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        arpOctBtns[i].setColour(juce::TextButton::buttonOnColourId, kAccent);
+        arpOctBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        arpOctBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        arpOctBtns[i].setClickingTogglesState(true);
+        arpOctBtns[i].setRadioGroupId(2002);
+        arpOctBtns[i].onClick = [this, i] { arpOctHidden.setSelectedId(i + 1); };
+        addAndMakeVisible(arpOctBtns[i]);
+    }
+    arpOctA = std::make_unique<CA>(apvts, "arp_octaves", arpOctHidden);
 
     arpGateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; });
     addAndMakeVisible(*arpGateRow);
@@ -227,23 +296,19 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     }
 
     syncStepCount();
-    startTimerHz(30);
+    startTimerHz(10);
 }
 
 void SequencerPanel::syncStepCount()
 {
     int steps = static_cast<int>(processorRef.getValueTreeState()
                     .getRawParameterValue("seq_steps")->load());
-    numVisibleSteps = juce::jlimit(1, MAX_COLS, steps);
+    numVisibleSteps = juce::jlimit(2, MAX_COLS, steps);
 
     for (int i = 0; i < MAX_COLS; ++i)
         stepCols[static_cast<size_t>(i)]->setVisible(i < numVisibleSteps);
 
-    for (int i = 0; i < 5; ++i)
-        stepCountBtns[static_cast<size_t>(i)].setColour(
-            juce::TextButton::buttonColourId,
-            STEP_COUNTS[i] == numVisibleSteps ? kAccent : kSurface);
-
+    stepCountBox.setSelectedId(numVisibleSteps, juce::dontSendNotification);
     resized();
 }
 
@@ -270,20 +335,33 @@ void SequencerPanel::timerCallback()
         midiMonitor.setColour(juce::Label::textColourId, on ? juce::Colour(0xff4ade80) : kDim);
     }
 
-    // Sync step count if changed externally (preset load, automation)
+    // Sync step count if changed externally
     int steps = static_cast<int>(processorRef.getValueTreeState()
                     .getRawParameterValue("seq_steps")->load());
     if (steps != numVisibleSteps)
         syncStepCount();
 
-    // Repaint grid
-    for (int i = 0; i < numVisibleSteps; ++i)
-        stepCols[static_cast<size_t>(i)]->repaint();
+    // Repaint only steps that changed (current + previous)
+    static int prevStep = -1;
+    if (currentStep != prevStep)
+    {
+        if (prevStep >= 0 && prevStep < MAX_COLS)
+            stepCols[static_cast<size_t>(prevStep)]->repaint();
+        if (currentStep >= 0 && currentStep < MAX_COLS)
+            stepCols[static_cast<size_t>(currentStep)]->repaint();
+        prevStep = currentStep;
+    }
 }
+
+static const auto kSeqCol = juce::Colour(0xff26a69a);  // teal for sequencer
 
 void SequencerPanel::paint(juce::Graphics& g)
 {
     g.fillAll(kCard);
+
+    // SEQ header bar
+    g.setColour(kSeqCol.withAlpha(0.6f));
+    g.fillRect(0, 0, getWidth(), 3);
 
     // Playing LED
     bool playing = processorRef.getValueTreeState()
@@ -301,56 +379,81 @@ void SequencerPanel::paint(juce::Graphics& g)
                              static_cast<float>(gridArea.getX()),
                              static_cast<float>(gridArea.getRight()));
     }
+
+    // Separator above Arp row
+    int arpY = arpEnable.getY();
+    if (arpY > 0)
+    {
+        g.setColour(kBorder);
+        g.drawHorizontalLine(arpY - 2, 6.0f, static_cast<float>(getWidth() - 6));
+    }
 }
 
 void SequencerPanel::resized()
 {
     auto area = getLocalBounds().reduced(6, 3);
-    int rH = 22;  // row height
-    int g = 3;    // gap
-    int comboW = 56;
+    int rH = 22;
+    int g = 3;
 
-    // ═══ Row 1: Transport, step counts, division, BPM ═══
+    // ═══ Row 1: LED, transport, step count, division, BPM, MIDI ═══
     auto r1 = area.removeFromTop(rH);
     r1.removeFromLeft(14); // LED space
     playButton.setBounds(r1.removeFromLeft(26));  r1.removeFromLeft(g);
     stopButton.setBounds(r1.removeFromLeft(26));  r1.removeFromLeft(g * 2);
 
-    for (int i = 0; i < 5; ++i)
+    stepCountBox.setBounds(r1.removeFromLeft(58)); r1.removeFromLeft(g);
+
+    // Division toggle strip
+    int divBtnW = 32;
+    for (int i = 0; i < kNumDivBtns; ++i)
     {
-        stepCountBtns[static_cast<size_t>(i)].setBounds(r1.removeFromLeft(26));
-        r1.removeFromLeft(1);
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < kNumDivBtns - 1) edges |= juce::Button::ConnectedOnRight;
+        divBtns[i].setConnectedEdges(edges);
+        divBtns[i].setBounds(r1.removeFromLeft(divBtnW));
     }
-    r1.removeFromLeft(g * 2);
-    divisionBox.setBounds(r1.removeFromLeft(comboW));
     r1.removeFromLeft(g);
-    bpmRow->setBounds(r1);  // BPM gets all remaining width
+
+    // BPM gets remaining width after MIDI monitor
+    midiMonitor.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.6f)));
+    midiMonitor.setBounds(r1.removeFromRight(120));
+    r1.removeFromRight(g);
+    bpmRow->setBounds(r1);
 
     area.removeFromTop(g);
 
-    // ═══ Row 2: Preset, Gate, Glide, MIDI monitor ═══
+    // ═══ Row 2: Preset, Gate, Glide — balanced ═══
     auto r2 = area.removeFromTop(rH);
-    presetBox.setBounds(r2.removeFromLeft(90));   r2.removeFromLeft(g);
-    int slW = (r2.getWidth() - 120 - g * 3) / 2;  // split remaining for Gate + Glide
-    gateRow->setBounds(r2.removeFromLeft(slW));    r2.removeFromLeft(g);
-    glideRow->setBounds(r2.removeFromLeft(slW));   r2.removeFromLeft(g);
-    midiMonitor.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.6f)));
-    midiMonitor.setBounds(r2);  // MIDI monitor gets rest
+    presetBox.setBounds(r2.removeFromLeft(110));  r2.removeFromLeft(g);
+    int slW = (r2.getWidth() - g) / 2;
+    gateRow->setBounds(r2.removeFromLeft(slW));   r2.removeFromLeft(g);
+    glideRow->setBounds(r2);
 
     area.removeFromTop(g);
 
     // ═══ Row 4 (bottom): Arp controls ═══
     auto r4 = area.removeFromBottom(rH);
-    arpEnable.setBounds(r4.removeFromLeft(48));    r4.removeFromLeft(g);
-    arpModeBox.setBounds(r4.removeFromLeft(comboW + 10)); r4.removeFromLeft(g);
-    arpRateBox.setBounds(r4.removeFromLeft(comboW));      r4.removeFromLeft(g);
-    int arpSlW = (r4.getWidth() - g) / 2;
-    arpOctRow->setBounds(r4.removeFromLeft(arpSlW));  r4.removeFromLeft(g);
+    arpEnable.setBounds(r4.removeFromLeft(42));    r4.removeFromLeft(g);
+    arpModeBox.setBounds(r4.removeFromLeft(80));   r4.removeFromLeft(g);
+    arpRateBox.setBounds(r4.removeFromLeft(60));   r4.removeFromLeft(g);
+
+    // Oct toggle strip [1][2][3][4]
+    int octBtnW = 22;
+    for (int i = 0; i < kNumOctBtns; ++i)
+    {
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < kNumOctBtns - 1) edges |= juce::Button::ConnectedOnRight;
+        arpOctBtns[i].setConnectedEdges(edges);
+        arpOctBtns[i].setBounds(r4.removeFromLeft(octBtnW));
+    }
+    r4.removeFromLeft(g);
     arpGateRow->setBounds(r4);
 
     area.removeFromBottom(g);
 
-    // ═══ Row 3: Step grid (everything remaining) ═══
+    // ═══ Row 3: Step grid ═══
     gridArea = area;
     if (numVisibleSteps > 0 && gridArea.getWidth() > numVisibleSteps)
     {
