@@ -1,0 +1,82 @@
+# Third-Party Licenses
+
+T5ynth incorporates or depends on the following third-party components.
+
+---
+
+## Stable Audio Open 1.0
+
+**Model:** `stabilityai/stable-audio-open-1.0`
+**License:** Stability AI Community License Agreement
+**URL:** https://huggingface.co/stabilityai/stable-audio-open-1.0
+
+T5ynth uses the Stable Audio Open 1.0 diffusion model for audio generation.
+The model is not included in this repository and must be downloaded separately
+by the user from HuggingFace (requires acceptance of the model license).
+
+**Powered by Stability AI**
+
+Per the Stability AI Community License Agreement:
+- The model is licensed for research, non-commercial, and commercial use
+  (with revenue threshold; see license for details)
+- Commercial use above USD $1,000,000 annual revenue requires a separate
+  enterprise license from Stability AI
+- Users must comply with Stability AI's Acceptable Use Policy
+- The model may not be used to create competing foundational AI models
+- Full license: https://stability.ai/community-license-agreement
+
+Training data attribution: https://info.stability.ai/attributions
+
+---
+
+## JUCE Framework
+
+**Version:** 8.0.6
+**License:** GNU AGPLv3 / Commercial JUCE License (dual-licensed)
+**URL:** https://juce.com
+**Full license:** See `JUCE/LICENSE.md`
+
+T5ynth uses JUCE under the AGPLv3. The JUCE source code is vendored in the
+`JUCE/` directory. JUCE itself includes additional third-party components
+documented in `JUCE/LICENSE.md` (AudioUnitSDK, Oboe, FLAC, Ogg Vorbis,
+VST3 SDK, LV2, and others).
+
+---
+
+## Reverb Impulse Responses — EMT 140 Plate
+
+**Files:**
+- `resources/ir/emt_140_plate_bright.wav`
+- `resources/ir/emt_140_plate_medium.wav`
+- `resources/ir/emt_140_plate_dark.wav`
+
+These impulse responses are modeled after the classic EMT 140 plate reverb.
+They were created for the T5ynth project and are distributed under the same
+GPLv3 license as the rest of the project.
+
+---
+
+## Python Dependencies
+
+The following Python packages are used by the inference backend
+(`backend/requirements.txt`). They are not included in this repository
+and are installed separately by the user.
+
+| Package       | License      | Purpose                              |
+|---------------|-------------|--------------------------------------|
+| diffusers     | Apache 2.0  | Stable Audio pipeline                |
+| transformers  | Apache 2.0  | T5 text encoder                     |
+| torch         | BSD-3       | Deep learning framework              |
+| torchsde      | Apache 2.0  | BrownianTree noise (SDE sampler)     |
+| soundfile     | BSD-3       | Audio I/O                            |
+| scipy         | BSD-3       | Signal processing                    |
+| sentencepiece | Apache 2.0  | T5 tokenizer (vendored in C++ build) |
+
+---
+
+## SentencePiece
+
+**License:** Apache 2.0
+**URL:** https://github.com/google/sentencepiece
+
+Fetched at build time via CMake FetchContent for the native C++ T5 tokenizer.

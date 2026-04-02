@@ -39,7 +39,7 @@ void StatusBar::paint(juce::Graphics& g)
     g.drawText(statusText, textX, 0, textW, getHeight(),
                juce::Justification::centredLeft);
 
-    // Preset name (centered between status and buttons)
+    // Preset name
     if (presetName.isNotEmpty())
     {
         int presetX = textX + textW / 2;
@@ -47,6 +47,14 @@ void StatusBar::paint(juce::Graphics& g)
         g.drawText(presetName, presetX, 0, textW / 2, getHeight(),
                    juce::Justification::centredRight);
     }
+
+    // "Powered by Stability AI" — required by Stable Audio Community License
+    float smallFs = juce::jlimit(8.0f, 10.0f, h * 0.45f);
+    g.setFont(juce::FontOptions(smallFs));
+    g.setColour(kDimmer);
+    int poweredW = 130;
+    g.drawText("Powered by Stability AI", saveBtn.getX() - poweredW - 12, 0, poweredW, getHeight(),
+               juce::Justification::centredRight);
 }
 
 void StatusBar::resized()
