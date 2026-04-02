@@ -58,10 +58,10 @@ private:
     };
     Scrim dimScrim;
     DimensionExplorer dimensionExplorer;
-    juce::TextButton dimApplyBtn    { "Anwenden + generieren" };
+    juce::TextButton dimApplyBtn    { "Apply + Generate" };
     juce::TextButton dimUndoBtn     { "Undo" };
     juce::TextButton dimRedoBtn     { "Redo" };
-    juce::TextButton dimResetBtn    { juce::String::fromUTF8("Alle zur" "\xc3\xbc" "cksetzen") };
+    juce::TextButton dimResetBtn    { "Reset All" };
     bool dimExplorerVisible = false;
 
     void showDimExplorer();
