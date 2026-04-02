@@ -514,14 +514,14 @@ void SynthPanel::updateVisibility()
 float SynthPanel::fs() const
 {
     // Derive font size from available height so all content fits.
-    // Content budget: ~54 f-units (28 rows * 1.4 + headers + gaps)
+    // Content budget: ~53 f-units (27 rows * 1.4 + headers + gaps)
     // plus waveform at 12% of panel height.
     float h = static_cast<float>(getHeight());
     float padY = h * 0.005f;
     float available = h - 2.0f * padY;
     float waveform = h * 0.12f;
     float remaining = available - waveform;
-    float maxF = remaining / 54.0f;
+    float maxF = remaining / 53.0f;
     return juce::jlimit(9.0f, 20.0f, maxF);
 }
 
@@ -621,8 +621,16 @@ void SynthPanel::paint(juce::Graphics& g)
     // Card: Engine mode + Waveform + Loop controls + Scan
     {
         int top = engineHeader.getY() - inset;
-        int bot = scanHint.getBottom() + inset;
+        int bot = engineCardBottom + inset;
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top));
+
+        // Switchbox borders
+        paintSwitchBoxBorder(g, engineSwitchBounds);
+        if (oneshotBtn.isVisible())
+        {
+            paintSwitchBoxBorder(g, loopSwitchBounds);
+            paintSwitchBoxBorder(g, optSwitchBounds);
+        }
     }
 
     // Card: Filter section
@@ -630,6 +638,10 @@ void SynthPanel::paint(juce::Graphics& g)
         int top = filterHeader.getY() - inset;
         int bot = kbdTrackRow->getBottom();
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
+
+        // Filter switchbox borders
+        paintSwitchBoxBorder(g, filterTypeSwitchBounds);
+        paintSwitchBoxBorder(g, filterSlopeSwitchBounds);
     }
 
     // Card: Modulation (ENVs + LFOs + Drift)
@@ -690,13 +702,15 @@ void SynthPanel::resized()
         int cellW = juce::roundToInt(f * 5.0f);  // uniform cell width
         samplerBtn.setBounds(modeRow.removeFromLeft(cellW));
         wavetableBtn.setBounds(modeRow.removeFromLeft(cellW));
+        engineSwitchBounds = samplerBtn.getBounds().getUnion(wavetableBtn.getBounds());
     }
     area.removeFromTop(gap);
 
     // ── Waveform ──
     int waveH = juce::roundToInt(h * 0.12f);
     waveformDisplay.setBounds(area.removeFromTop(waveH));
-    area.removeFromTop(gap);
+    area.removeFromTop(gap * 3);  // extra room for bracket drag handles
+    engineCardBottom = waveformDisplay.getBottom();
 
     // ── Sampler-only controls ──
     if (oneshotBtn.isVisible())
@@ -707,6 +721,7 @@ void SynthPanel::resized()
         oneshotBtn.setBounds(loopRow.removeFromLeft(cellW));
         loopModeBtn.setBounds(loopRow.removeFromLeft(cellW));
         pingpongBtn.setBounds(loopRow.removeFromLeft(cellW));
+        loopSwitchBounds = oneshotBtn.getBounds().getUnion(pingpongBtn.getBounds());
         area.removeFromTop(gap);
 
         crossfadeRow->setBounds(area.removeFromTop(rowH));
@@ -718,7 +733,9 @@ void SynthPanel::resized()
         normalizeToggle.setBounds(optRow.removeFromLeft(optW));
         optRow.removeFromLeft(4);
         loopOptimizeToggle.setBounds(optRow.removeFromLeft(optW));
+        optSwitchBounds = normalizeToggle.getBounds().getUnion(loopOptimizeToggle.getBounds());
         area.removeFromTop(gap);
+        engineCardBottom = loopOptimizeToggle.getBottom();
     }
 
     // ── Wavetable-only controls ──
@@ -728,6 +745,7 @@ void SynthPanel::resized()
         scanHint.setFont(juce::FontOptions(f * 0.7f));
         scanHint.setBounds(area.removeFromTop(juce::roundToInt(f * 0.9f)));
         area.removeFromTop(gap);
+        engineCardBottom = scanHint.getBottom();
     }
     area.removeFromTop(gap * 2);
 
@@ -742,12 +760,16 @@ void SynthPanel::resized()
         int cellW = juce::roundToInt(f * 3.2f);
         for (int i = 0; i < kNumTypeBtns; ++i)
             filterTypeBtns[i].setBounds(filterHdr.removeFromLeft(cellW));
+        filterTypeSwitchBounds = filterTypeBtns[0].getBounds()
+            .getUnion(filterTypeBtns[kNumTypeBtns - 1].getBounds());
 
         filterHdr.removeFromLeft(juce::roundToInt(f * 0.5f));
 
         int slopeCellW = juce::roundToInt(f * 3.2f);
         for (int i = 0; i < kNumSlopeBtns; ++i)
             filterSlopeBtns[i].setBounds(filterHdr.removeFromLeft(slopeCellW));
+        filterSlopeSwitchBounds = filterSlopeBtns[0].getBounds()
+            .getUnion(filterSlopeBtns[kNumSlopeBtns - 1].getBounds());
     }
     area.removeFromTop(gap);
 

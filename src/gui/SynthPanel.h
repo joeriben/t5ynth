@@ -50,6 +50,11 @@ private:
     // ── Section headers ──
     juce::Label engineHeader, filterHeader, modHeader, driftHeader;
 
+    // ── Layout rects for paint() ──
+    juce::Rectangle<int> engineSwitchBounds, loopSwitchBounds, optSwitchBounds;
+    juce::Rectangle<int> filterTypeSwitchBounds, filterSlopeSwitchBounds;
+    int engineCardBottom = 0;
+
     // ── Filter ──
     // Type switchbox: OFF LP HP BP (drives filter_type APVTS via hidden ComboBox)
     static constexpr int kNumTypeBtns = 4;

@@ -45,13 +45,20 @@ inline void paintSectionHeader(juce::Label& lbl, const juce::String& text, juce:
     lbl.setJustificationType(juce::Justification::centredLeft);
 }
 
-/** Paint a rounded card background with subtle border. */
-inline void paintCard(juce::Graphics& g, juce::Rectangle<int> bounds, float cornerSize = 6.0f)
+/** Paint a card background with subtle border (sharp corners). */
+inline void paintCard(juce::Graphics& g, juce::Rectangle<int> bounds)
 {
     g.setColour(kCard);
-    g.fillRoundedRectangle(bounds.toFloat(), cornerSize);
+    g.fillRect(bounds);
     g.setColour(kBorder);
-    g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), cornerSize, 1.0f);
+    g.drawRect(bounds, 1);
+}
+
+/** Paint a border around a switchbox button group (sharp corners). */
+inline void paintSwitchBoxBorder(juce::Graphics& g, juce::Rectangle<int> bounds)
+{
+    g.setColour(kBorder);
+    g.drawRect(bounds, 1);
 }
 
 /**
