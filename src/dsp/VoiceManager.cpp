@@ -85,8 +85,8 @@ void VoiceManager::noteOff(int note)
         if (v.isActive() && !v.isReleasing() && v.getCurrentNote() == note)
             v.noteOff();
     }
-    // Don't updateGainTarget here — voices are still active during release.
-    // Gain updates when voices actually become inactive (in renderBlock).
+    // Update gain: held voice count decreased (releasing voices don't count).
+    updateGainTarget();
 }
 
 void VoiceManager::allNotesOff()
@@ -285,7 +285,9 @@ bool VoiceManager::hasActiveVoices() const
 
 void VoiceManager::updateGainTarget()
 {
-    int n = getActiveVoiceCount();
+    // Only count held (non-releasing) voices — releasing voices are already
+    // fading via their own amplitude envelope and don't need extra attenuation.
+    int n = getHeldVoiceCount();
     float newTarget = (n > 0) ? 1.0f / std::sqrt(static_cast<float>(n)) : 1.0f;
 
     if (newTarget != targetGain)
@@ -295,4 +297,14 @@ void VoiceManager::updateGainTarget()
         gainRampIncr = (targetGain - currentGain) / static_cast<float>(rampSamples);
         gainRampSamplesLeft = rampSamples;
     }
+}
+
+int VoiceManager::getHeldVoiceCount() const
+{
+    int count = 0;
+    for (const auto& v : voices)
+    {
+        if (v.isActive() && !v.isReleasing()) count++;
+    }
+    return count;
 }

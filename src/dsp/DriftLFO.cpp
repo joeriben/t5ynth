@@ -35,6 +35,9 @@ float DriftLFO::halfRangeForTarget(int target)
         case TgtDelayFb:   return 0.3f;   // delay feedback: ±30%
         case TgtDelayMix:  return 0.5f;   // delay mix: ±0.5
         case TgtReverbMix: return 0.5f;   // reverb mix: ±0.5
+        case TgtEnv1Amt:   return 0.5f;   // ENV1 amount: ±50%
+        case TgtEnv2Amt:   return 0.5f;   // ENV2 amount: ±50%
+        case TgtEnv3Amt:   return 0.5f;   // ENV3 amount: ±50%
         default:           return 0.0f;   // None
     }
 }

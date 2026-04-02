@@ -77,5 +77,6 @@ private:
     int stealVoice() const; // oldest-note policy
 
     void updateGainTarget();
+    int getHeldVoiceCount() const;
     static constexpr float GAIN_RAMP_MS = 5.0f;
 };

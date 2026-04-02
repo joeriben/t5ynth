@@ -25,9 +25,9 @@ struct BlockParams
 
     // LFOs (global rates/depths for cross-mod, targets for routing)
     float lfo1Rate = 1.0f, lfo1Depth = 1.0f;
-    int   lfo1Wave = 0, lfo1Target = 9; // 9 = None
+    int   lfo1Wave = 0, lfo1Target = 12; // 12 = None
     float lfo2Rate = 1.0f, lfo2Depth = 1.0f;
-    int   lfo2Wave = 0, lfo2Target = 9;
+    int   lfo2Wave = 0, lfo2Target = 12;
 
     // Filter
     bool  filterEnabled = false;

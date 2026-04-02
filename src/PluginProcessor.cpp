@@ -212,10 +212,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift targets + waveform selection
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift1_target", 1}, "Drift1 Target",
-        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix"}, 0));
+        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift2_target", 1}, "Drift2 Target",
-        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix"}, 0));
+        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift1_wave", 1}, "Drift1 Wave",
         juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
@@ -226,7 +226,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift 3 target + waveform (was missing — drift3 rate/depth existed but had no target/wave)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift3_target", 1}, "Drift3 Target",
-        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix"}, 0));
+        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift3_wave", 1}, "Drift3 Wave",
         juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
@@ -262,15 +262,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::StringArray{"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
                           "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth", "---"}, 12));
     // LFO targets: 0=Filter, 1=Scan, 2=Pitch, 3=DlyTime, 4=DlyFB, 5=DlyMix, 6=RevMix,
-    //              7=LFO1Rate, 8=LFO2Rate, 9=LFO1Depth, 10=LFO2Depth, 11=None
+    //              7=LFOxRate, 8=LFOxDepth, 9=ENV1Amt, 10=ENV2Amt, 11=ENV3Amt, 12=None
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_target", 1}, "LFO1 Target",
         juce::StringArray{"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                          "LFO2 Rate", "LFO2 Depth", "---"}, 9));
+                          "LFO2 Rate", "LFO2 Depth", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "---"}, 12));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo2_target", 1}, "LFO2 Target",
         juce::StringArray{"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                          "LFO1 Rate", "LFO1 Depth", "---"}, 9));
+                          "LFO1 Rate", "LFO1 Depth", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "---"}, 12));
 
     // LFO Mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -519,6 +519,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.driftPitchOffset  = driftLfo.getOffsetForTarget(DriftLFO::TgtPitch);
     // Block-level drift targets (delay/reverb) applied after modDelayTime etc. are declared
 
+    // Drift → envelope amounts (additive, clamped to 0–1)
+    bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  + driftLfo.getOffsetForTarget(DriftLFO::TgtEnv1Amt));
+    bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount + driftLfo.getOffsetForTarget(DriftLFO::TgtEnv2Amt));
+    bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount + driftLfo.getOffsetForTarget(DriftLFO::TgtEnv3Amt));
+
     // ── Sampler settings ─────────────────────────────────────────────────────
     int loopModeIdx = static_cast<int>(parameters.getRawParameterValue("loop_mode")->load());
     masterSampler.setLoopMode(static_cast<SamplePlayer::LoopMode>(loopModeIdx));
@@ -674,6 +679,18 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
             lfo1Buf[i] = l1;
             lfo2Buf[i] = l2;
+        }
+
+        // LFO → envelope amounts (multiplicative, clamped to 0–1)
+        {
+            float l1End = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
+            float l2End = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
+            if (bp.lfo1Target == 9)  bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  * (1.0f + l1End));
+            if (bp.lfo1Target == 10) bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount * (1.0f + l1End));
+            if (bp.lfo1Target == 11) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l1End));
+            if (bp.lfo2Target == 9)  bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  * (1.0f + l2End));
+            if (bp.lfo2Target == 10) bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount * (1.0f + l2End));
+            if (bp.lfo2Target == 11) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l2End));
         }
 
         // Render all voices (summed with 1/sqrt(N) scaling)

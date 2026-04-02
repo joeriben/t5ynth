@@ -32,6 +32,9 @@ public:
         TgtDelayFb,    // 9
         TgtDelayMix,   // 10
         TgtReverbMix,  // 11
+        TgtEnv1Amt,    // 12
+        TgtEnv2Amt,    // 13
+        TgtEnv3Amt,    // 14
         NumTargets
     };
 
