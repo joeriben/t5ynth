@@ -830,7 +830,23 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     else if (reverbEnabled)
     {
-        processReverb(buffer);
+        // Reverb as send: dry signal stays, wet is added on top
+        for (int ch = 0; ch < numChannels; ++ch)
+            reverbSendBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+
+        float revMixVal = juce::jlimit(0.0f, 1.0f,
+            parameters.getRawParameterValue("reverb_mix")->load() + modReverbMix);
+        if (reverbIsAlgo) { algoReverb.setMix(1.0f); } else { reverb.setMix(1.0f); }
+        processReverb(reverbSendBuffer);
+        if (reverbIsAlgo) { algoReverb.setMix(revMixVal); } else { reverb.setMix(revMixVal); }
+
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            const auto* rev = reverbSendBuffer.getReadPointer(ch);
+            auto* out = buffer.getWritePointer(ch);
+            for (int i = 0; i < numSamples; ++i)
+                out[i] += rev[i] * revMixVal;
+        }
     }
 
     // ── Update modulated values for GUI ghost indicators ────────────────────
