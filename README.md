@@ -7,7 +7,7 @@
 
 T5ynth is a JUCE-based synthesizer plugin (Standalone / VST3 / AU) that repurposes Stability AI's [Stable Audio Open](https://huggingface.co/stabilityai/stable-audio-open-1.0) model as an oscillator — not to generate finished music, but to produce raw sonic material for human-nonhuman artistic collaboration.
 
-> *T5ynth is developed by [Prof. Dr. Benjamin Jörissen](https://github.com/joeriben) as part of the [AI4ArtsEd](https://github.com/joeriben/ucdcae-ai-lab) project at the UCDCAE AI Lab.*
+> *T5ynth is developed by [Prof. Dr. Benjamin Jörissen](https://github.com/joeriben) as part of the [AI4ArtsEd](https://github.com/joeriben/ucdcae-ai-lab) project at the UCDCAE AI Lab. Funded by the German Federal Ministry for Family Affairs, Senior Citizens, Women and Youth (BMFSFJ), grant no. 01JKT2408A.*
 
 ---
 
