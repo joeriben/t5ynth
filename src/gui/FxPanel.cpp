@@ -101,6 +101,10 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
 
 void FxPanel::updateVisibility()
 {
+    // Guard: called by APVTS attachment before all components are created
+    if (!reverbMixRow)
+        return;
+
     bool delayOn = delayTypeHidden.getSelectedId() > 1; // > OFF
     for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
         r->setVisible(delayOn);
