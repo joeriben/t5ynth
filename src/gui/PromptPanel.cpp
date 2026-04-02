@@ -11,7 +11,7 @@ static void makeSlider(juce::Slider& s, juce::Component* p)
 {
     s.setSliderStyle(juce::Slider::LinearHorizontal);
     s.setTextBoxStyle(juce::Slider::NoTextBox, true, 0, 0);
-    s.setColour(juce::Slider::trackColourId, kAccent);
+    s.setColour(juce::Slider::trackColourId, kOscCol);
     s.setColour(juce::Slider::backgroundColourId, kSurface);
     p->addAndMakeVisible(s);
 }
@@ -42,7 +42,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // Alpha
     makeSlider(alphaSlider, this);
     makeLabel(alphaLabel, "Alpha", kDim, juce::Justification::centredLeft, this);
-    makeLabel(alphaValue, "0.00", kAccent, juce::Justification::centredRight, this);
+    makeLabel(alphaValue, "0.00", kOscCol, juce::Justification::centredRight, this);
     makeLabel(alphaHint, "Interpolation: -1.0 = A only, 1.0 = B only", kDim, juce::Justification::centredLeft, this);
     alphaSlider.onValueChange = [this] {
         alphaValue.setText(juce::String(alphaSlider.getValue(), 2), juce::dontSendNotification);
@@ -51,7 +51,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // Magnitude
     makeSlider(magnitudeSlider, this);
     makeLabel(magLabel, "Magnitude", kDim, juce::Justification::centredLeft, this);
-    makeLabel(magValue, "1.00", kAccent, juce::Justification::centredRight, this);
+    makeLabel(magValue, "1.00", kOscCol, juce::Justification::centredRight, this);
     makeLabel(magHint, "Embedding scale (1.0 = unchanged)", kDim, juce::Justification::centredLeft, this);
     magnitudeSlider.onValueChange = [this] {
         magValue.setText(juce::String(magnitudeSlider.getValue(), 2), juce::dontSendNotification);
@@ -60,7 +60,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // Noise
     makeSlider(noiseSlider, this);
     makeLabel(noiseLabel, "Noise", kDim, juce::Justification::centredLeft, this);
-    makeLabel(noiseValue, "0.00", kAccent, juce::Justification::centredRight, this);
+    makeLabel(noiseValue, "0.00", kOscCol, juce::Justification::centredRight, this);
     makeLabel(noiseHint, "Gaussian noise on embedding (0 = none)", kDim, juce::Justification::centredLeft, this);
     noiseSlider.onValueChange = [this] {
         noiseValue.setText(juce::String(noiseSlider.getValue(), 2), juce::dontSendNotification);
@@ -70,7 +70,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // Duration
     makeSlider(durationSlider, this);
     makeLabel(durLabel, "Duration", kDim, juce::Justification::centredLeft, this);
-    makeLabel(durValue, "1.0s", kAccent, juce::Justification::centredRight, this);
+    makeLabel(durValue, "1.0s", kOscCol, juce::Justification::centredRight, this);
     makeLabel(durHint, "Audio length (seconds)", kDim, juce::Justification::centredLeft, this);
     durationSlider.onValueChange = [this] {
         durValue.setText(juce::String(durationSlider.getValue(), 1) + "s", juce::dontSendNotification);
@@ -79,7 +79,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // Start Position
     makeSlider(startSlider, this);
     makeLabel(startLabel, "Start", kDim, juce::Justification::centredLeft, this);
-    makeLabel(startValue, "0%", kAccent, juce::Justification::centredRight, this);
+    makeLabel(startValue, "0%", kOscCol, juce::Justification::centredRight, this);
     makeLabel(startHint, "0% = attack, higher = sustained", kDim, juce::Justification::centredLeft, this);
     startSlider.onValueChange = [this] {
         startValue.setText(juce::String(juce::roundToInt(startSlider.getValue() * 100.0)) + "%", juce::dontSendNotification);
@@ -88,7 +88,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // Steps
     makeSlider(stepsSlider, this);
     makeLabel(stepsLabel, "Steps", kDim, juce::Justification::centredLeft, this);
-    makeLabel(stepsValue, "20", kAccent, juce::Justification::centredRight, this);
+    makeLabel(stepsValue, "20", kOscCol, juce::Justification::centredRight, this);
     makeLabel(stepsHint, "More = higher quality", kDim, juce::Justification::centredLeft, this);
     stepsSlider.onValueChange = [this] {
         stepsValue.setText(juce::String(juce::roundToInt(stepsSlider.getValue())), juce::dontSendNotification);
@@ -97,7 +97,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     // CFG
     makeSlider(cfgSlider, this);
     makeLabel(cfgLabel, "CFG", kDim, juce::Justification::centredLeft, this);
-    makeLabel(cfgValue, "7.0", kAccent, juce::Justification::centredRight, this);
+    makeLabel(cfgValue, "7.0", kOscCol, juce::Justification::centredRight, this);
     makeLabel(cfgHint, "Classifier-free guidance", kDim, juce::Justification::centredLeft, this);
     cfgSlider.onValueChange = [this] {
         cfgValue.setText(juce::String(cfgSlider.getValue(), 1), juce::dontSendNotification);

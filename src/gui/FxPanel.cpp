@@ -12,16 +12,20 @@ static juce::String fmtDampHz(double v)
 
 FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
 {
+    // Section header
+    paintSectionHeader(fxHeader, "EFFECTS", kFxCol);
+    addAndMakeVisible(fxHeader);
+
     // ── Delay ──
     delayToggle.setColour(juce::ToggleButton::textColourId, kDim);
-    delayToggle.setColour(juce::ToggleButton::tickColourId, kAccent);
+    delayToggle.setColour(juce::ToggleButton::tickColourId, kFxCol);
     delayToggle.onClick = [this] { if (initialized) { repaint(); resized(); } };
     addAndMakeVisible(delayToggle);
 
-    delayTimeRow = std::make_unique<SliderRow>("Time", fmtMs);
-    delayFbRow   = std::make_unique<SliderRow>("FB",   fmtF2);
-    delayDampRow = std::make_unique<SliderRow>("Damp", fmtDampHz);
-    delayMixRow  = std::make_unique<SliderRow>("Mix",  fmtF2);
+    delayTimeRow = std::make_unique<SliderRow>("Time", fmtMs, kFxCol);
+    delayFbRow   = std::make_unique<SliderRow>("FB",   fmtF2, kFxCol);
+    delayDampRow = std::make_unique<SliderRow>("Damp", fmtDampHz, kFxCol);
+    delayMixRow  = std::make_unique<SliderRow>("Mix",  fmtF2, kFxCol);
 
     for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
         addAndMakeVisible(*r);
@@ -38,14 +42,14 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
 
     // ── Reverb ──
     reverbToggle.setColour(juce::ToggleButton::textColourId, kDim);
-    reverbToggle.setColour(juce::ToggleButton::tickColourId, kAccent);
+    reverbToggle.setColour(juce::ToggleButton::tickColourId, kFxCol);
     reverbToggle.onClick = [this] { if (initialized) { repaint(); resized(); } };
     addAndMakeVisible(reverbToggle);
 
     reverbIrBox.addItemList({"Bright", "Medium", "Dark"}, 1);
     addAndMakeVisible(reverbIrBox);
 
-    reverbMixRow = std::make_unique<SliderRow>("Mix", fmtF2);
+    reverbMixRow = std::make_unique<SliderRow>("Mix", fmtF2, kFxCol);
     addAndMakeVisible(*reverbMixRow);
 
     reverbMixA = std::make_unique<SA>(apvts, "reverb_mix", reverbMixRow->getSlider());
@@ -76,7 +80,12 @@ void FxPanel::paint(juce::Graphics& g)
 
 void FxPanel::resized()
 {
-    auto area = getLocalBounds().reduced(6, 2);
+    auto area = getLocalBounds().reduced(6, 0);
+    int headerH = 18;
+    fxHeader.setFont(juce::FontOptions(headerH * 0.78f));
+    fxHeader.setBounds(area.removeFromTop(headerH));
+    area.removeFromTop(2);
+
     int rowH = juce::jmin(juce::roundToInt(static_cast<float>(getHeight()) * 0.22f), 20);
     int gap = 2;
 

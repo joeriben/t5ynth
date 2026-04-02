@@ -17,6 +17,14 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     addAndMakeVisible(fxPanel);
     addAndMakeVisible(sequencerPanel);
     addAndMakeVisible(statusBar);
+
+    // Left column section headers
+    paintSectionHeader(oscHeader, "OSCILLATOR", kOscCol);
+    addAndMakeVisible(oscHeader);
+    paintSectionHeader(axesHeader, "AXES", kOscCol);
+    addAndMakeVisible(axesHeader);
+    paintSectionHeader(dimHeader, "DIM EXPLORER", kOscCol);
+    addAndMakeVisible(dimHeader);
     // PresetPanel is kept as logic handler but not shown — buttons are in StatusBar
 
     // Wire preset import callback
@@ -260,23 +268,35 @@ void MainPanel::paint(juce::Graphics& g)
     g.drawVerticalLine(juce::roundToInt(x1), 0.0f, footerTop);
     g.drawHorizontalLine(juce::roundToInt(footerTop), 0.0f, w);
 
-    // ── Left column: ONE card "OSCILLATOR" covering everything ──
-    int col1Left = promptPanel.getX();
-    int col1Right = promptPanel.getRight();
-    int col1Top = promptPanel.getY() - 22;
-    int col1Bot = mainGenerateBtn.getBottom() + 4;
-    int cardW = col1Right - col1Left;
+    int inset = 4;
 
-    // Card background
-    paintCard(g, juce::Rectangle<int>(col1Left, col1Top, cardW, col1Bot - col1Top));
+    // Card 1: OSCILLATOR (oscHeader + promptPanel)
+    {
+        int top = oscHeader.getY() - inset;
+        int bot = promptPanel.getBottom() + inset;
+        int left = oscHeader.getX() - inset;
+        int cardW = promptPanel.getWidth() + inset * 2;
+        paintCard(g, juce::Rectangle<int>(left, top, cardW, bot - top));
+    }
 
-    // Header bar — green like Generate button
-    int headerH = 18;
-    g.setColour(juce::Colour(0xff4caf50).withAlpha(0.7f));
-    g.fillRect(col1Left + 1, col1Top + 1, cardW - 2, headerH);
-    g.setColour(juce::Colour(0xff0e1018));
-    g.setFont(juce::FontOptions(11.0f));
-    g.drawText(" OSCILLATOR", col1Left + 4, col1Top, cardW, headerH, juce::Justification::centredLeft);
+    // Card 2: AXES (axesHeader + axesPanel)
+    {
+        int top = axesHeader.getY() - inset;
+        int bot = axesPanel.getBottom() + inset;
+        int left = axesHeader.getX() - inset;
+        int cardW = axesPanel.getWidth() + inset * 2;
+        paintCard(g, juce::Rectangle<int>(left, top, cardW, bot - top));
+    }
+
+    // Card 3: DIM EXPLORER + Generate button
+    if (!dimExplorerVisible)
+    {
+        int top = dimHeader.getY() - inset;
+        int bot = mainGenerateBtn.getBottom() + inset;
+        int left = dimHeader.getX() - inset;
+        int cardW = dimensionExplorer.getWidth() + inset * 2;
+        paintCard(g, juce::Rectangle<int>(left, top, cardW, bot - top));
+    }
 }
 
 void MainPanel::resized()
@@ -300,35 +320,50 @@ void MainPanel::resized()
     masterVolLabel.setFont(juce::FontOptions(10.0f));
     masterVolLabel.setBounds(volArea.removeFromTop(14));
     masterVolKnob.setBounds(volArea);
-    footer.removeFromRight(6);  // gap Vol–FX
+    int footerGap = juce::jlimit(4, 8, juce::roundToInt(w * 0.005f));
+    footer.removeFromRight(footerGap);  // gap Vol–FX
     fxPanel.setBounds(footer.removeFromRight(fxW));
-    footer.removeFromRight(6);  // gap FX–Seq
+    footer.removeFromRight(footerGap);  // gap FX–Seq
     sequencerPanel.setBounds(footer);
 
-    // ═══ Col 1: OSCILLATOR — one card, header at top ═══
+    // ═══ Col 1: Three cards — OSCILLATOR, AXES, DIM EXPLORER ═══
     int col1W = juce::jlimit(240, 420, juce::roundToInt(w * 0.25f));
     auto genCol = b.removeFromLeft(col1W).reduced(6, 2);
-    genCol.removeFromTop(20); // header bar space
 
-    // Fixed heights — Prompt and Axes get exactly what they need, no more
-    constexpr int kPromptH   = 310;
-    constexpr int kAxesH     = 100;
-    constexpr int kGenBtnH   = 34;
-    constexpr int kGap       = 3;
+    int headerH = juce::jlimit(14, 20, juce::roundToInt(h * 0.022f));
+    constexpr int kGenBtnH = 34;
+    int kGap = juce::jlimit(3, 6, juce::roundToInt(h * 0.005f));
 
-    promptPanel.setBounds(genCol.removeFromTop(kPromptH));
-    genCol.removeFromTop(kGap);
-
-    axesPanel.setBounds(genCol.removeFromTop(kAxesH));
-    genCol.removeFromTop(kGap);
-
-    // Generate button at bottom (same width as other content)
-    mainGenerateBtn.setBounds(genCol.removeFromBottom(kGenBtnH));
+    // Reserve Generate button at bottom
+    auto genBtnArea = genCol.removeFromBottom(kGenBtnH);
     genCol.removeFromBottom(kGap);
 
-    // DimExplorer gets remaining
+    // Proportional distribution of remaining space
+    int available = genCol.getHeight() - headerH * 3 - kGap * 2;
+    int oscH = juce::jmax(260, juce::roundToInt(available * 0.55f));
+    int axesH = juce::jmax(80, juce::roundToInt(available * 0.18f));
+    // dimH gets the rest
+
+    // Card 1: OSCILLATOR
+    oscHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
+    oscHeader.setBounds(genCol.removeFromTop(headerH));
+    promptPanel.setBounds(genCol.removeFromTop(oscH));
+    genCol.removeFromTop(kGap);
+
+    // Card 2: AXES
+    axesHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
+    axesHeader.setBounds(genCol.removeFromTop(headerH));
+    axesPanel.setBounds(genCol.removeFromTop(axesH));
+    genCol.removeFromTop(kGap);
+
+    // Card 3: DIM EXPLORER
+    dimHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
+    dimHeader.setBounds(genCol.removeFromTop(headerH));
     if (!dimExplorerVisible)
         dimensionExplorer.setBounds(genCol);
+
+    // Generate button
+    mainGenerateBtn.setBounds(genBtnArea);
 
     // Col 2: ENGINE
     synthPanel.setBounds(b);

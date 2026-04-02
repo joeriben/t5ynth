@@ -19,7 +19,7 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
     int w = b.getWidth();
 
     // Background
-    g.setColour(isCurrentStep ? kAccent.withAlpha(0.35f)
+    g.setColour(isCurrentStep ? kSeqCol.withAlpha(0.35f)
                 : step.enabled ? kSurface : kBg);
     g.fillRect(b);
 
@@ -41,13 +41,13 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
 
         g.setColour(kDimmer.withAlpha(0.3f));
         g.fillRect(noteR);
-        g.setColour(step.enabled ? kAccent.withAlpha(0.5f) : kDim.withAlpha(0.3f));
+        g.setColour(step.enabled ? kSeqCol.withAlpha(0.5f) : kDim.withAlpha(0.3f));
         g.fillRect(noteR.getX(), noteR.getBottom() - fillH, noteR.getWidth(), fillH);
 
         g.setColour(step.enabled ? juce::Colours::white : kDim);
-        float fs = juce::jmax(8.0f, static_cast<float>(w) * 0.38f);
+        float fs = juce::jlimit(7.0f, 13.0f, static_cast<float>(w) * 0.24f);
         g.setFont(juce::FontOptions(fs));
-        g.drawText(noteName(semi), noteR, juce::Justification::centred);
+        g.drawText(noteName(semi), noteR, juce::Justification::centredTop);
     }
 
     // ── Velocity horizontal bar (55%–68%) ──
@@ -58,7 +58,7 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
         g.setColour(kDimmer.withAlpha(0.3f));
         g.fillRect(velR);
         float velPx = step.velocity * static_cast<float>(velR.getWidth());
-        g.setColour(step.enabled ? kAccent.withAlpha(0.7f) : kDim.withAlpha(0.4f));
+        g.setColour(step.enabled ? kSeqCol.withAlpha(0.7f) : kDim.withAlpha(0.4f));
         g.fillRect(velR.getX(), velR.getY(), juce::roundToInt(velPx), velR.getHeight());
     }
 
@@ -67,21 +67,21 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
     int halfW = btnArea.getWidth() / 2;
     auto onR = btnArea.removeFromLeft(halfW);
     auto glR = btnArea;
-    float btnFs = juce::jmax(7.0f, static_cast<float>(onR.getHeight()) * 0.45f);
+    float btnFs = juce::jlimit(7.0f, 11.0f, static_cast<float>(w) * 0.20f);
 
     // On button
-    g.setColour(step.enabled ? juce::Colour(0xff4caf50).withAlpha(0.6f) : kDimmer.withAlpha(0.15f));
+    g.setColour(step.enabled ? kSeqCol.withAlpha(0.45f) : kDimmer.withAlpha(0.15f));
     g.fillRect(onR.reduced(1));
     g.setColour(step.enabled ? juce::Colours::white : kDimmer);
     g.setFont(juce::FontOptions(btnFs));
     g.drawText("On", onR, juce::Justification::centred);
 
     // Glide button
-    g.setColour(step.glide ? kAccent.withAlpha(0.6f) : kDimmer.withAlpha(0.15f));
+    g.setColour(step.glide ? kSeqCol.withAlpha(0.30f) : kDimmer.withAlpha(0.15f));
     g.fillRect(glR.reduced(1));
     g.setColour(step.glide ? juce::Colours::white : kDimmer);
     g.setFont(juce::FontOptions(btnFs));
-    g.drawText("Glide", glR, juce::Justification::centred);
+    g.drawText("Gli", glR, juce::Justification::centred);
 }
 
 void SequencerPanel::StepColumn::mouseDown(const juce::MouseEvent& e)
@@ -155,6 +155,10 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
 {
     auto& apvts = p.getValueTreeState();
 
+    // Section header
+    paintSectionHeader(seqHeader, "SEQUENCER", kSeqCol);
+    addAndMakeVisible(seqHeader);
+
     // ── Transport ──
     playButton.setColour(juce::TextButton::buttonColourId, kSurface);
     playButton.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff4caf50));
@@ -177,7 +181,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     for (int i = 2; i <= 32; ++i)
         stepCountBox.addItem(juce::String(i), i);
     stepCountBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
-    stepCountBox.setColour(juce::ComboBox::textColourId, kAccent);
+    stepCountBox.setColour(juce::ComboBox::textColourId, kSeqCol);
     stepCountBox.setColour(juce::ComboBox::outlineColourId, kBorder);
     stepCountBox.onChange = [this] {
         int steps = stepCountBox.getSelectedId();
@@ -204,7 +208,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     {
         divBtns[i].setButtonText(divLabels[i]);
         divBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
-        divBtns[i].setColour(juce::TextButton::buttonOnColourId, kAccent);
+        divBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
         divBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
         divBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
         divBtns[i].setClickingTogglesState(true);
@@ -215,7 +219,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     divA = std::make_unique<CA>(apvts, "seq_division", divisionHidden);
 
     // ── BPM ──
-    bpmRow = std::make_unique<SliderRow>("BPM", [](double v) { return juce::String(juce::roundToInt(v)); });
+    bpmRow = std::make_unique<SliderRow>("BPM", [](double v) { return juce::String(juce::roundToInt(v)); }, kSeqCol);
     addAndMakeVisible(*bpmRow);
     bpmA = std::make_unique<SA>(apvts, "seq_bpm", bpmRow->getSlider());
     bpmRow->getSlider().onValueChange = [this] { bpmRow->updateValue(); };
@@ -233,14 +237,14 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     presetA = std::make_unique<CA>(apvts, "seq_preset", presetBox);
 
     // ── Gate ──
-    gateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; });
+    gateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; }, kSeqCol);
     addAndMakeVisible(*gateRow);
     gateA = std::make_unique<SA>(apvts, "seq_gate", gateRow->getSlider());
     gateRow->getSlider().onValueChange = [this] { gateRow->updateValue(); };
     gateRow->updateValue();
 
     // ── Glide ──
-    glideRow = std::make_unique<SliderRow>("Glide", [](double v) { return juce::String(juce::roundToInt(v)) + "ms"; });
+    glideRow = std::make_unique<SliderRow>("Glide", [](double v) { return juce::String(juce::roundToInt(v)) + "ms"; }, kSeqCol);
     addAndMakeVisible(*glideRow);
     glideA = std::make_unique<SA>(apvts, "seq_glide_time", glideRow->getSlider());
     glideRow->getSlider().onValueChange = [this] { glideRow->updateValue(); };
@@ -248,16 +252,41 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
 
     // ── Arp controls ──
     arpEnable.setColour(juce::ToggleButton::textColourId, kDim);
+    arpEnable.setColour(juce::ToggleButton::tickColourId, kSeqCol);
     addAndMakeVisible(arpEnable);
     arpEnableA = std::make_unique<BA>(apvts, "arp_enabled", arpEnable);
 
     arpModeBox.addItemList({"Up","Down","UpDown","Random"}, 1);
-    addAndMakeVisible(arpModeBox);
+    arpModeBox.onChange = [this] {
+        int id = arpModeBox.getSelectedId();
+        for (int i = 0; i < kNumModeBtns; ++i)
+            arpModeBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+    };
+    // arpModeBox stays hidden — APVTS attachment only
+    static const char* modeLabels[] = {"Up","Dn","U/D","Rnd"};
+    for (int i = 0; i < kNumModeBtns; ++i)
+    {
+        arpModeBtns[i].setButtonText(modeLabels[i]);
+        arpModeBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        arpModeBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
+        arpModeBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        arpModeBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        arpModeBtns[i].setClickingTogglesState(true);
+        arpModeBtns[i].setRadioGroupId(2003);
+        arpModeBtns[i].onClick = [this, i] { arpModeBox.setSelectedId(i + 1); };
+        addAndMakeVisible(arpModeBtns[i]);
+    }
     arpModeA = std::make_unique<CA>(apvts, "arp_mode", arpModeBox);
 
     arpRateBox.addItemList({"1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}, 1);
     addAndMakeVisible(arpRateBox);
     arpRateA = std::make_unique<CA>(apvts, "arp_rate", arpRateBox);
+
+    // Oct label
+    arpOctLabel.setText("Oct", juce::dontSendNotification);
+    arpOctLabel.setColour(juce::Label::textColourId, kDim);
+    arpOctLabel.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(arpOctLabel);
 
     // Arp octaves: toggle buttons [1][2][3][4] with hidden ComboBox for APVTS
     arpOctHidden.addItemList({"1","2","3","4"}, 1);
@@ -270,7 +299,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     {
         arpOctBtns[i].setButtonText(juce::String(i + 1));
         arpOctBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
-        arpOctBtns[i].setColour(juce::TextButton::buttonOnColourId, kAccent);
+        arpOctBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
         arpOctBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
         arpOctBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
         arpOctBtns[i].setClickingTogglesState(true);
@@ -280,7 +309,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     }
     arpOctA = std::make_unique<CA>(apvts, "arp_octaves", arpOctHidden);
 
-    arpGateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; });
+    arpGateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; }, kSeqCol);
     addAndMakeVisible(*arpGateRow);
     arpGateA = std::make_unique<SA>(apvts, "arp_gate", arpGateRow->getSlider());
     arpGateRow->getSlider().onValueChange = [this] { arpGateRow->updateValue(); };
@@ -353,22 +382,18 @@ void SequencerPanel::timerCallback()
     }
 }
 
-static const auto kSeqCol = juce::Colour(0xff26a69a);  // teal for sequencer
+// kSeqCol is now a global in GuiHelpers.h
 
 void SequencerPanel::paint(juce::Graphics& g)
 {
     g.fillAll(kCard);
-
-    // SEQ header bar
-    g.setColour(kSeqCol.withAlpha(0.6f));
-    g.fillRect(0, 0, getWidth(), 3);
 
     // Playing LED
     bool playing = processorRef.getValueTreeState()
                        .getRawParameterValue("seq_running")->load() > 0.5f;
     int ledX = playButton.getX() - 12;
     int ledY = playButton.getBounds().getCentreY() - 4;
-    g.setColour(playing ? juce::Colour(0xff4caf50) : kDimmer);
+    g.setColour(playing ? kSeqCol : kDimmer);
     g.fillEllipse(static_cast<float>(ledX), static_cast<float>(ledY), 8.0f, 8.0f);
 
     // Separator above step grid
@@ -391,7 +416,12 @@ void SequencerPanel::paint(juce::Graphics& g)
 
 void SequencerPanel::resized()
 {
-    auto area = getLocalBounds().reduced(6, 3);
+    auto area = getLocalBounds().reduced(6, 0);
+    int headerH = 18;
+    seqHeader.setFont(juce::FontOptions(headerH * 0.78f));
+    seqHeader.setBounds(area.removeFromTop(headerH));
+    area.removeFromTop(2);
+
     int rH = 22;
     int g = 3;
 
@@ -435,10 +465,24 @@ void SequencerPanel::resized()
     // ═══ Row 4 (bottom): Arp controls ═══
     auto r4 = area.removeFromBottom(rH);
     arpEnable.setBounds(r4.removeFromLeft(42));    r4.removeFromLeft(g);
-    arpModeBox.setBounds(r4.removeFromLeft(80));   r4.removeFromLeft(g);
+
+    // Mode toggle strip [Up][Dn][U/D][Rnd]
+    int modeBtnW = 32;
+    for (int i = 0; i < kNumModeBtns; ++i)
+    {
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < kNumModeBtns - 1) edges |= juce::Button::ConnectedOnRight;
+        arpModeBtns[i].setConnectedEdges(edges);
+        arpModeBtns[i].setBounds(r4.removeFromLeft(modeBtnW));
+    }
+    r4.removeFromLeft(g);
+
     arpRateBox.setBounds(r4.removeFromLeft(60));   r4.removeFromLeft(g);
 
-    // Oct toggle strip [1][2][3][4]
+    // Oct label + toggle strip [1][2][3][4]
+    arpOctLabel.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.55f)));
+    arpOctLabel.setBounds(r4.removeFromLeft(28));   r4.removeFromLeft(2);
     int octBtnW = 22;
     for (int i = 0; i < kNumOctBtns; ++i)
     {

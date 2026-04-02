@@ -27,7 +27,8 @@ public:
 private:
     T5ynthProcessor& processorRef;
 
-    // Col 1: GENERATION
+    // Col 1: GENERATION — three cards with headers
+    juce::Label oscHeader, axesHeader, dimHeader;
     PromptPanel promptPanel;
     AxesPanel axesPanel;
     juce::TextButton mainGenerateBtn { "Generate" };

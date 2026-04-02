@@ -31,6 +31,20 @@ static const auto kModCol    = juce::Colour(0xffff9800);  // Medium orange (LFOs
 static const auto kLfoCol    = juce::Colour(0xffff9800);  // Medium orange (LFOs)
 static const auto kDriftCol  = juce::Colour(0xffe65100);  // Dark orange (drift)
 
+// Module lead colors (for headers/sliders in each top-level module)
+static const auto kOscCol    = juce::Colour(0xff4caf50);  // Green (oscillator/generation)
+static const auto kSeqCol    = juce::Colour(0xff26a69a);  // Teal (sequencer)
+static const auto kFxCol     = juce::Colour(0xff9c27b0);  // Purple (effects)
+
+/** Configure a label as an inverted section header bar (colored bg, dark text). */
+inline void paintSectionHeader(juce::Label& lbl, const juce::String& text, juce::Colour col)
+{
+    lbl.setText(" " + text, juce::dontSendNotification);
+    lbl.setColour(juce::Label::textColourId, juce::Colour(0xff0e1018));
+    lbl.setColour(juce::Label::backgroundColourId, col.withAlpha(0.7f));
+    lbl.setJustificationType(juce::Justification::centredLeft);
+}
+
 /** Paint a rounded card background with subtle border. */
 inline void paintCard(juce::Graphics& g, juce::Rectangle<int> bounds, float cornerSize = 6.0f)
 {
@@ -123,8 +137,8 @@ public:
         auto b = getLocalBounds();
         float f = static_cast<float>(b.getHeight());
 
-        int labelW = juce::jmax(40, juce::roundToInt(b.getWidth() * 0.22f));
-        int valueW = juce::jmax(50, juce::roundToInt(b.getWidth() * 0.20f));
+        int labelW = juce::jlimit(40, 70, juce::roundToInt(b.getWidth() * 0.22f));
+        int valueW = juce::jlimit(40, 65, juce::roundToInt(b.getWidth() * 0.20f));
 
         label.setFont(juce::FontOptions(f * 0.75f));
         value.setFont(juce::FontOptions(f * 0.75f));

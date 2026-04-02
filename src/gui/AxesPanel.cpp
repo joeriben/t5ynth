@@ -33,9 +33,8 @@ static juce::String axisDisplayToKey(const juce::String& display)
 
 AxesPanel::AxesPanel()
 {
-    header.setText("AXES", juce::dontSendNotification);
-    header.setColour(juce::Label::textColourId, kDim);
-    addAndMakeVisible(header);
+    // Header is now provided by MainPanel — hide internal one
+    header.setVisible(false);
 
     slots.resize(3);
     for (size_t i = 0; i < slots.size(); ++i)
@@ -180,8 +179,7 @@ void AxesPanel::resized()
     int headerH = juce::roundToInt(f * 1.3f);
     int dotOffset = juce::roundToInt(f * 0.8f);
 
-    header.setFont(juce::FontOptions(f * 0.85f));
-    header.setBounds(area.removeFromTop(headerH));
+    // Header provided by MainPanel — skip internal header allocation
     layoutSlots(slots, area, f * 0.75f, dotOffset);
 }
 

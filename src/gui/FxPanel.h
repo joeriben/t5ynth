@@ -19,6 +19,7 @@ public:
 private:
     float fs() const;
     bool initialized = false;
+    juce::Label fxHeader;
 
     // Delay
     juce::ToggleButton delayToggle { "Delay" };

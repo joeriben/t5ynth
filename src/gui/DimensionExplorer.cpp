@@ -183,22 +183,26 @@ void DimensionExplorer::paint(juce::Graphics& g)
     g.setColour(kBorder);
     g.drawRoundedRectangle(area, 4.0f, 1.0f);
 
-    // Header
+    // Header — only in overlay mode (mini-view header is provided by MainPanel)
     float topH = (getTopLevelComponent() != nullptr)
                      ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
     float fs = juce::jlimit(12.0f, 22.0f, topH * 0.025f);
-    g.setFont(juce::FontOptions(fs));
-    g.setColour(kDim);
 
-    juce::String header = hasBPrompt_ ? "DIMENSION EXPLORER (A-B)" : "DIMENSION EXPLORER";
-    g.drawText(header, area.reduced(6, 2).removeFromTop(static_cast<int>(fs + 4)),
-               juce::Justification::centredLeft);
+    if (overlayMode_)
+    {
+        g.setFont(juce::FontOptions(fs));
+        g.setColour(kDim);
+        juce::String header = hasBPrompt_ ? "DIMENSION EXPLORER (A-B)" : "DIMENSION EXPLORER";
+        g.drawText(header, area.reduced(6, 2).removeFromTop(static_cast<int>(fs + 4)),
+                   juce::Justification::centredLeft);
+    }
 
     if (bars_.empty())
     {
         g.setColour(kDimmer);
         g.setFont(juce::FontOptions(fs * 0.85f));
-        g.drawText("Generate to see embedding dimensions", area, juce::Justification::centred);
+        g.drawText(overlayMode_ ? "Generate to see embedding dimensions" : "Generate first",
+                   area, juce::Justification::centred);
         return;
     }
 
@@ -269,7 +273,8 @@ void DimensionExplorer::resized()
     float headerH = fs + 8.0f;
 
     barArea_ = area;
-    barArea_.removeFromTop(headerH);
+    if (overlayMode_)
+        barArea_.removeFromTop(headerH);
     barArea_.reduce(4.0f, 4.0f);
 }
 

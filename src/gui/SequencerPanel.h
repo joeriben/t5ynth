@@ -29,6 +29,9 @@ private:
 
     T5ynthProcessor& processorRef;
 
+    // Section header
+    juce::Label seqHeader;
+
     // Row 1: Transport + step config
     juce::TextButton playButton { ">" };
     juce::TextButton stopButton { "||" };
@@ -68,8 +71,11 @@ private:
 
     // Row 4: Arp controls
     juce::ToggleButton arpEnable { "Arp" };
-    juce::ComboBox arpModeBox;
+    static constexpr int kNumModeBtns = 4;
+    juce::TextButton arpModeBtns[kNumModeBtns]; // [Up][Dn][U/D][Rnd]
+    juce::ComboBox arpModeBox;                   // hidden, for APVTS
     juce::ComboBox arpRateBox;
+    juce::Label arpOctLabel;
     static constexpr int kNumOctBtns = 4;
     juce::TextButton arpOctBtns[kNumOctBtns];  // [1][2][3][4]
     juce::ComboBox arpOctHidden;                 // hidden, for APVTS
