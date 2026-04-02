@@ -36,9 +36,6 @@ DriftPanel::DriftPanel(juce::AudioProcessorValueTreeState& apvts)
     reverbToggle.onClick = [this] { resized(); };
     addAndMakeVisible(reverbToggle);
 
-    reverbIrBox.addItemList({"Bright", "Medium", "Dark"}, 1);
-    addAndMakeVisible(reverbIrBox);
-
     makeVSlider(reverbMix, reverbMixL, "Mix", this);
 
     // Limiter
@@ -53,7 +50,6 @@ DriftPanel::DriftPanel(juce::AudioProcessorValueTreeState& apvts)
     delayFbA   = std::make_unique<SA>(apvts, "delay_feedback", delayFb);
     delayMixA  = std::make_unique<SA>(apvts, "delay_mix", delayMix);
     reverbMixA = std::make_unique<SA>(apvts, "reverb_mix", reverbMix);
-    reverbIrA  = std::make_unique<CA>(apvts, "reverb_ir", reverbIrBox);
     limThreshA = std::make_unique<SA>(apvts, "limiter_thresh", limThresh);
     limReleaseA= std::make_unique<SA>(apvts, "limiter_release", limRelease);
 }
@@ -110,14 +106,11 @@ void DriftPanel::resized()
     // -- REVERB --
     reverbToggle.setBounds(area.removeFromTop(rowH));
     bool reverbOn = reverbToggle.getToggleState();
-    reverbIrBox.setVisible(reverbOn);
     reverbMix.setVisible(reverbOn);
     reverbMixL.setVisible(reverbOn);
 
     if (reverbOn)
     {
-        reverbIrBox.setBounds(area.removeFromTop(rowH));
-        area.removeFromTop(gap / 2);
         int sliderH = juce::roundToInt(h * 0.08f);
         reverbMix.setBounds(area.removeFromTop(sliderH));
         reverbMix.setTextBoxStyle(juce::Slider::TextBoxBelow, false, sliderW, tbH);

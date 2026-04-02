@@ -176,8 +176,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift LFO
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"drift_enabled", 1}, "Drift Enabled", false));
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{"drift_regen", 1}, "Drift Regen", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"drift_regen", 1}, "Regenerate",
+        juce::StringArray{"Manual", "Auto", "1st Bar"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"drift1_rate", 1}, "Drift1 Rate",
         juce::NormalisableRange<float>(0.001f, 2.0f, 0.001f, 0.3f), 0.01f));
@@ -288,10 +289,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Effect enables
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"filter_enabled", 1}, "Filter Enabled", true));
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{"delay_enabled", 1}, "Delay Enabled", false));
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{"reverb_enabled", 1}, "Reverb Enabled", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"delay_type", 1}, "Delay Type",
+        juce::StringArray{"Off", "Stereo"}, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"reverb_type", 1}, "Reverb Type",
+        juce::StringArray{"Off", "Dark", "Medium", "Bright", "Algo"}, 0));
 
     // Limiter
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -301,10 +304,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"limiter_release", 1}, "Limiter Release",
         juce::NormalisableRange<float>(1.0f, 500.0f, 0.1f, 0.3f), 100.0f));
 
-    // Reverb IR
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"reverb_ir", 1}, "Reverb IR",
-        juce::StringArray{"Bright", "Medium", "Dark"}, 1));
+    // (reverb_ir merged into reverb_type switchbox)
 
     // Sequencer / Arpeggiator
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -331,12 +331,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::StringArray{"1/4", "1/8", "1/16", "1/32", "1/4T", "1/8T", "1/16T"}, 2));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{"arp_octaves", 1}, "Arp Octaves", 1, 4, 1));
-    // Separate arp enable + mode (seq_mode kept for old preset compat)
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{"arp_enabled", 1}, "Arp Enabled", false));
+    // Arp mode (Off = disabled, rest = enabled with that pattern)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"arp_mode", 1}, "Arp Mode",
-        juce::StringArray{"Up", "Down", "UpDown", "Random"}, 0));
+        juce::StringArray{"Off", "Up", "Down", "UpDown", "Random"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"arp_gate", 1}, "Arp Gate",
         juce::NormalisableRange<float>(0.1f, 1.0f, 0.01f), 0.8f));
@@ -367,6 +365,7 @@ void T5ynthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     postFilter.prepare(sampleRate, samplesPerBlock);
     delay.prepare(sampleRate, samplesPerBlock);
     reverb.prepare(sampleRate, samplesPerBlock);
+    algoReverb.prepare(sampleRate, samplesPerBlock);
     // Load default IR (medium plate)
     reverb.loadImpulseResponse(BinaryData::emt_140_plate_medium_wav,
                                static_cast<size_t>(BinaryData::emt_140_plate_medium_wavSize));
@@ -488,7 +487,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // Drift LFOs (block-rate)
     driftLfo.setEnabled(parameters.getRawParameterValue("drift_enabled")->load() > 0.5f);
-    driftLfo.setAutoRegen(parameters.getRawParameterValue("drift_regen")->load() > 0.5f);
+    driftLfo.setRegenMode(static_cast<int>(parameters.getRawParameterValue("drift_regen")->load()));
     driftLfo.setLfoRate(0, parameters.getRawParameterValue("drift1_rate")->load());
     driftLfo.setLfoDepth(0, parameters.getRawParameterValue("drift1_depth")->load());
     driftLfo.setLfoTarget(0, static_cast<int>(parameters.getRawParameterValue("drift1_target")->load()));
@@ -519,8 +518,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     int seqSteps = static_cast<int>(parameters.getRawParameterValue("seq_steps")->load());
     float seqGate = parameters.getRawParameterValue("seq_gate")->load();
     int seqPreset = static_cast<int>(parameters.getRawParameterValue("seq_preset")->load());
-    bool arpEnabled = parameters.getRawParameterValue("arp_enabled")->load() > 0.5f;
-    int arpMode = static_cast<int>(parameters.getRawParameterValue("arp_mode")->load());
+    int arpModeRaw = static_cast<int>(parameters.getRawParameterValue("arp_mode")->load());
+    bool arpEnabled = arpModeRaw > 0;
+    int arpMode = arpModeRaw > 0 ? arpModeRaw - 1 : 0; // 0=Up,1=Down,2=UpDown,3=Random
     int arpRate = static_cast<int>(parameters.getRawParameterValue("arp_rate")->load());
     int arpOctaves = static_cast<int>(parameters.getRawParameterValue("arp_octaves")->load());
     float arpGate = parameters.getRawParameterValue("arp_gate")->load();
@@ -706,8 +706,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // ── Effects (parallel send-bus: dry + delay + reverb → limiter) ───────
-    bool delayEnabled = parameters.getRawParameterValue("delay_enabled")->load() > 0.5f;
-    bool reverbEnabled = parameters.getRawParameterValue("reverb_enabled")->load() > 0.5f;
+    int delayType = static_cast<int>(parameters.getRawParameterValue("delay_type")->load());
+    bool delayEnabled = delayType > 0;
+    int reverbType = static_cast<int>(parameters.getRawParameterValue("reverb_type")->load());
+    bool reverbEnabled = reverbType > 0;
+    bool reverbIsAlgo = reverbType == 4;
 
     if (delayEnabled)
     {
@@ -723,29 +726,38 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     if (reverbEnabled)
     {
-        // Switch IR if the selection changed
-        int irIndex = static_cast<int>(parameters.getRawParameterValue("reverb_ir")->load());
-        if (irIndex != lastReverbIr)
-        {
-            const void* irData = nullptr;
-            size_t irSize = 0;
-            switch (irIndex)
-            {
-                case 0: irData = BinaryData::emt_140_plate_bright_wav;
-                        irSize = static_cast<size_t>(BinaryData::emt_140_plate_bright_wavSize); break;
-                case 1: irData = BinaryData::emt_140_plate_medium_wav;
-                        irSize = static_cast<size_t>(BinaryData::emt_140_plate_medium_wavSize); break;
-                case 2: irData = BinaryData::emt_140_plate_dark_wav;
-                        irSize = static_cast<size_t>(BinaryData::emt_140_plate_dark_wavSize); break;
-            }
-            if (irData != nullptr)
-            {
-                reverb.loadImpulseResponse(irData, irSize);
-                lastReverbIr = irIndex;
-            }
-        }
         float baseRevMix = parameters.getRawParameterValue("reverb_mix")->load();
-        reverb.setMix(juce::jlimit(0.0f, 1.0f, baseRevMix + modReverbMix));
+        float revMix = juce::jlimit(0.0f, 1.0f, baseRevMix + modReverbMix);
+
+        if (reverbIsAlgo)
+        {
+            algoReverb.setMix(revMix);
+        }
+        else
+        {
+            // Convolution: map reverb_type 1=Dark→2, 2=Medium→1, 3=Bright→0
+            int irIndex = reverbType == 1 ? 2 : reverbType == 2 ? 1 : 0;
+            if (irIndex != lastReverbIr)
+            {
+                const void* irData = nullptr;
+                size_t irSize = 0;
+                switch (irIndex)
+                {
+                    case 0: irData = BinaryData::emt_140_plate_bright_wav;
+                            irSize = static_cast<size_t>(BinaryData::emt_140_plate_bright_wavSize); break;
+                    case 1: irData = BinaryData::emt_140_plate_medium_wav;
+                            irSize = static_cast<size_t>(BinaryData::emt_140_plate_medium_wavSize); break;
+                    case 2: irData = BinaryData::emt_140_plate_dark_wav;
+                            irSize = static_cast<size_t>(BinaryData::emt_140_plate_dark_wavSize); break;
+                }
+                if (irData != nullptr)
+                {
+                    reverb.loadImpulseResponse(irData, irSize);
+                    lastReverbIr = irIndex;
+                }
+            }
+            reverb.setMix(revMix);
+        }
     }
 
     // Parallel send-bus architecture (reference useEffects.ts):
@@ -756,6 +768,14 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     //
     // Delay already implements send-bus internally (dry*comp + wet*mix).
     // When both FX are active, reverb needs the ORIGINAL source, not delay output.
+    // Helper lambda: process reverb (convolution or algo) on a buffer
+    auto processReverb = [&](juce::AudioBuffer<float>& buf) {
+        if (reverbIsAlgo)
+            algoReverb.processBlock(buf);
+        else
+            reverb.processBlock(buf);
+    };
+
     if (delayEnabled && reverbEnabled)
     {
         // Save original source for reverb (pre-allocated buffer, no heap alloc)
@@ -768,9 +788,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         // Process reverb on original source (wet-only: set mix=1 temporarily)
         float savedRevMix = juce::jlimit(0.0f, 1.0f,
             parameters.getRawParameterValue("reverb_mix")->load() + modReverbMix);
-        reverb.setMix(1.0f); // wet-only for convolution
-        reverb.processBlock(reverbSendBuffer); // reverbSendBuffer is now 100% convolved
-        reverb.setMix(savedRevMix); // restore for next block
+        if (reverbIsAlgo) { algoReverb.setMix(1.0f); } else { reverb.setMix(1.0f); }
+        processReverb(reverbSendBuffer);
+        if (reverbIsAlgo) { algoReverb.setMix(savedRevMix); } else { reverb.setMix(savedRevMix); }
 
         // Add reverb send to output: buffer += convolved * reverbMix
         for (int ch = 0; ch < numChannels; ++ch)
@@ -787,7 +807,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     else if (reverbEnabled)
     {
-        reverb.processBlock(buffer);
+        processReverb(buffer);
     }
 
     // ── Update modulated values for GUI ghost indicators ────────────────────
@@ -1224,7 +1244,10 @@ juce::String T5ynthProcessor::exportJsonPreset() const
         driftArr.add(d.get());
     }
     root->setProperty("driftLfos", driftArr);
-    root->setProperty("autoRegen", get("drift_regen") > 0.5f);
+    // Regen mode: 0=Manual, 1=Auto, 2=1st Bar
+    int regenMode = static_cast<int>(get("drift_regen"));
+    const char* regenNames[] = {"manual", "auto", "1st_bar"};
+    root->setProperty("regenMode", regenNames[juce::jlimit(0, 2, regenMode)]);
 
     // Wavetable
     juce::DynamicObject::Ptr wt = new juce::DynamicObject();
@@ -1233,14 +1256,18 @@ juce::String T5ynthProcessor::exportJsonPreset() const
 
     // Effects
     juce::DynamicObject::Ptr fx = new juce::DynamicObject();
-    fx->setProperty("delayEnabled", get("delay_enabled") > 0.5f);
+    // Delay type: 0=Off, 1=Stereo
+    int dlyType = static_cast<int>(get("delay_type"));
+    fx->setProperty("delayType", dlyType == 0 ? "off" : "stereo");
     fx->setProperty("delayTimeMs", get("delay_time"));
     fx->setProperty("delayFeedback", get("delay_feedback"));
     fx->setProperty("delayMix", get("delay_mix"));
     fx->setProperty("delayDamp", get("delay_damp"));
-    fx->setProperty("reverbEnabled", get("reverb_enabled") > 0.5f);
+    // Reverb type: 0=Off, 1=Dark, 2=Medium, 3=Bright, 4=Algo
+    int revType = static_cast<int>(get("reverb_type"));
+    const char* revNames[] = {"off", "dark", "medium", "bright", "algo"};
+    fx->setProperty("reverbType", revNames[juce::jlimit(0, 4, revType)]);
     fx->setProperty("reverbMix", get("reverb_mix"));
-    fx->setProperty("reverbVariant", reverbVariantToString(static_cast<int>(get("reverb_ir"))));
     root->setProperty("effects", fx.get());
 
     // Filter — store NORMALIZED cutoff (0-1), not Hz
@@ -1278,10 +1305,10 @@ juce::String T5ynthProcessor::exportJsonPreset() const
 
     // Arpeggiator
     juce::DynamicObject::Ptr arp = new juce::DynamicObject();
-    int seqMode = static_cast<int>(get("seq_mode"));
-    arp->setProperty("enabled", seqMode >= 1);
+    int arpModeVal = static_cast<int>(get("arp_mode"));
+    arp->setProperty("enabled", arpModeVal > 0);
     const char* arpPatterns[] = {"up", "down", "updown", "random"};
-    arp->setProperty("pattern", seqMode >= 1 ? arpPatterns[std::min(seqMode - 1, 3)] : "up");
+    arp->setProperty("pattern", arpModeVal > 0 ? arpPatterns[std::min(arpModeVal - 1, 3)] : "up");
     // Export arp rate as musical division string
     const char* arpRates[] = {"1/4", "1/8", "1/16", "1/32", "1/4T", "1/8T", "1/16T"};
     int arpRateIdx = static_cast<int>(get("arp_rate"));
@@ -1384,8 +1411,19 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             setParam(parameters, pre + "target", static_cast<float>(driftTargetFromString(d->getProperty("target").toString())));
         }
     }
-    if (root->hasProperty("autoRegen"))
+    // Regen mode (new: "manual"/"auto"/"1st_bar", old: bool autoRegen)
+    if (root->hasProperty("regenMode"))
+    {
+        juce::String rm = root->getProperty("regenMode").toString();
+        int rIdx = 0;
+        if (rm == "auto") rIdx = 1;
+        else if (rm == "1st_bar") rIdx = 2;
+        setParam(parameters, "drift_regen", static_cast<float>(rIdx));
+    }
+    else if (root->hasProperty("autoRegen"))
+    {
         setParam(parameters, "drift_regen", root->getProperty("autoRegen") ? 1.0f : 0.0f);
+    }
 
     // ── Wavetable ──
     if (auto* wt = root->getProperty("wavetable").getDynamicObject())
@@ -1397,16 +1435,49 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
     // ── Effects ──
     if (auto* fx = root->getProperty("effects").getDynamicObject())
     {
-        setParam(parameters, "delay_enabled", fx->getProperty("delayEnabled") ? 1.0f : 0.0f);
+        // Delay type (new format: "off"/"stereo", old format: delayEnabled bool)
+        if (fx->hasProperty("delayType"))
+        {
+            juce::String dt = fx->getProperty("delayType").toString();
+            setParam(parameters, "delay_type", dt == "stereo" ? 1.0f : 0.0f);
+        }
+        else if (fx->hasProperty("delayEnabled"))
+        {
+            setParam(parameters, "delay_type", fx->getProperty("delayEnabled") ? 1.0f : 0.0f);
+        }
         setParam(parameters, "delay_time", static_cast<float>(fx->getProperty("delayTimeMs")));
         setParam(parameters, "delay_feedback", static_cast<float>(fx->getProperty("delayFeedback")));
         setParam(parameters, "delay_mix", static_cast<float>(fx->getProperty("delayMix")));
         if (fx->hasProperty("delayDamp"))
             setParam(parameters, "delay_damp", static_cast<float>(fx->getProperty("delayDamp")));
-        setParam(parameters, "reverb_enabled", fx->getProperty("reverbEnabled") ? 1.0f : 0.0f);
+        // Reverb type (new format: "off"/"dark"/"medium"/"bright"/"algo",
+        //              old format: reverbEnabled bool + reverbVariant string)
+        if (fx->hasProperty("reverbType"))
+        {
+            juce::String rt = fx->getProperty("reverbType").toString();
+            int rIdx = 0;
+            if (rt == "dark") rIdx = 1;
+            else if (rt == "medium") rIdx = 2;
+            else if (rt == "bright") rIdx = 3;
+            else if (rt == "algo") rIdx = 4;
+            setParam(parameters, "reverb_type", static_cast<float>(rIdx));
+        }
+        else if (fx->hasProperty("reverbEnabled"))
+        {
+            if (fx->getProperty("reverbEnabled"))
+            {
+                // Map old variant to new type: bright→3, medium→2, dark→1
+                int oldIr = fx->hasProperty("reverbVariant")
+                    ? reverbVariantFromString(fx->getProperty("reverbVariant").toString()) : 1;
+                int newType = oldIr == 0 ? 3 : oldIr == 2 ? 1 : 2; // bright→3, dark→1, medium→2
+                setParam(parameters, "reverb_type", static_cast<float>(newType));
+            }
+            else
+            {
+                setParam(parameters, "reverb_type", 0.0f);
+            }
+        }
         setParam(parameters, "reverb_mix", static_cast<float>(fx->getProperty("reverbMix")));
-        if (fx->hasProperty("reverbVariant"))
-            setParam(parameters, "reverb_ir", static_cast<float>(reverbVariantFromString(fx->getProperty("reverbVariant").toString())));
     }
 
     // ── Filter — CRITICAL: cutoff is normalized 0-1, convert to Hz ──
@@ -1461,19 +1532,21 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
     // ── Arpeggiator ──
     if (auto* arp = root->getProperty("arpeggiator").getDynamicObject())
     {
-        bool arpEnabled = arp->getProperty("enabled");
-        if (arpEnabled)
+        bool arpIsEnabled = arp->getProperty("enabled");
+        if (arpIsEnabled)
         {
             juce::String pattern = arp->getProperty("pattern").toString();
-            int mode = 1; // default: Up
+            int mode = 1; // default: Up (Off=0,Up=1,Down=2,UpDown=3,Random=4)
             if (pattern == "down") mode = 2;
             else if (pattern == "updown") mode = 3;
             else if (pattern == "random") mode = 4;
-            setParam(parameters, "seq_mode", static_cast<float>(mode));
+            setParam(parameters, "arp_mode", static_cast<float>(mode));
+            setParam(parameters, "seq_mode", static_cast<float>(mode)); // keep seq_mode in sync
         }
         else
         {
-            setParam(parameters, "seq_mode", 0.0f); // Seq only, no arp
+            setParam(parameters, "arp_mode", 0.0f); // Off
+            setParam(parameters, "seq_mode", 0.0f);
         }
         setParam(parameters, "arp_octaves", static_cast<float>(static_cast<int>(arp->getProperty("octaveRange"))));
         if (arp->hasProperty("rate"))

@@ -5,6 +5,7 @@
 #include "dsp/DriftLFO.h"
 #include "dsp/DelayLine.h"
 #include "dsp/ConvolutionReverb.h"
+#include "dsp/AlgorithmicReverb.h"
 #include "dsp/Limiter.h"
 #include "sequencer/StepSequencer.h"
 #include "sequencer/Arpeggiator.h"
@@ -122,6 +123,7 @@ private:
     T5ynthFilter postFilter;
     T5ynthDelayLine delay;
     ConvolutionReverb reverb;
+    AlgorithmicReverb algoReverb;
     T5ynthLimiter limiter;
 
     // Sequencer

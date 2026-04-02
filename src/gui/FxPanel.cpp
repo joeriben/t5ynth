@@ -14,15 +14,32 @@ static juce::String fmtDampHz(double v)
 
 FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
 {
-    // Section header
-    paintSectionHeader(fxHeader, "EFFECTS", kFxCol);
-    addAndMakeVisible(fxHeader);
+    // ══════════ DELAY section ══════════
+    paintSectionHeader(delayHeader, "DELAY", kFxCol);
+    addAndMakeVisible(delayHeader);
 
-    // ── Delay ──
-    delayToggle.setColour(juce::ToggleButton::textColourId, kDim);
-    delayToggle.setColour(juce::ToggleButton::tickColourId, kFxCol);
-    delayToggle.onClick = [this] { if (initialized) { repaint(); resized(); } };
-    addAndMakeVisible(delayToggle);
+    // Delay type switchbox: OFF / Stereo
+    delayTypeHidden.addItemList({"Off", "Stereo"}, 1);
+    delayTypeHidden.onChange = [this] {
+        int id = delayTypeHidden.getSelectedId();
+        for (int i = 0; i < kNumDelayBtns; ++i)
+            delayTypeBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+        updateVisibility();
+    };
+
+    static const char* delayLabels[] = {"OFF", "Stereo"};
+    for (int i = 0; i < kNumDelayBtns; ++i)
+    {
+        delayTypeBtns[i].setButtonText(delayLabels[i]);
+        delayTypeBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        delayTypeBtns[i].setColour(juce::TextButton::buttonOnColourId, kFxCol);
+        delayTypeBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        delayTypeBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        delayTypeBtns[i].setClickingTogglesState(true);
+        delayTypeBtns[i].setRadioGroupId(4001);
+        delayTypeBtns[i].onClick = [this, i] { delayTypeHidden.setSelectedId(i + 1); };
+        addAndMakeVisible(delayTypeBtns[i]);
+    }
 
     delayTimeRow = std::make_unique<SliderRow>("Time", fmtMs, kFxCol);
     delayFbRow   = std::make_unique<SliderRow>("FB",   fmtF2, kFxCol);
@@ -42,26 +59,57 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     delayDampRow->updateValue();
     delayMixRow->updateValue();
 
-    // ── Reverb ──
-    reverbToggle.setColour(juce::ToggleButton::textColourId, kDim);
-    reverbToggle.setColour(juce::ToggleButton::tickColourId, kFxCol);
-    reverbToggle.onClick = [this] { if (initialized) { repaint(); resized(); } };
-    addAndMakeVisible(reverbToggle);
+    // Attach APVTS AFTER buttons are set up (triggers onChange → updateVisibility)
+    delayTypeA = std::make_unique<CA>(apvts, "delay_type", delayTypeHidden);
 
-    reverbIrBox.addItemList({"Bright", "Medium", "Dark"}, 1);
-    addAndMakeVisible(reverbIrBox);
+    // ══════════ REVERB section ══════════
+    paintSectionHeader(reverbHeader, "REVERB", kFxCol);
+    addAndMakeVisible(reverbHeader);
+
+    // Reverb type switchbox: OFF / Dark / Med / Brt / Algo
+    reverbTypeHidden.addItemList({"Off", "Dark", "Medium", "Bright", "Algo"}, 1);
+    reverbTypeHidden.onChange = [this] {
+        int id = reverbTypeHidden.getSelectedId();
+        for (int i = 0; i < kNumReverbBtns; ++i)
+            reverbTypeBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+        updateVisibility();
+    };
+
+    static const char* reverbLabels[] = {"OFF", "Drk", "Med", "Brt", "Algo"};
+    for (int i = 0; i < kNumReverbBtns; ++i)
+    {
+        reverbTypeBtns[i].setButtonText(reverbLabels[i]);
+        reverbTypeBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        reverbTypeBtns[i].setColour(juce::TextButton::buttonOnColourId, kFxCol);
+        reverbTypeBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        reverbTypeBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        reverbTypeBtns[i].setClickingTogglesState(true);
+        reverbTypeBtns[i].setRadioGroupId(4002);
+        reverbTypeBtns[i].onClick = [this, i] { reverbTypeHidden.setSelectedId(i + 1); };
+        addAndMakeVisible(reverbTypeBtns[i]);
+    }
 
     reverbMixRow = std::make_unique<SliderRow>("Mix", fmtF2, kFxCol);
     addAndMakeVisible(*reverbMixRow);
 
     reverbMixA = std::make_unique<SA>(apvts, "reverb_mix", reverbMixRow->getSlider());
-    reverbIrA  = std::make_unique<CA>(apvts, "reverb_ir",  reverbIrBox);
     reverbMixRow->updateValue();
 
-    // All components ready
-    initialized = true;
-    delayEnableA  = std::make_unique<BA>(apvts, "delay_enabled", delayToggle);
-    reverbEnableA = std::make_unique<BA>(apvts, "reverb_enabled", reverbToggle);
+    // Attach APVTS AFTER buttons are set up
+    reverbTypeA = std::make_unique<CA>(apvts, "reverb_type", reverbTypeHidden);
+}
+
+void FxPanel::updateVisibility()
+{
+    bool delayOn = delayTypeHidden.getSelectedId() > 1; // > OFF
+    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
+        r->setVisible(delayOn);
+
+    bool reverbOn = reverbTypeHidden.getSelectedId() > 1; // > OFF
+    reverbMixRow->setVisible(reverbOn);
+
+    resized();
+    repaint();
 }
 
 float FxPanel::fs() const
@@ -78,6 +126,10 @@ void FxPanel::paint(juce::Graphics& g)
     // Vertical separator on left edge (between Seq and FX)
     g.setColour(kBorder);
     g.drawVerticalLine(0, 0.0f, static_cast<float>(getHeight()));
+
+    // SwitchBox borders
+    paintSwitchBoxBorder(g, delayTypeSwitchBounds);
+    paintSwitchBoxBorder(g, reverbTypeSwitchBounds);
 }
 
 void FxPanel::resized()
@@ -86,22 +138,33 @@ void FxPanel::resized()
     float topH = getTopLevelComponent()
                      ? static_cast<float>(getTopLevelComponent()->getHeight()) : 800.0f;
     int headerH = juce::jlimit(14, 20, juce::roundToInt(topH * 0.022f));
-    fxHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
-    fxHeader.setBounds(area.removeFromTop(headerH));
-    area.removeFromTop(juce::jmax(3, headerH / 5));
+    float f = static_cast<float>(headerH);
 
-    int rowH = juce::jmin(juce::roundToInt(static_cast<float>(getHeight()) * 0.22f), 20);
+    int rowH = juce::jmin(juce::roundToInt(static_cast<float>(getHeight()) * 0.14f), 20);
     int gap = 2;
 
-    // Stacked: Delay on top, Reverb below
-    // ── Delay ──
-    delayToggle.setBounds(area.removeFromTop(rowH));
+    // ── DELAY header ──
+    delayHeader.setFont(juce::FontOptions(f * 0.85f));
+    delayHeader.setBounds(area.removeFromTop(headerH));
     area.removeFromTop(gap);
 
-    bool delayOn = delayToggle.getToggleState();
-    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
-        r->setVisible(delayOn);
+    // Delay type switchbox
+    auto delaySwRow = area.removeFromTop(rowH);
+    int delayCellW = delaySwRow.getWidth() / kNumDelayBtns;
+    for (int i = 0; i < kNumDelayBtns; ++i)
+    {
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < kNumDelayBtns - 1) edges |= juce::Button::ConnectedOnRight;
+        delayTypeBtns[i].setConnectedEdges(edges);
+        delayTypeBtns[i].setBounds(delaySwRow.removeFromLeft(delayCellW));
+    }
+    delayTypeSwitchBounds = delayTypeBtns[0].getBounds()
+        .getUnion(delayTypeBtns[kNumDelayBtns - 1].getBounds());
+    area.removeFromTop(gap);
 
+    // Delay params (visible when ON)
+    bool delayOn = delayTypeHidden.getSelectedId() > 1;
     if (delayOn)
     {
         int colW = (area.getWidth() - 2) / 2;
@@ -119,20 +182,30 @@ void FxPanel::resized()
 
     area.removeFromTop(gap * 2);
 
-    // ── Reverb ──
-    reverbToggle.setBounds(area.removeFromTop(rowH));
+    // ── REVERB header ──
+    reverbHeader.setFont(juce::FontOptions(f * 0.85f));
+    reverbHeader.setBounds(area.removeFromTop(headerH));
     area.removeFromTop(gap);
 
-    bool reverbOn = reverbToggle.getToggleState();
-    reverbIrBox.setVisible(reverbOn);
-    reverbMixRow->setVisible(reverbOn);
+    // Reverb type switchbox
+    auto revSwRow = area.removeFromTop(rowH);
+    int revCellW = revSwRow.getWidth() / kNumReverbBtns;
+    for (int i = 0; i < kNumReverbBtns; ++i)
+    {
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < kNumReverbBtns - 1) edges |= juce::Button::ConnectedOnRight;
+        reverbTypeBtns[i].setConnectedEdges(edges);
+        reverbTypeBtns[i].setBounds(revSwRow.removeFromLeft(revCellW));
+    }
+    reverbTypeSwitchBounds = reverbTypeBtns[0].getBounds()
+        .getUnion(reverbTypeBtns[kNumReverbBtns - 1].getBounds());
+    area.removeFromTop(gap);
 
+    // Reverb params (visible when ON)
+    bool reverbOn = reverbTypeHidden.getSelectedId() > 1;
     if (reverbOn)
     {
-        int colW = (area.getWidth() - 2) / 2;
-        auto row = area.removeFromTop(rowH);
-        reverbIrBox.setBounds(row.removeFromLeft(colW));
-        row.removeFromLeft(2);
-        reverbMixRow->setBounds(row);
+        reverbMixRow->setBounds(area.removeFromTop(rowH));
     }
 }

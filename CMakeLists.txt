@@ -71,6 +71,7 @@ target_sources(T5ynth PRIVATE
     src/dsp/StateVariableFilter.cpp
     src/dsp/DelayLine.cpp
     src/dsp/ConvolutionReverb.cpp
+    src/dsp/AlgorithmicReverb.cpp
     src/dsp/Limiter.cpp
     src/dsp/SamplePlayer.cpp
     src/dsp/SynthVoice.cpp

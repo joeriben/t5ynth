@@ -1,0 +1,64 @@
+#include "AlgorithmicReverb.h"
+
+void AlgorithmicReverb::prepare(double sampleRate, int samplesPerBlock)
+{
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = static_cast<juce::uint32>(samplesPerBlock);
+    spec.numChannels = 2;
+
+    reverb.prepare(spec);
+    mixer.prepare(spec);
+    mixer.setWetMixProportion(wetMix);
+
+    // Medium hall: warm and spacious
+    juce::dsp::Reverb::Parameters params;
+    params.roomSize = 0.7f;
+    params.damping  = 0.4f;
+    params.wetLevel = 1.0f;   // mixer handles wet/dry
+    params.dryLevel = 0.0f;
+    params.width    = 1.0f;
+    params.freezeMode = 0.0f;
+    reverb.setParameters(params);
+
+    prepared = true;
+}
+
+void AlgorithmicReverb::processBlock(juce::AudioBuffer<float>& buffer)
+{
+    if (!prepared || wetMix == 0.0f)
+        return;
+
+    // Silence detection
+    float magnitude = buffer.getMagnitude(0, buffer.getNumSamples());
+    if (magnitude < 1e-6f)
+    {
+        if (++silentInputBlocks > REVERB_TAIL_BLOCKS)
+            return;
+    }
+    else
+    {
+        silentInputBlocks = 0;
+    }
+
+    juce::dsp::AudioBlock<float> block(buffer);
+    mixer.pushDrySamples(block);
+
+    juce::dsp::ProcessContextReplacing<float> context(block);
+    reverb.process(context);
+
+    mixer.mixWetSamples(block);
+}
+
+void AlgorithmicReverb::reset()
+{
+    reverb.reset();
+    mixer.reset();
+}
+
+void AlgorithmicReverb::setMix(float mix)
+{
+    wetMix = juce::jlimit(0.0f, 1.0f, mix);
+    if (prepared)
+        mixer.setWetMixProportion(wetMix);
+}

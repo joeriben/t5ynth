@@ -55,10 +55,9 @@ public:
     void setEnabled(bool enabled) { active = enabled; }
     bool isEnabled() const { return active; }
 
-    /** Auto-regen flag — signals that background generation should be kicked
-     *  at bar boundaries. Does NOT randomize rate/depth (that was a bug). */
-    void setAutoRegen(bool enabled) { autoRegen = enabled; }
-    bool isAutoRegenEnabled() const { return autoRegen; }
+    /** Regen mode: 0=Manual, 1=Auto, 2=1st Bar (bar-boundary trigger). */
+    void setRegenMode(int mode) { regenMode = mode; }
+    int getRegenMode() const { return regenMode; }
 
 private:
     struct InternalLFO
@@ -77,7 +76,7 @@ private:
     }};
 
     bool active = false;
-    bool autoRegen = false;
+    int regenMode = 0; // 0=Manual, 1=Auto, 2=1st Bar
 
     static constexpr double TWO_PI = 6.283185307179586;
 

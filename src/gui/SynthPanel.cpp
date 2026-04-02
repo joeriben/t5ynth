@@ -337,10 +337,30 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     initDrift(drift1, "DRIFT 1", "drift1_rate", "drift1_depth", "drift1_target", "drift1_wave", apvts);
     initDrift(drift2, "DRIFT 2", "drift2_rate", "drift2_depth", "drift2_target", "drift2_wave", apvts);
 
-    driftRegenToggle.setColour(juce::ToggleButton::textColourId, kDim);
-    driftRegenToggle.setColour(juce::ToggleButton::tickColourId, kDriftCol);
-    addAndMakeVisible(driftRegenToggle);
-    driftRegenA = std::make_unique<BA>(apvts, "drift_regen", driftRegenToggle);
+    // Regenerate mode switchbox
+    paintSectionHeader(regenHeader, "REGENERATE", kDriftCol);
+    addAndMakeVisible(regenHeader);
+
+    regenHidden.addItemList({"Manual", "Auto", "1st Bar"}, 1);
+    regenHidden.onChange = [this] {
+        int id = regenHidden.getSelectedId();
+        for (int i = 0; i < kNumRegenBtns; ++i)
+            regenBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+    };
+    static const char* regenLabels[] = {"Manual", "Auto", "1st Bar"};
+    for (int i = 0; i < kNumRegenBtns; ++i)
+    {
+        regenBtns[i].setButtonText(regenLabels[i]);
+        regenBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        regenBtns[i].setColour(juce::TextButton::buttonOnColourId, kDriftCol);
+        regenBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        regenBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        regenBtns[i].setClickingTogglesState(true);
+        regenBtns[i].setRadioGroupId(3005);
+        regenBtns[i].onClick = [this, i] { regenHidden.setSelectedId(i + 1); };
+        addAndMakeVisible(regenBtns[i]);
+    }
+    driftRegenA = std::make_unique<CA>(apvts, "drift_regen", regenHidden);
 
     // All components are now set up — enable callbacks and trigger initial state
     initialized = true;
@@ -662,10 +682,11 @@ void SynthPanel::paint(juce::Graphics& g)
             int y = hdr->getY() - 2;
             g.drawHorizontalLine(y, static_cast<float>(lineL), static_cast<float>(lineR));
         }
-        // Drift separator
+        // Drift separator + switchbox border
         g.setColour(kDriftCol.withAlpha(0.15f));
-        int driftY = driftRegenToggle.getY() - 2;
+        int driftY = regenHeader.getY() - 2;
         g.drawHorizontalLine(driftY, static_cast<float>(lineL), static_cast<float>(lineR));
+        paintSwitchBoxBorder(g, regenSwitchBounds);
     }
 }
 
@@ -806,9 +827,25 @@ void SynthPanel::resized()
     layoutLfo(lfo1, area, f, rowH, gap);
     layoutLfo(lfo2, area, f, rowH, gap);
 
-    // ── Drift (part of modulation section) ──
+    // ── Drift + Regenerate (part of modulation section) ──
     area.removeFromTop(gap);
-    driftRegenToggle.setBounds(area.removeFromTop(rowH));
+    regenHeader.setFont(juce::FontOptions(f * 0.85f));
+    regenHeader.setBounds(area.removeFromTop(headerH));
+    area.removeFromTop(gap);
+    {
+        auto regenRow = area.removeFromTop(rowH);
+        int regenCellW = regenRow.getWidth() / kNumRegenBtns;
+        for (int i = 0; i < kNumRegenBtns; ++i)
+        {
+            int edges = 0;
+            if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+            if (i < kNumRegenBtns - 1) edges |= juce::Button::ConnectedOnRight;
+            regenBtns[i].setConnectedEdges(edges);
+            regenBtns[i].setBounds(regenRow.removeFromLeft(regenCellW));
+        }
+        regenSwitchBounds = regenBtns[0].getBounds()
+            .getUnion(regenBtns[kNumRegenBtns - 1].getBounds());
+    }
     layoutDrift(drift1, area, f, rowH, gap);
     layoutDrift(drift2, area, f, rowH, gap);
 

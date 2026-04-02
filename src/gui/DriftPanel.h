@@ -24,7 +24,6 @@ private:
 
     // Reverb
     juce::ToggleButton reverbToggle { "Reverb" };
-    juce::ComboBox reverbIrBox;
     juce::Slider reverbMix;
     juce::Label reverbMixL;
 
@@ -37,7 +36,6 @@ private:
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     std::unique_ptr<SA> delayTimeA, delayFbA, delayMixA;
     std::unique_ptr<SA> reverbMixA;
-    std::unique_ptr<CA> reverbIrA;
     std::unique_ptr<SA> limThreshA, limReleaseA;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DriftPanel)

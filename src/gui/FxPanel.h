@@ -4,7 +4,7 @@
 
 /**
  * FX column (20%): Delay + Reverb.
- * All controls are horizontal linear slider rows.
+ * Each section has a SwitchBox header (OFF + variants) and slider rows.
  * Limiter is internal only — no GUI controls.
  */
 class FxPanel : public juce::Component
@@ -18,26 +18,30 @@ public:
 
 private:
     float fs() const;
-    bool initialized = false;
-    juce::Label fxHeader;
+    void updateVisibility();
 
-    // Delay
-    juce::ToggleButton delayToggle { "Delay" };
+    // Delay section
+    juce::Label delayHeader;
+    static constexpr int kNumDelayBtns = 2;
+    juce::TextButton delayTypeBtns[kNumDelayBtns]; // [OFF][Stereo]
+    juce::ComboBox delayTypeHidden;
+    juce::Rectangle<int> delayTypeSwitchBounds;
     std::unique_ptr<SliderRow> delayTimeRow, delayFbRow, delayDampRow, delayMixRow;
 
-    // Reverb
-    juce::ToggleButton reverbToggle { "Reverb" };
-    juce::ComboBox reverbIrBox;
+    // Reverb section
+    juce::Label reverbHeader;
+    static constexpr int kNumReverbBtns = 5;
+    juce::TextButton reverbTypeBtns[kNumReverbBtns]; // [OFF][Dark][Med][Brt][Algo]
+    juce::ComboBox reverbTypeHidden;
+    juce::Rectangle<int> reverbTypeSwitchBounds;
     std::unique_ptr<SliderRow> reverbMixRow;
 
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     std::unique_ptr<SA> delayTimeA, delayFbA, delayDampA, delayMixA;
     std::unique_ptr<SA> reverbMixA;
-    std::unique_ptr<CA> reverbIrA;
-    std::unique_ptr<BA> delayEnableA, reverbEnableA;
+    std::unique_ptr<CA> delayTypeA, reverbTypeA;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(FxPanel)
 };

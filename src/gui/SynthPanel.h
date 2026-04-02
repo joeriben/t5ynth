@@ -99,7 +99,12 @@ private:
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> targetA, waveA;
     };
     DriftSection drift1, drift2;
-    juce::ToggleButton driftRegenToggle { "Regen" };
+    // Regenerate mode switchbox: Manual / Auto / 1st Bar
+    juce::Label regenHeader;
+    static constexpr int kNumRegenBtns = 3;
+    juce::TextButton regenBtns[kNumRegenBtns];
+    juce::ComboBox regenHidden;
+    juce::Rectangle<int> regenSwitchBounds;
 
     // ── APVTS attachments ──
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
@@ -109,7 +114,7 @@ private:
     std::unique_ptr<CA> engineModeA, loopModeA;
     std::unique_ptr<SA> scanA, cutoffA, resoA, filterMixA, kbdTrackA, crossfadeA;
     std::unique_ptr<CA> filterTypeA, filterSlopeA;
-    std::unique_ptr<BA> driftRegenA;
+    std::unique_ptr<CA> driftRegenA;
 
     // ENV/LFO target attachments (routed in processBlock)
     std::unique_ptr<CA> mod1TargetA, mod2TargetA, lfo1TargetA, lfo2TargetA;

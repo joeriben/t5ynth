@@ -250,20 +250,14 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     glideRow->getSlider().onValueChange = [this] { glideRow->updateValue(); };
     glideRow->updateValue();
 
-    // ── Arp controls ──
-    arpEnable.setColour(juce::ToggleButton::textColourId, kDim);
-    arpEnable.setColour(juce::ToggleButton::tickColourId, kSeqCol);
-    addAndMakeVisible(arpEnable);
-    arpEnableA = std::make_unique<BA>(apvts, "arp_enabled", arpEnable);
-
-    arpModeBox.addItemList({"Up","Down","UpDown","Random"}, 1);
+    // ── Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd) ──
+    arpModeBox.addItemList({"Off","Up","Down","UpDown","Random"}, 1);
     arpModeBox.onChange = [this] {
         int id = arpModeBox.getSelectedId();
         for (int i = 0; i < kNumModeBtns; ++i)
             arpModeBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
     };
-    // arpModeBox stays hidden — APVTS attachment only
-    static const char* modeLabels[] = {"Up","Dn","U/D","Rnd"};
+    static const char* modeLabels[] = {"OFF","Up","Dn","U/D","Rnd"};
     for (int i = 0; i < kNumModeBtns; ++i)
     {
         arpModeBtns[i].setButtonText(modeLabels[i]);
@@ -413,7 +407,7 @@ void SequencerPanel::paint(juce::Graphics& g)
     }
 
     // Separator above Arp row
-    int arpY = arpEnable.getY();
+    int arpY = arpModeBtns[0].getY();
     if (arpY > 0)
     {
         g.setColour(kBorder);
@@ -473,9 +467,8 @@ void SequencerPanel::resized()
 
     // ═══ Row 4 (bottom): Arp controls ═══
     auto r4 = area.removeFromBottom(rH);
-    arpEnable.setBounds(r4.removeFromLeft(42));    r4.removeFromLeft(g);
 
-    // Mode toggle strip [Up][Dn][U/D][Rnd]
+    // Mode switchbox [OFF][Up][Dn][U/D][Rnd]
     int modeBtnW = 32;
     for (int i = 0; i < kNumModeBtns; ++i)
     {

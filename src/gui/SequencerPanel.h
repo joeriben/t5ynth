@@ -69,10 +69,9 @@ private:
     int numVisibleSteps = 16;
     juce::Rectangle<int> gridArea;
 
-    // Row 4: Arp controls
-    juce::ToggleButton arpEnable { "Arp" };
-    static constexpr int kNumModeBtns = 4;
-    juce::TextButton arpModeBtns[kNumModeBtns]; // [Up][Dn][U/D][Rnd]
+    // Row 4: Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd)
+    static constexpr int kNumModeBtns = 5;
+    juce::TextButton arpModeBtns[kNumModeBtns]; // [OFF][Up][Dn][U/D][Rnd]
     juce::ComboBox arpModeBox;                   // hidden, for APVTS
     juce::ComboBox arpRateBox;
     juce::Label arpOctLabel;
@@ -84,10 +83,8 @@ private:
     // APVTS attachments
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::unique_ptr<SA> bpmA, gateA, glideA, arpGateA;
     std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA;
-    std::unique_ptr<BA> arpEnableA;
 
     int currentStep = -1;
 
