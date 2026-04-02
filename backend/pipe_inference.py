@@ -263,11 +263,11 @@ def generate(pipe, request):
         if prompt_b:
             emb_b, mask_b = encode_text(prompt_b)
             emb_b_pooled = _mean_pool(emb_b, mask_b)
-            manipulated = (1.0 - alpha) * emb_a + alpha * emb_b
-            # Renormalize if extrapolating
-            if alpha < 0.0 or alpha > 1.0:
-                mid = 0.5 * emb_a + 0.5 * emb_b
-                ref_norm = mid.norm()
+            # alpha: 0 = midpoint, -1 = pure A, +1 = pure B
+            manipulated = (0.5 - 0.5 * alpha) * emb_a + (0.5 + 0.5 * alpha) * emb_b
+            # Renormalize if extrapolating (|alpha| > 1)
+            if alpha < -1.0 or alpha > 1.0:
+                ref_norm = emb_a.norm() if alpha < 0.0 else emb_b.norm()
                 res_norm = manipulated.norm()
                 if res_norm > 1e-8:
                     manipulated = manipulated * (ref_norm / res_norm)

@@ -34,7 +34,7 @@ public:
     {
         juce::String promptA;
         juce::String promptB;         // empty = single prompt
-        float alpha = 0.5f;
+        float alpha = 0.0f;
         float magnitude = 1.0f;
         float noiseSigma = 0.0f;
         float durationSeconds = 1.0f;

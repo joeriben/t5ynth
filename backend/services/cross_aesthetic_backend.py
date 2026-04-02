@@ -334,16 +334,13 @@ class CrossmodalLabBackend:
         """Apply embedding manipulation operations."""
         import torch
 
-        # Interpolation / extrapolation
+        # alpha: 0 = midpoint, -1 = pure A, +1 = pure B
         if emb_b is not None:
-            result = (1.0 - alpha) * emb_a + alpha * emb_b
+            result = (0.5 - 0.5 * alpha) * emb_a + (0.5 + 0.5 * alpha) * emb_b
 
-            # Renormalize after extrapolation: preserve direction, clamp magnitude
-            # to midpoint norm so the model stays in-distribution.
-            # Only activates when alpha is outside [0, 1].
-            if alpha < 0.0 or alpha > 1.0:
-                midpoint = 0.5 * emb_a + 0.5 * emb_b
-                ref_norm = midpoint.norm()
+            # Renormalize if extrapolating (|alpha| > 1)
+            if alpha < -1.0 or alpha > 1.0:
+                ref_norm = emb_a.norm() if alpha < 0.0 else emb_b.norm()
                 result_norm = result.norm()
                 if result_norm > 1e-8:
                     result = result * (ref_norm / result_norm)

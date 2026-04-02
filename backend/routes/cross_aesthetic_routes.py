@@ -51,7 +51,7 @@ def synth():
     Request JSON:
         prompt_a: str (required) - Base text prompt
         prompt_b: str (optional) - Second prompt for interpolation
-        alpha: float (default 0.5) - Interpolation factor (-2.0 to 3.0)
+        alpha: float (default 0.0) - Mix factor: 0=midpoint, -1=A only, +1=B only
         magnitude: float (default 1.0) - Global embedding scale (0.1-5.0)
         noise_sigma: float (default 0.0) - Noise injection strength (0-1.0)
         dimension_offsets: dict (optional) - {dim_idx: offset_value}
@@ -74,7 +74,7 @@ def synth():
     result = _run_async(backend.synth(
         prompt_a=data['prompt_a'],
         prompt_b=data.get('prompt_b'),
-        alpha=float(data.get('alpha', 0.5)),
+        alpha=float(data.get('alpha', 0.0)),
         magnitude=float(data.get('magnitude', 1.0)),
         noise_sigma=float(data.get('noise_sigma', 0.0)),
         dimension_offsets=data.get('dimension_offsets'),

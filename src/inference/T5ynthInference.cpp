@@ -154,14 +154,13 @@ torch::Tensor T5ynthInference::manipulateEmbedding(const torch::Tensor& embA,
 
     if (embB.defined() && embB.numel() > 0)
     {
-        // Interpolation / extrapolation
-        result = (1.0f - alpha) * embA + alpha * embB;
+        // alpha: 0 = midpoint, -1 = pure A, +1 = pure B
+        result = (0.5f - 0.5f * alpha) * embA + (0.5f + 0.5f * alpha) * embB;
 
-        // Renormalize if extrapolating (alpha outside [0,1])
-        if (alpha < 0.0f || alpha > 1.0f)
+        // Renormalize if extrapolating (|alpha| > 1)
+        if (alpha < -1.0f || alpha > 1.0f)
         {
-            auto midpoint = 0.5f * embA + 0.5f * embB;
-            auto refNorm = midpoint.norm();
+            auto refNorm = (alpha < 0.0f) ? embA.norm() : embB.norm();
             auto resultNorm = result.norm();
             if (resultNorm.item<float>() > 1e-8f)
                 result = result * (refNorm / resultNorm);

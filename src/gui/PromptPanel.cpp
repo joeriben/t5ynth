@@ -381,8 +381,7 @@ void PromptPanel::triggerGeneration()
     if (onStatusChanged) onStatusChanged("generating...", true);
 
     auto& apvts = processorRef.getValueTreeState();
-    float rawAlpha = apvts.getRawParameterValue("gen_alpha")->load();
-    float alpha = rawAlpha / 2.0f + 0.5f;
+    float alpha = apvts.getRawParameterValue("gen_alpha")->load();
     float magnitude = apvts.getRawParameterValue("gen_magnitude")->load();
     float noiseSigma = apvts.getRawParameterValue("gen_noise")->load();
     float duration = apvts.getRawParameterValue("gen_duration")->load();
