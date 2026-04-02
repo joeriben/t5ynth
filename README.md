@@ -58,18 +58,20 @@ Two text prompts (A and B) are each encoded by a T5 language model into 768-dime
 
 The manipulated embedding then conditions a diffusion process (DiT transformer, 20 denoising steps, BrownianTree SDE sampler) followed by VAE decoding to produce 44.1kHz stereo audio.
 
-Two playback modes make this musically useful:
+Two playback modes turn the generated audio into something a synthesizer can work with:
 
-- **Sampler Mode** — The generated audio is played back directly with loop points (one-shot, loop, ping-pong), crossfade control, and silence-trimmed auto-bracketing. Useful for longer textures and evolving material.
-- **Wavetable Mode** — The audio is analyzed via pitch detection (YIN algorithm), sliced into pitch-synchronous frames of 2048 samples, band-limited across 8 mip levels via FFT, and scanned in real-time. This turns any generated sound into a playable, pitch-tracked wavetable oscillator with Catmull-Rom interpolation between frames.
+- **Sampler Mode** — Plays back the generated audio with loop points (one-shot, loop, ping-pong) and crossfade. The simpler option — useful for longer textures where the raw character of the generation matters.
+- **Wavetable Mode** — Extracts pitch-synchronous single-cycle frames from the audio and builds a scannable wavetable. This turns any generated sound into a pitched, playable oscillator that tracks MIDI notes — the more radical transformation, and where T5ynth starts to feel like a synthesizer rather than a sample player.
 
 ### Synthesizer
 
-- **Full Synthesizer Architecture:** ADSR envelopes (amplitude + 2 modulation), 2 LFOs, 3 drift LFOs, state-variable filter (LP/HP/BP, 6-24dB), modulation matrix
-- **Effects:** Delay with damping, convolution reverb (EMT 140 plate), limiter
+The point of wrapping a radically unconventional oscillator in a conventional synthesizer is that musicians can actually use it. The T5 Oscillator produces unfamiliar material — the signal chain that follows is deliberately standard so that familiar tools (envelopes, filters, LFOs, sequencing) can be applied to shape it.
+
+- **Signal chain:** ADSR amplitude envelope, 2 modulation envelopes, state-variable filter (LP/HP/BP, 6-24dB), 2 LFOs, 3 drift LFOs (slow parameter wandering), modulation routing
+- **Effects:** Delay with feedback/damping, convolution reverb (EMT 140 plate impulse responses), limiter
 - **Sequencer & Arpeggiator:** 16-step sequencer with per-step note/velocity/gate/glide, arpeggiator (up/down/updown/random)
-- **Presets with Embedded Audio:** .t5p format stores parameters + generated audio + embeddings — instant recall without regeneration
-- **Cross-Platform:** macOS (MPS acceleration), Linux (CUDA), CPU fallback
+- **Presets:** .t5p format stores parameters + generated audio + embeddings — loading a preset does not require regeneration
+- **Platforms:** macOS (MPS acceleration on Apple Silicon), Linux (CUDA), CPU fallback
 
 ## Architecture
 
