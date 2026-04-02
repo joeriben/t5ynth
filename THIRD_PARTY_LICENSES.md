@@ -45,14 +45,17 @@ VST3 SDK, LV2, and others).
 
 ## Reverb Impulse Responses — EMT 140 Plate
 
+**Author:** Greg Hopkins
+**License:** Creative Commons Attribution (CC BY)
+**Source:** https://oramics.github.io/sampled/IR/EMT140-Plate/
+
 **Files:**
 - `resources/ir/emt_140_plate_bright.wav`
 - `resources/ir/emt_140_plate_medium.wav`
 - `resources/ir/emt_140_plate_dark.wav`
 
-These impulse responses are modeled after the classic EMT 140 plate reverb.
-They were created for the T5ynth project and are distributed under the same
-GPLv3 license as the rest of the project.
+EMT 140 plate reverb impulse responses by Greg Hopkins, distributed
+under Creative Commons Attribution license.
 
 ---
 

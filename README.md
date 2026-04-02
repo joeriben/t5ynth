@@ -68,7 +68,7 @@ Two playback modes turn the generated audio into something a synthesizer can wor
 The point of wrapping a radically unconventional oscillator in a conventional synthesizer is that musicians can actually use it. The T5 Oscillator produces unfamiliar material — the signal chain that follows is deliberately standard so that familiar tools (envelopes, filters, LFOs, sequencing) can be applied to shape it.
 
 - **Signal chain:** ADSR amplitude envelope, 2 modulation envelopes, state-variable filter (LP/HP/BP, 6-24dB), 2 LFOs, 3 drift LFOs (slow parameter wandering), modulation routing
-- **Effects:** Delay with feedback/damping, convolution reverb (EMT 140 plate impulse responses), limiter
+- **Effects:** Delay with feedback/damping, convolution reverb (EMT 140 plate impulse responses by [Greg Hopkins](https://oramics.github.io/sampled/IR/EMT140-Plate/), CC BY), limiter
 - **Sequencer & Arpeggiator:** 16-step sequencer with per-step note/velocity/gate/glide, arpeggiator (up/down/updown/random)
 - **Presets:** .t5p format stores parameters + generated audio + embeddings — loading a preset does not require regeneration
 - **Platforms:** macOS (MPS acceleration on Apple Silicon), Linux (CUDA), CPU fallback
