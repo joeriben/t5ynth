@@ -226,10 +226,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift targets + waveform selection
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift1_target", 1}, "Drift1 Target",
-        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
+        juce::StringArray{"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift2_target", 1}, "Drift2 Target",
-        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
+        juce::StringArray{"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift1_wave", 1}, "Drift1 Wave",
         juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
@@ -240,7 +240,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift 3 target + waveform (was missing — drift3 rate/depth existed but had no target/wave)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift3_target", 1}, "Drift3 Target",
-        juce::StringArray{"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
+        juce::StringArray{"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift3_wave", 1}, "Drift3 Wave",
         juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
@@ -276,26 +276,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"mod2_loop", 1}, "Mod2 Loop", false));
 
     // ENV targets:
-    // 0=DCA, 1=Filter, 2=Scan, 3=Pitch, 4=DelayTime, 5=DelayFB, 6=DelayMix, 7=ReverbMix,
-    // 8=LFO1Rate, 9=LFO1Amt, 10=LFO2Rate, 11=LFO2Amt, 12=None
+    // 0=None, 1=DCA, 2=Filter, 3=Scan, 4=Pitch, 5=DelayTime, 6=DelayFB, 7=DelayMix, 8=ReverbMix,
+    // 9=LFO1Rate, 10=LFO1Depth, 11=LFO2Rate, 12=LFO2Depth
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod1_target", 1}, "Mod1 Target",
-        juce::StringArray{"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                          "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth", "---"}, 12));
+        juce::StringArray{"---", "DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                          "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod2_target", 1}, "Mod2 Target",
-        juce::StringArray{"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                          "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth", "---"}, 12));
-    // LFO targets: 0=Filter, 1=Scan, 2=Pitch, 3=DlyTime, 4=DlyFB, 5=DlyMix, 6=RevMix,
-    //              7=ENV1Amt, 8=ENV2Amt, 9=ENV3Amt, 10=None
+        juce::StringArray{"---", "DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                          "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth"}, 0));
+    // LFO targets: 0=None, 1=Filter, 2=Scan, 3=Pitch, 4=DlyTime, 5=DlyFB, 6=DlyMix, 7=RevMix,
+    //              8=ENV1Amt, 9=ENV2Amt, 10=ENV3Amt
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_target", 1}, "LFO1 Target",
-        juce::StringArray{"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                          "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "---"}, 10));
+        juce::StringArray{"---", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                          "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo2_target", 1}, "LFO2 Target",
-        juce::StringArray{"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                          "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "---"}, 10));
+        juce::StringArray{"---", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                          "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 0));
 
     // LFO Mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -583,7 +583,6 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     stepSequencer.setBpm(static_cast<double>(seqBpm));
     stepSequencer.setNumSteps(seqSteps);
     stepSequencer.setDivision(static_cast<int>(parameters.getRawParameterValue("seq_division")->load()));
-    stepSequencer.setGlideTime(parameters.getRawParameterValue("seq_glide_time")->load());
     stepSequencer.setAllGates(seqGate);
     if (seqRunning)
         stepSequencer.start();
@@ -704,16 +703,16 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         }
 
         // LFO → envelope amounts (multiplicative, clamped to 0–1)
-        // 7=ENV1Amt, 8=ENV2Amt, 9=ENV3Amt
+        // 8=ENV1Amt, 9=ENV2Amt, 10=ENV3Amt
         {
             float l1End = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
             float l2End = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
-            if (bp.lfo1Target == 7) bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  * (1.0f + l1End));
-            if (bp.lfo1Target == 8) bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount * (1.0f + l1End));
-            if (bp.lfo1Target == 9) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l1End));
-            if (bp.lfo2Target == 7) bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  * (1.0f + l2End));
-            if (bp.lfo2Target == 8) bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount * (1.0f + l2End));
-            if (bp.lfo2Target == 9) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l2End));
+            if (bp.lfo1Target == 8)  bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  * (1.0f + l1End));
+            if (bp.lfo1Target == 9)  bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount * (1.0f + l1End));
+            if (bp.lfo1Target == 10) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l1End));
+            if (bp.lfo2Target == 8)  bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  * (1.0f + l2End));
+            if (bp.lfo2Target == 9)  bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount * (1.0f + l2End));
+            if (bp.lfo2Target == 10) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l2End));
         }
 
         // Render all voices (summed with 1/sqrt(N) scaling)
@@ -730,33 +729,33 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
         // ── Accumulate block-rate modulation for delay/reverb ─────────────────
         // (Pitch modulation is handled per-sample in SynthVoice::renderSample)
-        if (bp.mod1Target == 4) modDelayTime += lastMod1Val;
-        if (bp.mod1Target == 5) modDelayFb += lastMod1Val;
-        if (bp.mod1Target == 6) modDelayMix += lastMod1Val;
-        if (bp.mod1Target == 7) modReverbMix += lastMod1Val;
-        if (bp.mod2Target == 4) modDelayTime += lastMod2Val;
-        if (bp.mod2Target == 5) modDelayFb += lastMod2Val;
-        if (bp.mod2Target == 6) modDelayMix += lastMod2Val;
-        if (bp.mod2Target == 7) modReverbMix += lastMod2Val;
+        if (bp.mod1Target == 5) modDelayTime += lastMod1Val;
+        if (bp.mod1Target == 6) modDelayFb += lastMod1Val;
+        if (bp.mod1Target == 7) modDelayMix += lastMod1Val;
+        if (bp.mod1Target == 8) modReverbMix += lastMod1Val;
+        if (bp.mod2Target == 5) modDelayTime += lastMod2Val;
+        if (bp.mod2Target == 6) modDelayFb += lastMod2Val;
+        if (bp.mod2Target == 7) modDelayMix += lastMod2Val;
+        if (bp.mod2Target == 8) modReverbMix += lastMod2Val;
 
         // Env → LFO modulation (block-rate, applied for next block's LFO computation)
-        // 8=LFO1Rate, 9=LFO1Depth, 10=LFO2Rate, 11=LFO2Depth
-        if (bp.mod1Target == 8)  lfo1.setRate(baseLfo1Rate * (1.0f + lastMod1Val));
-        if (bp.mod1Target == 9)  lfo1.setDepth(std::max(0.0f, baseLfo1Depth + lastMod1Val * baseLfo1Depth));
-        if (bp.mod1Target == 10) lfo2.setRate(baseLfo2Rate * (1.0f + lastMod1Val));
-        if (bp.mod1Target == 11) lfo2.setDepth(std::max(0.0f, baseLfo2Depth + lastMod1Val * baseLfo2Depth));
-        if (bp.mod2Target == 8)  lfo1.setRate(baseLfo1Rate * (1.0f + lastMod2Val));
-        if (bp.mod2Target == 9)  lfo1.setDepth(std::max(0.0f, baseLfo1Depth + lastMod2Val * baseLfo1Depth));
-        if (bp.mod2Target == 10) lfo2.setRate(baseLfo2Rate * (1.0f + lastMod2Val));
-        if (bp.mod2Target == 11) lfo2.setDepth(std::max(0.0f, baseLfo2Depth + lastMod2Val * baseLfo2Depth));
-        if (bp.lfo1Target == 3) modDelayTime += lastLfo1Val;
-        if (bp.lfo1Target == 4) modDelayFb += lastLfo1Val;
-        if (bp.lfo1Target == 5) modDelayMix += lastLfo1Val;
-        if (bp.lfo1Target == 6) modReverbMix += lastLfo1Val;
-        if (bp.lfo2Target == 3) modDelayTime += lastLfo2Val;
-        if (bp.lfo2Target == 4) modDelayFb += lastLfo2Val;
-        if (bp.lfo2Target == 5) modDelayMix += lastLfo2Val;
-        if (bp.lfo2Target == 6) modReverbMix += lastLfo2Val;
+        // 9=LFO1Rate, 10=LFO1Depth, 11=LFO2Rate, 12=LFO2Depth
+        if (bp.mod1Target == 9)  lfo1.setRate(baseLfo1Rate * (1.0f + lastMod1Val));
+        if (bp.mod1Target == 10) lfo1.setDepth(std::max(0.0f, baseLfo1Depth + lastMod1Val * baseLfo1Depth));
+        if (bp.mod1Target == 11) lfo2.setRate(baseLfo2Rate * (1.0f + lastMod1Val));
+        if (bp.mod1Target == 12) lfo2.setDepth(std::max(0.0f, baseLfo2Depth + lastMod1Val * baseLfo2Depth));
+        if (bp.mod2Target == 9)  lfo1.setRate(baseLfo1Rate * (1.0f + lastMod2Val));
+        if (bp.mod2Target == 10) lfo1.setDepth(std::max(0.0f, baseLfo1Depth + lastMod2Val * baseLfo1Depth));
+        if (bp.mod2Target == 11) lfo2.setRate(baseLfo2Rate * (1.0f + lastMod2Val));
+        if (bp.mod2Target == 12) lfo2.setDepth(std::max(0.0f, baseLfo2Depth + lastMod2Val * baseLfo2Depth));
+        if (bp.lfo1Target == 4) modDelayTime += lastLfo1Val;
+        if (bp.lfo1Target == 5) modDelayFb += lastLfo1Val;
+        if (bp.lfo1Target == 6) modDelayMix += lastLfo1Val;
+        if (bp.lfo1Target == 7) modReverbMix += lastLfo1Val;
+        if (bp.lfo2Target == 4) modDelayTime += lastLfo2Val;
+        if (bp.lfo2Target == 5) modDelayFb += lastLfo2Val;
+        if (bp.lfo2Target == 6) modDelayMix += lastLfo2Val;
+        if (bp.lfo2Target == 7) modReverbMix += lastLfo2Val;
     }
     else
     {
@@ -895,36 +894,36 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     if (!skipSynthesis)
     {
-        // Filter cutoff: modulated by env(target==1), LFO(target==0), or kbd track
+        // Filter cutoff: modulated by env(target==2), LFO(target==1), or kbd track
         {
-            bool filterModulated = (bp.mod1Target == 1 || bp.mod2Target == 1 ||
-                                    bp.lfo1Target == 0 || bp.lfo2Target == 0 ||
+            bool filterModulated = (bp.mod1Target == 2 || bp.mod2Target == 2 ||
+                                    bp.lfo1Target == 1 || bp.lfo2Target == 1 ||
                                     bp.kbdTrack > 0.0f) && voiceOut.hasActiveVoices;
             modulatedValues.filterCutoff.store(filterModulated ? voiceOut.lastModulatedCutoff : NO_GHOST,
                                                std::memory_order_relaxed);
         }
 
-        // Scan: modulated by env(target==2), LFO(target==1), drift
+        // Scan: modulated by env(target==3), LFO(target==2), drift
         {
-            bool scanModulated = (bp.mod1Target == 2 || bp.mod2Target == 2 ||
-                                  bp.lfo1Target == 1 || bp.lfo2Target == 1 ||
+            bool scanModulated = (bp.mod1Target == 3 || bp.mod2Target == 3 ||
+                                  bp.lfo1Target == 2 || bp.lfo2Target == 2 ||
                                   std::abs(bp.driftScanOffset) > 0.001f) && voiceOut.hasActiveVoices;
             modulatedValues.scanPosition.store(scanModulated ? voiceOut.lastModulatedScan : NO_GHOST,
                                                std::memory_order_relaxed);
         }
 
-        // LFO1 Rate/Depth: modulated by env(8/9)
+        // LFO1 Rate/Depth: modulated by env(9/10)
         {
-            bool lfo1RateMod  = bp.mod1Target == 8  || bp.mod2Target == 8;
-            bool lfo1DepthMod = bp.mod1Target == 9  || bp.mod2Target == 9;
+            bool lfo1RateMod  = bp.mod1Target == 9  || bp.mod2Target == 9;
+            bool lfo1DepthMod = bp.mod1Target == 10 || bp.mod2Target == 10;
             modulatedValues.lfo1Rate.store(lfo1RateMod ? lfo1.getRate() : NO_GHOST, std::memory_order_relaxed);
             modulatedValues.lfo1Depth.store(lfo1DepthMod ? lfo1.getDepth() : NO_GHOST, std::memory_order_relaxed);
         }
 
-        // LFO2 Rate/Depth: modulated by env(10/11)
+        // LFO2 Rate/Depth: modulated by env(11/12)
         {
-            bool lfo2RateMod  = bp.mod1Target == 10 || bp.mod2Target == 10;
-            bool lfo2DepthMod = bp.mod1Target == 11 || bp.mod2Target == 11;
+            bool lfo2RateMod  = bp.mod1Target == 11 || bp.mod2Target == 11;
+            bool lfo2DepthMod = bp.mod1Target == 12 || bp.mod2Target == 12;
             modulatedValues.lfo2Rate.store(lfo2RateMod ? lfo2.getRate() : NO_GHOST, std::memory_order_relaxed);
             modulatedValues.lfo2Depth.store(lfo2DepthMod ? lfo2.getDepth() : NO_GHOST, std::memory_order_relaxed);
         }

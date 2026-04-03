@@ -51,9 +51,12 @@ public:
     /** Set note division. */
     void setDivision(int div) { division = juce::jlimit(0, 4, div); }
 
-    /** Set glide time in ms (10-500). */
-    void setGlideTime(float ms) { glideTimeMs = juce::jlimit(10.0f, 500.0f, ms); }
-    float getGlideTime() const { return glideTimeMs; }
+    /** Auto glide time: 50% of step duration (ms), clamped to 10-500. */
+    float getGlideTime() const
+    {
+        double stepMs = (60.0 / bpm) * static_cast<double>(DIVISION_FACTORS[division]) * 1000.0;
+        return juce::jlimit(10.0f, 500.0f, static_cast<float>(stepMs * 0.5));
+    }
 
     /** Load a preset pattern by index (0-9). */
     void loadPreset(int index);
@@ -97,7 +100,7 @@ private:
     bool running = false;
     int lastPlayedNote = -1;
     int division = 3; // default 1/8 (index 3)
-    float glideTimeMs = 80.0f;
+    // glideTimeMs removed — now computed automatically from BPM/division
 
     double stepDurationSamples() const;
 

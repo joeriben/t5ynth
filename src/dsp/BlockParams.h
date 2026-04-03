@@ -16,21 +16,21 @@ struct BlockParams
     float mod1Attack = 0.0f, mod1Decay = 0.0f, mod1Sustain = 1.0f, mod1Release = 0.0f;
     float mod1Amount = 0.0f;
     float mod1VelSens = 1.0f;
-    int   mod1Target = 8; // 8 = None
+    int   mod1Target = 0; // 0 = None
     bool  mod1Loop = false;
 
     // Mod envelope 2
     float mod2Attack = 0.0f, mod2Decay = 0.0f, mod2Sustain = 1.0f, mod2Release = 0.0f;
     float mod2Amount = 0.0f;
     float mod2VelSens = 1.0f;
-    int   mod2Target = 8;
+    int   mod2Target = 0; // 0 = None
     bool  mod2Loop = false;
 
     // LFOs (global rates/depths for cross-mod, targets for routing)
     float lfo1Rate = 1.0f, lfo1Depth = 1.0f;
-    int   lfo1Wave = 0, lfo1Target = 10; // 10 = None
+    int   lfo1Wave = 0, lfo1Target = 0; // 0 = None
     float lfo2Rate = 1.0f, lfo2Depth = 1.0f;
-    int   lfo2Wave = 0, lfo2Target = 10;
+    int   lfo2Wave = 0, lfo2Target = 0; // 0 = None
 
     // Filter
     bool  filterEnabled = false;

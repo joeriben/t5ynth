@@ -23,8 +23,8 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.header.setColour(juce::Label::textColourId, kEnvCol);
     addAndMakeVisible(env.header);
 
-    env.targetBox.addItemList({"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                               "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth", "---"}, 1);
+    env.targetBox.addItemList({"---", "DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                               "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth"}, 1);
     env.targetBox.setSelectedId(defaultTarget, juce::dontSendNotification);
     env.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(env.targetBox);
@@ -73,9 +73,9 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.header.setColour(juce::Label::textColourId, kLfoCol);
     addAndMakeVisible(lfo.header);
 
-    lfo.targetBox.addItemList({"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                               "Xmod Rate", "Xmod Depth", "---"}, 1);
-    lfo.targetBox.setSelectedId(10, juce::dontSendNotification);
+    lfo.targetBox.addItemList({"---", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
+                               "Xmod Rate", "Xmod Depth"}, 1);
+    lfo.targetBox.setSelectedId(1, juce::dontSendNotification);
     lfo.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(lfo.targetBox);
 
@@ -111,7 +111,7 @@ void SynthPanel::initDrift(DriftSection& drift, const juce::String& name,
     drift.header.setColour(juce::Label::textColourId, kDriftCol);
     addAndMakeVisible(drift.header);
 
-    drift.targetBox.addItemList({"None", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan",
+    drift.targetBox.addItemList({"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan",
                                   "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix"}, 1);
     drift.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(drift.targetBox);
@@ -330,9 +330,9 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     kbdTrackRow->updateValue();
 
     // ── Envelopes ──
-    initEnv(ampEnv,  "ENV 1", 1, "amp_attack",  "amp_decay",  "amp_sustain",  "amp_release",  "amp_amount",  "amp_vel_sens",  "amp_loop",  apvts);
-    initEnv(mod1Env, "ENV 2", 4, "mod1_attack", "mod1_decay", "mod1_sustain", "mod1_release", "mod1_amount", "mod1_vel_sens", "mod1_loop", apvts);
-    initEnv(mod2Env, "ENV 3", 4, "mod2_attack", "mod2_decay", "mod2_sustain", "mod2_release", "mod2_amount", "mod2_vel_sens", "mod2_loop", apvts);
+    initEnv(ampEnv,  "ENV 1", 2, "amp_attack",  "amp_decay",  "amp_sustain",  "amp_release",  "amp_amount",  "amp_vel_sens",  "amp_loop",  apvts);
+    initEnv(mod1Env, "ENV 2", 1, "mod1_attack", "mod1_decay", "mod1_sustain", "mod1_release", "mod1_amount", "mod1_vel_sens", "mod1_loop", apvts);
+    initEnv(mod2Env, "ENV 3", 1, "mod2_attack", "mod2_decay", "mod2_sustain", "mod2_release", "mod2_amount", "mod2_vel_sens", "mod2_loop", apvts);
 
     // ── LFOs ──
     initLfo(lfo1, "LFO 1", "lfo1_rate", "lfo1_depth", "lfo1_wave", "lfo1_mode", apvts);
@@ -499,7 +499,7 @@ void SynthPanel::updateVisibility()
     }
 
     auto setEnvDimmed = [dimAlpha](EnvSection& env) {
-        bool active = env.targetBox.getSelectedId() != env.targetBox.getNumItems();
+        bool active = env.targetBox.getSelectedId() != 1; // 1 = "---"
         float alpha = active ? 1.0f : dimAlpha;
         env.loopToggle.setAlpha(alpha);
         env.loopToggle.setEnabled(active);
@@ -512,7 +512,7 @@ void SynthPanel::updateVisibility()
     setEnvDimmed(mod2Env);
 
     auto setLfoDimmed = [dimAlpha](LfoSection& lfo) {
-        bool active = lfo.targetBox.getSelectedId() != lfo.targetBox.getNumItems();
+        bool active = lfo.targetBox.getSelectedId() != 1; // 1 = "---"
         float alpha = active ? 1.0f : dimAlpha;
         lfo.waveBox.setAlpha(alpha);
         lfo.modeBox.setAlpha(alpha);
@@ -525,7 +525,7 @@ void SynthPanel::updateVisibility()
     setLfoDimmed(lfo2);
 
     auto setDriftDimmed = [dimAlpha](DriftSection& drift) {
-        bool active = drift.targetBox.getSelectedId() != 1; // 1 = "None"
+        bool active = drift.targetBox.getSelectedId() != 1; // 1 = "---"
         float alpha = active ? 1.0f : dimAlpha;
         drift.waveBox.setAlpha(alpha);
         drift.waveBox.setEnabled(active);

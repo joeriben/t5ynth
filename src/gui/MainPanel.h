@@ -71,6 +71,7 @@ private:
     void savePreset();
     void loadPreset();
     void exportWav();
+    void loadDefaultPreset();
     void showSettings();
     void hideSettings();
     void showAbout();

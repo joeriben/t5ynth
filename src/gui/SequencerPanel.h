@@ -10,7 +10,7 @@ class T5ynthProcessor;
  *
  * Layout:
  *   Row 1: LED [>][||]  [Steps▾]  [1/4|1/8|1/16]  BPM[==] 120  MIDI: D#2 v102
- *   Row 2: [Preset▾ wider]  Gate[==]  Glide[==]
+ *   Row 2: [Preset▾ wider]  Gate[==]
  *   Row 3: Step grid (dot | vertical note slider | glide dot | horiz velocity)
  *   Row 4: [Arp ✓]  [Up▾]  [1/16▾]  Oct[==]  Gate[==]
  */
@@ -44,7 +44,7 @@ private:
     // Row 2: Seq params
     juce::ComboBox presetBox;
     std::unique_ptr<SliderRow> gateRow;
-    std::unique_ptr<SliderRow> glideRow;
+
 
     // Row 3: Step grid
     struct StepColumn : public juce::Component
@@ -82,7 +82,7 @@ private:
     // APVTS attachments
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SA> bpmA, gateA, glideA, arpGateA;
+    std::unique_ptr<SA> bpmA, gateA, arpGateA;
     std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA;
 
     int currentStep = -1;

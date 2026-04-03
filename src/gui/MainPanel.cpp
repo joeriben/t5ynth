@@ -138,6 +138,9 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     dimResetBtn.setVisible(false);
     addChildComponent(dimResetBtn);
 
+    // Load default preset (if no audio loaded yet)
+    loadDefaultPreset();
+
     // Load native inference models
     tryLoadInferenceModels();
 }
@@ -470,6 +473,44 @@ void MainPanel::resized()
 
         dimensionExplorer.setBounds(overlayBounds.reduced(20, 10));
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Default Preset
+// ═══════════════════════════════════════════════════════════════════
+
+void MainPanel::loadDefaultPreset()
+{
+    // Only load if no audio present (fresh launch, not DAW session restore)
+    if (processorRef.getGeneratedAudio().getNumSamples() > 0)
+        return;
+
+    auto file = PresetFormat::getPresetsDirectory()
+                    .getChildFile("ghostly trombone, -0.35 WT.t5p");
+    if (!file.existsAsFile())
+        return;
+
+    auto result = PresetFormat::loadFromFile(file, processorRef);
+    if (!result.success)
+        return;
+
+    promptPanel.loadPresetData(result.promptA, result.promptB,
+                               result.seed, true, result.device);
+
+    if (result.hasAudio)
+    {
+        processorRef.loadGeneratedAudio(result.audio, result.sampleRate);
+        processorRef.setLastSeed(result.seed);
+        processorRef.setLastPrompts(result.promptA, result.promptB);
+    }
+
+    if (!result.embeddingA.empty())
+    {
+        processorRef.setLastEmbeddings(result.embeddingA, result.embeddingB);
+        dimensionExplorer.setEmbeddings(result.embeddingA, result.embeddingB);
+    }
+
+    statusBar.setPresetName(result.presetName);
 }
 
 // ═══════════════════════════════════════════════════════════════════

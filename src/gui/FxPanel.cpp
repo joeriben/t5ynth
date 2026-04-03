@@ -173,8 +173,9 @@ void FxPanel::paint(juce::Graphics& g)
 
     // ── Wordmark: "T5ynth by UCDCAE AI LAB" ──
     {
-        int wmY = getHeight() - 18;
-        float wmFs = 10.0f;
+        int wmH = 28;
+        int wmY = getHeight() - wmH - 4;
+        float wmFs = 20.0f;
         g.setFont(juce::FontOptions(wmFs));
 
         // "T5ynth by " in dim gray
@@ -182,7 +183,7 @@ void FxPanel::paint(juce::Graphics& g)
         int prefixW = g.getCurrentFont().getStringWidth(prefix);
         g.setColour(kDimmer);
         int startX = 8;
-        g.drawText(prefix, startX, wmY, prefixW, 16, juce::Justification::centredLeft);
+        g.drawText(prefix, startX, wmY, prefixW, wmH, juce::Justification::centredLeft);
 
         // Per-letter colored "UCDCAE AI LAB"
         struct LetterColor { char ch; juce::Colour col; };
@@ -201,7 +202,7 @@ void FxPanel::paint(juce::Graphics& g)
         {
             juce::String ch(juce::CharPointer_ASCII(&lc.ch), 1);
             int cw = g.getCurrentFont().getStringWidth(ch);
-            if (lc.ch != ' ') { g.setColour(lc.col); g.drawText(ch, x, wmY, cw + 1, 16, juce::Justification::centredLeft); }
+            if (lc.ch != ' ') { g.setColour(lc.col); g.drawText(ch, x, wmY, cw + 1, wmH, juce::Justification::centredLeft); }
             x += cw;
         }
     }

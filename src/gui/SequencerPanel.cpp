@@ -237,13 +237,6 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     gateRow->getSlider().onValueChange = [this] { gateRow->updateValue(); };
     gateRow->updateValue();
 
-    // ── Glide ──
-    glideRow = std::make_unique<SliderRow>("Glide", [](double v) { return juce::String(juce::roundToInt(v)) + "ms"; }, kSeqCol);
-    addAndMakeVisible(*glideRow);
-    glideA = std::make_unique<SA>(apvts, "seq_glide_time", glideRow->getSlider());
-    glideRow->getSlider().onValueChange = [this] { glideRow->updateValue(); };
-    glideRow->updateValue();
-
     // ── Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd) ──
     arpModeBox.addItemList({"Off","Up","Down","UpDown","Random"}, 1);
     arpModeBox.onChange = [this] {
@@ -460,12 +453,10 @@ void SequencerPanel::resized()
 
     area.removeFromTop(g);
 
-    // ═══ Row 2: Preset, Gate, Glide — balanced ═══
+    // ═══ Row 2: Preset, Gate ═══
     auto r2 = area.removeFromTop(rH);
     presetBox.setBounds(r2.removeFromLeft(110));  r2.removeFromLeft(g);
-    int slW = (r2.getWidth() - g) / 2;
-    gateRow->setBounds(r2.removeFromLeft(slW));   r2.removeFromLeft(g);
-    glideRow->setBounds(r2);
+    gateRow->setBounds(r2);
 
     area.removeFromTop(g);
 

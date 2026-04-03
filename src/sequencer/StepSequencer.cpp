@@ -166,8 +166,9 @@ void T5ynthStepSequencer::processBlock(juce::AudioBuffer<float>& buffer,
 
         auto& step = steps[static_cast<size_t>(stepIdx)];
 
-        // Note-off for previous (if gate didn't already end it)
-        if (lastPlayedNote >= 0)
+        // Note-off for previous — but SKIP if this step is a glide
+        // (glide needs the previous voice alive to slide its pitch)
+        if (lastPlayedNote >= 0 && !step.glide)
         {
             midi.addEvent(juce::MidiMessage::noteOff(1, lastPlayedNote), eventPos);
             lastPlayedNote = -1;
@@ -181,7 +182,13 @@ void T5ynthStepSequencer::processBlock(juce::AudioBuffer<float>& buffer,
             midi.addEvent(juce::MidiMessage::noteOn(channel, step.note,
                           static_cast<juce::uint8>(vel)), eventPos);
             lastPlayedNote = step.note;
-            samplesUntilGateOff = step.gate * stepDur;
+
+            // If the NEXT step has glide, hold this note for the full step
+            // (no early gate-off, so the voice is still sustaining for the glide)
+            int nextIdx = (scheduledStep + 1) % numSteps;
+            bool nextIsGlide = steps[static_cast<size_t>(nextIdx)].glide
+                            && steps[static_cast<size_t>(nextIdx)].enabled;
+            samplesUntilGateOff = nextIsGlide ? -1.0 : step.gate * stepDur;
         }
         else
         {
