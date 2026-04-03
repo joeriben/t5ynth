@@ -437,14 +437,14 @@ void MainPanel::resized()
     constexpr int kGenBtnH = 34;
     int kGap = juce::jlimit(3, 6, juce::roundToInt(h * 0.005f));
 
-    // Reserve Generate button at bottom
+    // Reserve Generate button at bottom — fixed 10px spacing
+    genCol.removeFromBottom(10);
     auto genBtnArea = genCol.removeFromBottom(kGenBtnH);
-    genCol.removeFromBottom(kGap);
+    genCol.removeFromBottom(10);
 
-    // Proportional distribution of remaining space
     int available = genCol.getHeight() - headerH * 3 - kGap * 2;
-    int oscH = juce::jmax(360, juce::roundToInt(available * 0.55f));
-    int axesH = juce::jmax(80, juce::roundToInt(available * 0.18f));
+    int oscH = juce::jmax(300, juce::roundToInt(available * 0.55f));
+    int axesH = juce::jmax(70, juce::roundToInt(available * 0.18f));
     // dimH gets the rest
 
     // Card 1: OSCILLATOR

@@ -372,10 +372,12 @@ void PromptPanel::resized()
     layoutCompactPair(stepsLabel, stepsSlider, stepsValue, &stepsHint,
                       cfgLabel, cfgSlider, cfgValue, &cfgHint);
 
-    // Seed + Device row (top-down, directly after compact params)
+    area.removeFromTop(gap);
+
+    // Seed + Device row (top-down, after compact params)
     {
         setFs(seedLabel, fSmall);
-        auto seedRow = area.removeFromTop(compactRowH);
+        auto seedRow = area.removeFromTop(rowH);
         int btnW = juce::roundToInt(seedRow.getWidth() * 0.11f);
         gpuBtn.setBounds(seedRow.removeFromLeft(btnW));
         cpuBtn.setBounds(seedRow.removeFromLeft(btnW));

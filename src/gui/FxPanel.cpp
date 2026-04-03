@@ -183,14 +183,10 @@ void FxPanel::paint(juce::Graphics& g)
         int wmY = reverbMixRow->getBottom() + (spaceBelow - wmH) / 2;
         g.setFont(juce::FontOptions(wmFs));
 
-        // "T5ynth by " in dim gray
+        // "T5ynth by " in dim gray, "UCDCAE AI LAB" per-letter colored — centred
         juce::String prefix = "T5ynth by  ";
         int prefixW = g.getCurrentFont().getStringWidth(prefix);
-        g.setColour(kDimmer);
-        int startX = 8;
-        g.drawText(prefix, startX, wmY, prefixW, wmH, juce::Justification::centredLeft);
 
-        // Per-letter colored "UCDCAE AI LAB"
         struct LetterColor { char ch; juce::Colour col; };
         LetterColor letters[] = {
             {'U', juce::Colour(0xff667eea)}, {'C', juce::Colour(0xffe91e63)},
@@ -202,8 +198,19 @@ void FxPanel::paint(juce::Graphics& g)
             {'L', juce::Colour(0xff7C4DFF)}, {'A', juce::Colour(0xffFF6F00)},
             {'B', juce::Colour(0xff4CAF50)}
         };
-        int x = startX + prefixW;
         int tracking = juce::roundToInt(wmFs * 0.15f);
+
+        // Measure total width for centring
+        int suffixW = 0;
+        for (auto& lc : letters)
+            suffixW += g.getCurrentFont().getStringWidth(juce::String(juce::CharPointer_ASCII(&lc.ch), 1)) + tracking;
+        int totalW = prefixW + suffixW;
+        int startX = (getWidth() - totalW) / 2;
+
+        g.setColour(kDimmer);
+        g.drawText(prefix, startX, wmY, prefixW, wmH, juce::Justification::centredLeft);
+
+        int x = startX + prefixW;
         for (auto& lc : letters)
         {
             juce::String ch(juce::CharPointer_ASCII(&lc.ch), 1);
