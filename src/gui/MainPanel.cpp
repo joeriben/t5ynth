@@ -257,18 +257,33 @@ void MainPanel::tryLoadInferenceModels()
     //   backend/dist/pipe_inference/pipe_inference  (local PyInstaller build)
     auto exe = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
     juce::File backendDir;
-    auto search = exe.getParentDirectory();
-    for (int i = 0; i < 8; ++i)
+
+    auto hasBackend = [](const juce::File& dir) {
+        return dir.getChildFile("pipe_inference.py").existsAsFile()
+            || dir.getChildFile("pipe_inference").existsAsFile()
+            || dir.getChildFile("pipe_inference.exe").existsAsFile()
+            || dir.getChildFile("dist/pipe_inference/pipe_inference").existsAsFile();
+    };
+
+    // macOS app bundle: Contents/MacOS/T5ynth → Contents/Resources/backend
+    auto resources = exe.getParentDirectory().getSiblingFile("Resources").getChildFile("backend");
+    if (hasBackend(resources))
+        backendDir = resources;
+
+    // Walk up from executable (dev builds, Linux, Windows)
+    if (!backendDir.exists())
     {
-        auto candidate = search.getChildFile("backend");
-        if (candidate.getChildFile("pipe_inference.py").existsAsFile()
-            || candidate.getChildFile("pipe_inference").existsAsFile()
-            || candidate.getChildFile("dist/pipe_inference/pipe_inference").existsAsFile())
+        auto search = exe.getParentDirectory();
+        for (int i = 0; i < 8; ++i)
         {
-            backendDir = candidate;
-            break;
+            auto candidate = search.getChildFile("backend");
+            if (hasBackend(candidate))
+            {
+                backendDir = candidate;
+                break;
+            }
+            search = search.getParentDirectory();
         }
-        search = search.getParentDirectory();
     }
 
     if (backendDir.exists())

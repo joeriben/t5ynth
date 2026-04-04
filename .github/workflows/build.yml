@@ -1,0 +1,199 @@
+name: Build T5ynth
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── macOS (Apple Silicon + Intel Universal) ──────────────────────
+  macos:
+    runs-on: macos-14   # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install system dependencies
+        run: brew install cmake
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r backend/requirements.txt
+
+      - name: Bundle Python backend (PyInstaller)
+        working-directory: backend
+        run: pyinstaller pipe_inference.spec --noconfirm
+
+      - name: Verify bundled binary starts
+        working-directory: backend
+        run: |
+          # Quick smoke test — binary should print to stderr and wait for stdin
+          timeout 10 ./dist/pipe_inference/pipe_inference < /dev/null 2>&1 || true
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
+
+      - name: Assemble app bundle
+        run: |
+          APP=build/T5ynth_artefacts/Release/Standalone/T5ynth.app
+          # Copy bundled backend into app Resources
+          mkdir -p "$APP/Contents/Resources/backend"
+          cp -R backend/dist/pipe_inference/* "$APP/Contents/Resources/backend/"
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-macOS-Standalone
+          path: build/T5ynth_artefacts/Release/Standalone/T5ynth.app
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-macOS-VST3
+          path: build/T5ynth_artefacts/Release/VST3/T5ynth.vst3
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-macOS-AU
+          path: build/T5ynth_artefacts/Release/AU/T5ynth.component
+
+  # ── Windows ─────────────────────────────────────────────────────
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r backend/requirements.txt
+
+      - name: Bundle Python backend (PyInstaller)
+        working-directory: backend
+        run: pyinstaller pipe_inference.spec --noconfirm
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j $env:NUMBER_OF_PROCESSORS
+
+      - name: Assemble distribution
+        shell: bash
+        run: |
+          mkdir -p dist/T5ynth
+          cp -R build/T5ynth_artefacts/Release/Standalone/* dist/T5ynth/
+          mkdir -p dist/T5ynth/backend
+          cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-Windows-Standalone
+          path: dist/T5ynth
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-Windows-VST3
+          path: build/T5ynth_artefacts/Release/VST3/T5ynth.vst3
+
+  # ── Linux ───────────────────────────────────────────────────────
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential \
+            libasound2-dev libcurl4-openssl-dev libfreetype-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libwebkit2gtk-4.1-dev
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r backend/requirements.txt
+
+      - name: Bundle Python backend (PyInstaller)
+        working-directory: backend
+        run: pyinstaller pipe_inference.spec --noconfirm
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release -j$(nproc)
+
+      - name: Assemble distribution
+        run: |
+          mkdir -p dist/T5ynth
+          cp build/T5ynth_artefacts/Release/Standalone/T5ynth dist/T5ynth/
+          mkdir -p dist/T5ynth/backend
+          cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-Linux-Standalone
+          path: dist/T5ynth
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-Linux-VST3
+          path: build/T5ynth_artefacts/Release/VST3/T5ynth.vst3
+
+  # ── Release (only on tags) ──────────────────────────────────────
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create archives
+        run: |
+          cd artifacts
+          for dir in T5ynth-*; do
+            tar czf "${dir}.tar.gz" "$dir"
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          generate_release_notes: true
