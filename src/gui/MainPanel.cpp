@@ -247,7 +247,6 @@ void MainPanel::hideSettings()
 
 void MainPanel::tryLoadInferenceModels()
 {
-    // Try pipe inference first (Python subprocess — correct audio)
     statusBar.setStatusText("Loading inference...");
 
     auto* processor = &processorRef;
@@ -276,62 +275,20 @@ void MainPanel::tryLoadInferenceModels()
                 if (ok)
                 {
                     statusBar.setConnected(true);
-                    statusBar.setStatusText("Ready (Python)");
+                    statusBar.setStatusText("Ready");
                     settingsPage.setBackendConnected(true);
                 }
                 else
                 {
-                    statusBar.setStatusText("Python inference failed — trying native...");
-                    tryLoadNativeInference();
+                    statusBar.setStatusText("Python backend failed to start");
                 }
             });
         }).detach();
     }
     else
     {
-        tryLoadNativeInference();
+        statusBar.setStatusText("Backend not found — check installation");
     }
-}
-
-void MainPanel::tryLoadNativeInference()
-{
-    // Fallback: try native LibTorch inference (deprecated, produces garbage)
-    auto home = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
-    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
-
-    std::vector<juce::File> candidates = {
-        appData.getChildFile("T5ynth/exported_models"),
-        juce::File::getCurrentWorkingDirectory().getChildFile("exported_models"),
-        home.getChildFile("t5ynth/exported_models"),
-        home.getChildFile("ai/t5ynth/exported_models"),
-    };
-
-    for (auto& dir : candidates)
-    {
-        if (dir.getChildFile("dit.pt").existsAsFile())
-        {
-            statusBar.setStatusText("Loading native models...");
-            auto* processor = &processorRef;
-            auto modelDir = dir;
-            std::thread([this, processor, modelDir]()
-            {
-                bool ok = processor->loadInferenceModels(modelDir);
-                juce::MessageManager::callAsync([this, ok]()
-                {
-                    if (ok)
-                    {
-                        statusBar.setConnected(true);
-                        statusBar.setStatusText("Ready (native)");
-                        settingsPage.setBackendConnected(true);
-                    }
-                    else
-                        statusBar.setStatusText("Model load failed");
-                });
-            }).detach();
-            return;
-        }
-    }
-    statusBar.setStatusText("No model — open Settings to download");
 }
 
 void MainPanel::paint(juce::Graphics& g)

@@ -7,28 +7,9 @@ T5ynthProcessor::T5ynthProcessor()
                      .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "T5ynth", createParameterLayout())
 {
-    backendManager.setStatusCallback([this](BackendManager::Status s)
-    {
-        if (s == BackendManager::Status::Running)
-        {
-            backendConnection.setEndpoint(backendManager.getEndpointUrl());
-            backendConnection.checkHealth();
-        }
-    });
-
-    backendManager.start();
 }
 
-T5ynthProcessor::~T5ynthProcessor()
-{
-    inference.unloadModels();
-    backendManager.stop();
-}
-
-bool T5ynthProcessor::loadInferenceModels(const juce::File& modelDir)
-{
-    return inference.loadModels(modelDir);
-}
+T5ynthProcessor::~T5ynthProcessor() = default;
 
 bool T5ynthProcessor::launchPipeInference(const juce::File& backendDir)
 {

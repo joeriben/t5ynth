@@ -69,7 +69,6 @@ private:
     void showDimExplorer();
     void hideDimExplorer();
     void tryLoadInferenceModels();
-    void tryLoadNativeInference();
     void savePreset();
     void loadPreset();
     void exportWav();

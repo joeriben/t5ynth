@@ -1,8 +1,6 @@
 #include "PromptPanel.h"
 #include "GuiHelpers.h"
 #include "../PluginProcessor.h"
-#include "../backend/GenerationRequest.h"
-#include "../inference/T5ynthInference.h"
 #include <thread>
 
 // Colors from GuiHelpers.h (kAccent, kDim, kDim, kSurface)
@@ -524,95 +522,64 @@ void PromptPanel::triggerGeneration()
     // Resolve selected model
     juce::String selectedModel = getSelectedModel();
 
-    // Use pipe inference (Python subprocess) if available, fall back to native
-    if (processorRef.isPipeInferenceReady())
+    if (!processorRef.isPipeInferenceReady())
     {
-        PipeInference::Request req;
-        req.promptA = promptA;
-        if (promptB.isNotEmpty()) req.promptB = promptB;
-        req.alpha = alpha;
-        req.magnitude = magnitude;
-        req.noiseSigma = noiseSigma;
-        req.durationSeconds = duration;
-        req.startPosition = startPos;
-        req.steps = steps;
-        req.cfgScale = cfgScale;
-        req.seed = seed;
-        req.device = selectedDevice;
-        req.model = selectedModel;
-        req.dimensionOffsets = std::move(pendingOffsets_);
-        req.semanticAxes = std::move(pendingAxes_);
-
-        auto deviceForLabel = selectedDevice.isEmpty() ? pipeInf.getDefaultDevice() : selectedDevice;
-        auto modelForLabel = selectedModel.isEmpty() ? pipeInf.getDefaultModel() : selectedModel;
-        auto* processor = &processorRef;
-        std::thread([this, processor, req, deviceForLabel, modelForLabel]()
-        {
-            auto result = processor->getPipeInference().generate(req);
-            juce::MessageManager::callAsync([this, processor, result = std::move(result), deviceForLabel, modelForLabel]()
-            {
-                generating = false;
-                generateButton.setEnabled(true);
-                if (result.success)
-                {
-                    processor->loadGeneratedAudio(result.audio, 44100.0);
-                    processor->setLastDevice(deviceForLabel);
-                    processor->setLastSeed(result.seed);
-                    processor->setLastPrompts(promptAEditor.getText().trim(),
-                                              promptBEditor.getText().trim());
-                    // Show used seed in seed field (especially useful for random seeds)
-                    seedEditor.setText(juce::String(result.seed), false);
-                    auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
-                                + juce::String(result.seed) + " | " + modelForLabel
-                                + " | " + deviceForLabel;
-                    if (onStatusChanged) onStatusChanged(info, false);
-
-                    if (!result.embeddingA.empty())
-                    {
-                        processor->setLastEmbeddings(result.embeddingA, result.embeddingB);
-                        if (onEmbeddingsReady)
-                            onEmbeddingsReady(result.embeddingA, result.embeddingB);
-                    }
-                }
-                else
-                {
-                    if (onStatusChanged) onStatusChanged(result.errorMessage, false);
-                }
-            });
-        }).detach();
+        generating = false;
+        generateButton.setEnabled(true);
+        if (onStatusChanged) onStatusChanged("Backend not ready", false);
+        return;
     }
-    else
+
+    PipeInference::Request req;
+    req.promptA = promptA;
+    if (promptB.isNotEmpty()) req.promptB = promptB;
+    req.alpha = alpha;
+    req.magnitude = magnitude;
+    req.noiseSigma = noiseSigma;
+    req.durationSeconds = duration;
+    req.startPosition = startPos;
+    req.steps = steps;
+    req.cfgScale = cfgScale;
+    req.seed = seed;
+    req.device = selectedDevice;
+    req.model = selectedModel;
+    req.dimensionOffsets = std::move(pendingOffsets_);
+    req.semanticAxes = std::move(pendingAxes_);
+
+    auto deviceForLabel = selectedDevice.isEmpty() ? pipeInf.getDefaultDevice() : selectedDevice;
+    auto modelForLabel = selectedModel.isEmpty() ? pipeInf.getDefaultModel() : selectedModel;
+    auto* processor = &processorRef;
+    std::thread([this, processor, req, deviceForLabel, modelForLabel]()
     {
-        // Fallback to native inference (deprecated, produces garbage)
-        T5ynthInference::Request req;
-        req.promptA = promptA;
-        if (promptB.isNotEmpty()) req.promptB = promptB;
-        req.alpha = alpha;
-        req.magnitude = magnitude;
-        req.noiseSigma = noiseSigma;
-        req.durationSeconds = duration;
-        req.startPosition = startPos;
-        req.steps = steps;
-        req.cfgScale = cfgScale;
-        req.seed = seed;
-
-        auto* processor = &processorRef;
-        std::thread([this, processor, req]()
+        auto result = processor->getPipeInference().generate(req);
+        juce::MessageManager::callAsync([this, processor, result = std::move(result), deviceForLabel, modelForLabel]()
         {
-            auto result = processor->getInference().generate(req);
-            juce::MessageManager::callAsync([this, processor, result = std::move(result)]()
+            generating = false;
+            generateButton.setEnabled(true);
+            if (result.success)
             {
-                generating = false;
-                generateButton.setEnabled(true);
-                if (result.success)
+                processor->loadGeneratedAudio(result.audio, 44100.0);
+                processor->setLastDevice(deviceForLabel);
+                processor->setLastSeed(result.seed);
+                processor->setLastPrompts(promptAEditor.getText().trim(),
+                                          promptBEditor.getText().trim());
+                seedEditor.setText(juce::String(result.seed), false);
+                auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
+                            + juce::String(result.seed) + " | " + modelForLabel
+                            + " | " + deviceForLabel;
+                if (onStatusChanged) onStatusChanged(info, false);
+
+                if (!result.embeddingA.empty())
                 {
-                    processor->loadGeneratedAudio(result.audio, 44100.0);
-                    infoLabel.setText(juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
-                                      + juce::String(result.seed), juce::dontSendNotification);
+                    processor->setLastEmbeddings(result.embeddingA, result.embeddingB);
+                    if (onEmbeddingsReady)
+                        onEmbeddingsReady(result.embeddingA, result.embeddingB);
                 }
-                else
-                    infoLabel.setText(result.errorMessage, juce::dontSendNotification);
-            });
-        }).detach();
-    }
+            }
+            else
+            {
+                if (onStatusChanged) onStatusChanged(result.errorMessage, false);
+            }
+        });
+    }).detach();
 }

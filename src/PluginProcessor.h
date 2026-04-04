@@ -9,9 +9,6 @@
 #include "dsp/Limiter.h"
 #include "sequencer/StepSequencer.h"
 #include "sequencer/Arpeggiator.h"
-#include "backend/BackendManager.h"
-#include "backend/BackendConnection.h"
-#include "inference/T5ynthInference.h"
 #include "inference/PipeInference.h"
 
 class T5ynthProcessor : public juce::AudioProcessor
@@ -50,16 +47,8 @@ public:
     // Load generated audio into the engine
     void loadGeneratedAudio(const juce::AudioBuffer<float>& buffer, double sampleRate);
 
-    // Backend (legacy HTTP — kept for fallback)
-    BackendManager& getBackendManager() { return backendManager; }
-    BackendConnection& getBackendConnection() { return backendConnection; }
-
-    // Native inference (LibTorch — deprecated)
-    T5ynthInference& getInference() { return inference; }
-    bool loadInferenceModels(const juce::File& modelDir);
-    bool isInferenceReady() const { return pipeInference.isReady() || inference.isLoaded(); }
-
-    // Pipe inference (Python subprocess)
+    // Inference (Python subprocess)
+    bool isInferenceReady() const { return pipeInference.isReady(); }
     PipeInference& getPipeInference() { return pipeInference; }
     bool launchPipeInference(const juce::File& backendDir);
     bool isPipeInferenceReady() const { return pipeInference.isReady(); }
@@ -130,14 +119,7 @@ private:
     T5ynthStepSequencer stepSequencer;
     T5ynthArpeggiator arpeggiator;
 
-    // Backend (backendConnection destroyed before backendManager — correct order)
-    BackendManager backendManager;
-    BackendConnection backendConnection;
-
-    // Native inference (LibTorch — deprecated, kept for reference)
-    T5ynthInference inference;
-
-    // Pipe inference (Python subprocess — actual working inference)
+    // Inference (Python subprocess)
     PipeInference pipeInference;
     juce::String lastDevice;
 
