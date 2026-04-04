@@ -109,6 +109,7 @@ target_link_libraries(T5ynth
 
 target_compile_definitions(T5ynth
     PUBLIC
+        NOMINMAX              # prevent windows.h min/max macros
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=$<BOOL:${CURL_FOUND}>
         JUCE_VST3_CAN_REPLACE_VST2=0
