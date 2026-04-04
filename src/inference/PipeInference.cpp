@@ -12,21 +12,49 @@ PipeInference::~PipeInference()
     shutdown();
 }
 
+juce::File PipeInference::findBundledBinary(const juce::File& backendDir) const
+{
+    // PyInstaller-bundled binary: backendDir/dist/pipe_inference/pipe_inference
+    auto dist = backendDir.getChildFile("dist/pipe_inference/pipe_inference");
+    if (dist.existsAsFile()) return dist;
+
+    // Installed layout: binary next to backendDir
+    // macOS app bundle: Contents/Resources/backend/pipe_inference
+    // Linux/Windows:    backend/pipe_inference(.exe)
+    auto sibling = backendDir.getChildFile("pipe_inference");
+    if (sibling.existsAsFile()) return sibling;
+
+   #ifdef _WIN32
+    auto siblingExe = backendDir.getChildFile("pipe_inference.exe");
+    if (siblingExe.existsAsFile()) return siblingExe;
+   #endif
+
+    return {};  // not found — fall back to Python
+}
+
 juce::String PipeInference::findPython(const juce::File& backendDir) const
 {
     auto projectRoot = backendDir.getParentDirectory();
+
+   #ifdef _WIN32
+    for (auto& rel : { ".venv/Scripts/python.exe", "venv/Scripts/python.exe",
+                       ".venv/Scripts/python3.exe", "venv/Scripts/python3.exe" })
+   #else
     for (auto& rel : { ".venv/bin/python", "venv/bin/python",
                        ".venv/bin/python3", "venv/bin/python3" })
+   #endif
     {
         auto py = projectRoot.getChildFile(rel);
         if (py.existsAsFile())
             return py.getFullPathName();
     }
+   #ifndef _WIN32
     for (auto& path : { "/usr/bin/python3", "/usr/local/bin/python3" })
     {
         if (juce::File(path).existsAsFile())
             return path;
     }
+   #endif
     return "python3";
 }
 
@@ -58,15 +86,29 @@ bool PipeInference::launch(const juce::File& backendDir)
     return false;
 #else
     backendDir_ = backendDir;
-    auto script = backendDir.getChildFile("pipe_inference.py");
-    if (!script.existsAsFile())
-    {
-        juce::Logger::writeToLog("PipeInference: pipe_inference.py not found");
-        return false;
-    }
 
-    auto python = findPython(backendDir);
-    juce::Logger::writeToLog("PipeInference: launching " + python + " " + script.getFullPathName());
+    // Resolve executable: bundled binary (PyInstaller) or Python + script
+    auto bundled = findBundledBinary(backendDir);
+    juce::String execPath;
+    juce::String scriptPath;  // empty when using bundled binary
+
+    if (bundled.existsAsFile())
+    {
+        execPath = bundled.getFullPathName();
+        juce::Logger::writeToLog("PipeInference: launching bundled " + execPath);
+    }
+    else
+    {
+        auto script = backendDir.getChildFile("pipe_inference.py");
+        if (!script.existsAsFile())
+        {
+            juce::Logger::writeToLog("PipeInference: pipe_inference.py not found");
+            return false;
+        }
+        execPath = findPython(backendDir);
+        scriptPath = script.getFullPathName();
+        juce::Logger::writeToLog("PipeInference: launching " + execPath + " " + scriptPath);
+    }
 
     // Create bidirectional pipes: parent→child (stdin), child→parent (stdout)
     int pipeIn[2];   // parent writes to pipeIn[1], child reads from pipeIn[0]
@@ -95,9 +137,18 @@ bool PipeInference::launch(const juce::File& backendDir)
         close(pipeIn[0]);
         close(pipeOut[1]);
 
-        auto pyStr = python.toStdString();
-        auto scriptStr = script.getFullPathName().toStdString();
-        execlp(pyStr.c_str(), pyStr.c_str(), scriptStr.c_str(), nullptr);
+        auto execStr = execPath.toStdString();
+        if (scriptPath.isEmpty())
+        {
+            // Bundled binary — no arguments
+            execlp(execStr.c_str(), execStr.c_str(), nullptr);
+        }
+        else
+        {
+            // Python + script
+            auto scriptStr = scriptPath.toStdString();
+            execlp(execStr.c_str(), execStr.c_str(), scriptStr.c_str(), nullptr);
+        }
         _exit(1);  // exec failed
     }
 

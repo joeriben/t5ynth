@@ -251,15 +251,21 @@ void MainPanel::tryLoadInferenceModels()
 
     auto* processor = &processorRef;
 
-    // Find backend directory (contains pipe_inference.py)
+    // Find backend directory — accepts either:
+    //   backend/pipe_inference.py  (dev: Python script)
+    //   backend/pipe_inference     (release: PyInstaller binary)
+    //   backend/dist/pipe_inference/pipe_inference  (local PyInstaller build)
     auto exe = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
     juce::File backendDir;
     auto search = exe.getParentDirectory();
     for (int i = 0; i < 8; ++i)
     {
-        if (search.getChildFile("backend/pipe_inference.py").existsAsFile())
+        auto candidate = search.getChildFile("backend");
+        if (candidate.getChildFile("pipe_inference.py").existsAsFile()
+            || candidate.getChildFile("pipe_inference").existsAsFile()
+            || candidate.getChildFile("dist/pipe_inference/pipe_inference").existsAsFile())
         {
-            backendDir = search.getChildFile("backend");
+            backendDir = candidate;
             break;
         }
         search = search.getParentDirectory();

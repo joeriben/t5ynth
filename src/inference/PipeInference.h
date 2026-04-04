@@ -91,6 +91,7 @@ private:
     juce::String defaultModel_;
     juce::File backendDir_;   // remembered for auto-restart
 
+    juce::File findBundledBinary(const juce::File& backendDir) const;
     juce::String findPython(const juce::File& backendDir) const;
     bool readExact(void* dest, int numBytes, int timeoutMs = 120000);
     bool writeExact(const void* src, int numBytes);
