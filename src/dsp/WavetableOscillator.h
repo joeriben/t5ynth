@@ -40,9 +40,12 @@ public:
     void extractFramesFromBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate,
                                  float startFrac = 0.0f, float endFrac = 1.0f);
 
-    /** Set playback frequency in Hz. */
+    /** Set playback frequency in Hz. Cancels any active glide. */
     void setFrequency(float hz) { targetFrequency = hz; glideFreqSamplesLeft = 0; }
     float getFrequency() const { return targetFrequency; }
+
+    /** True if a frequency glide is in progress. */
+    bool isGliding() const { return glideFreqSamplesLeft > 0; }
 
     /** Smooth frequency ramp to target Hz over durationMs (portamento). */
     void glideToFrequency(float hz, float durationMs);

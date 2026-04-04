@@ -4,6 +4,8 @@
 void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate;
+    maxBlockSize_ = samplesPerBlock;
+    samplerBlockBuf_.resize(static_cast<size_t>(samplesPerBlock));
     osc.prepare(sampleRate, samplesPerBlock);
     sampler.prepare(sampleRate, samplesPerBlock);
     ampEnv.prepare(sampleRate);
@@ -62,11 +64,18 @@ void SynthVoice::noteOff()
 void SynthVoice::glideToNote(int note, float glideMs)
 {
     currentNote = note;
-    baseFrequency = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(note));
+    float targetFreq = static_cast<float>(juce::MidiMessage::getMidiNoteInHertz(note));
     if (engineMode == EngineMode::Wavetable)
-        osc.glideToFrequency(baseFrequency, glideMs);
+    {
+        // Don't update baseFrequency yet — renderBlock uses it for setFrequency()
+        // which would override the glide. baseFrequency is synced after glide completes.
+        osc.glideToFrequency(targetFreq, glideMs);
+    }
     else
+    {
+        baseFrequency = targetFreq;
         sampler.glideToSemitones(note - 60, glideMs);
+    }
 }
 
 void SynthVoice::configureForBlock(const BlockParams& p)
@@ -121,9 +130,13 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     if (p.lfo1Target == LfoTarget::Pitch) pitchMod += lfo1Val;
     if (p.lfo2Target == LfoTarget::Pitch) pitchMod += lfo2Val;
 
-    // Always set frequency from baseFrequency to avoid accumulation drift
-    if (p.engineIsWavetable && osc.hasFrames())
+    // Set frequency — but skip during glide to avoid overriding it
+    if (p.engineIsWavetable && osc.hasFrames() && !osc.isGliding())
+    {
+        baseFrequency = static_cast<float>(
+            juce::MidiMessage::getMidiNoteInHertz(currentNote));
         osc.setFrequency(baseFrequency * (1.0f + pitchMod));
+    }
 
     // Generate audio sample
     float sample = 0.0f;
@@ -210,6 +223,15 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
         return;
     }
 
+    // ── Pre-render sampler block with pitch-preserving transposition ──
+    bool useSampler = !p.engineIsWavetable && sampler.hasAudio();
+    if (useSampler)
+    {
+        if (samplerBlockBuf_.size() < static_cast<size_t>(numSamples))
+            samplerBlockBuf_.resize(static_cast<size_t>(numSamples));
+        sampler.renderPitchedBlock(samplerBlockBuf_.data(), numSamples);
+    }
+
     int pos = 0;
     while (pos < numSamples && active)
     {
@@ -270,7 +292,20 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             if (p.lfo2Target == LfoTarget::Pitch) pitchMod += lfo2Val;
 
             if (p.engineIsWavetable && osc.hasFrames())
-                osc.setFrequency(baseFrequency * (1.0f + pitchMod));
+            {
+                if (osc.isGliding())
+                {
+                    // Don't call setFrequency during glide — it cancels the glide.
+                    // Sync baseFrequency when glide completes on next iteration.
+                }
+                else
+                {
+                    // Sync baseFrequency after glide completed
+                    baseFrequency = static_cast<float>(
+                        juce::MidiMessage::getMidiNoteInHertz(currentNote));
+                    osc.setFrequency(baseFrequency * (1.0f + pitchMod));
+                }
+            }
 
             // Generate sample
             float sample = 0.0f;
@@ -286,9 +321,9 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                 lastModulatedScan_ = clampedScan;
                 sample = osc.processSample();
             }
-            else if (!p.engineIsWavetable && sampler.hasAudio())
+            else if (useSampler)
             {
-                sample = sampler.processSample();
+                sample = samplerBlockBuf_[static_cast<size_t>(i)];
             }
 
             // VCA

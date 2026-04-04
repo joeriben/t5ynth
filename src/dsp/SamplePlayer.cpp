@@ -1,9 +1,13 @@
 #include "SamplePlayer.h"
 #include <cmath>
+#include <cstring>
 
-void SamplePlayer::prepare(double sampleRate, int /*samplesPerBlock*/)
+void SamplePlayer::prepare(double sampleRate, int samplesPerBlock)
 {
     playbackSampleRate = sampleRate;
+    maxBlockSize = samplesPerBlock;
+    rawReadBuf.resize(static_cast<size_t>(samplesPerBlock));
+    prepareStretcher();
 }
 
 void SamplePlayer::reset()
@@ -13,6 +17,7 @@ void SamplePlayer::reset()
     audioLoaded = false;
     playing = false;
     readPosition = 0.0;
+    stretcher.reset();
 }
 
 void SamplePlayer::loadBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate)
@@ -64,6 +69,8 @@ void SamplePlayer::retrigger()
 {
     readPosition = static_cast<double>(coldStart);
     playing = true;
+    if (stretcherPrepared)
+        stretcher.reset();
 }
 
 void SamplePlayer::setLoopStart(float frac)
@@ -179,6 +186,54 @@ void SamplePlayer::preparePlaybackBuffer()
 // processBlock
 // ═══════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════
+// Lanczos sinc interpolation (6-tap kernel)
+// ═══════════════════════════════════════════════════════════════════
+
+float SamplePlayer::lanczosSample(double pos) const
+{
+    const auto& buf = sharedMode ? *sharedPlayBuffer : playBuffer;
+    const float* data = buf.getReadPointer(0);
+    const int bufLen = buf.getNumSamples();
+
+    const int center = static_cast<int>(std::floor(pos));
+    const double frac = pos - center;
+
+    // Fast path: integer position
+    if (frac < 1e-8 && center >= 0 && center < bufLen)
+        return data[center];
+
+    double sum = 0.0, weightSum = 0.0;
+
+    for (int i = -SINC_KERNEL_A + 1; i <= SINC_KERNEL_A; ++i)
+    {
+        int idx = center + i;
+        if (idx < 0 || idx >= bufLen) continue;
+
+        double x = frac - i;
+        double w;
+        if (std::abs(x) < 1e-6)
+            w = 1.0;
+        else if (std::abs(x) >= SINC_KERNEL_A)
+            w = 0.0;
+        else
+        {
+            double piX = juce::MathConstants<double>::pi * x;
+            double piXA = piX / SINC_KERNEL_A;
+            w = (std::sin(piX) / piX) * (std::sin(piXA) / piXA);
+        }
+
+        sum += data[idx] * w;
+        weightSum += w;
+    }
+
+    return weightSum > 0.0 ? static_cast<float>(sum / weightSum) : 0.0f;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// processSample (Bypass mode / legacy — speed-based transposition)
+// ═══════════════════════════════════════════════════════════════════
+
 float SamplePlayer::processSample()
 {
     const int regionLen = playEnd - playStart;
@@ -196,23 +251,8 @@ float SamplePlayer::processSample()
     const double srRatio = bufferOriginalSR / playbackSampleRate;
     double speedRatio = srRatio * transposeRatio;
 
-    // Map readPosition into the play region
-    double posInRegion = readPosition - static_cast<double>(playStart);
-
-    int pos0 = static_cast<int>(std::floor(posInRegion));
-    float frac = static_cast<float>(posInRegion - pos0);
-
-    // Clamp into region
-    if (pos0 < 0) pos0 = 0;
-    int absPos0 = playStart + (pos0 % regionLen);
-    int absPos1 = playStart + ((pos0 + 1) % regionLen);
-
-    // Read mono (channel 0) with linear interpolation
-    const auto& buf = sharedMode ? *sharedPlayBuffer : playBuffer;
-    const auto* bufPtr = buf.getReadPointer(0);
-    float s0 = bufPtr[absPos0];
-    float s1 = bufPtr[absPos1];
-    float result = s0 + (s1 - s0) * frac;
+    // Read with Lanczos sinc interpolation
+    float result = lanczosSample(readPosition);
 
     readPosition += speedRatio;
 
@@ -220,17 +260,165 @@ float SamplePlayer::processSample()
     if (readPosition >= static_cast<double>(playEnd))
     {
         if (loopMode == LoopMode::OneShot)
-        {
             playing = false;
-        }
         else
-        {
-            // Loop or PingPong: wrap back to loop start
             readPosition -= static_cast<double>(regionLen);
-        }
     }
 
     return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// readRawSamples — read at 1:1 speed (SR-corrected, no transposition)
+// ═══════════════════════════════════════════════════════════════════
+
+void SamplePlayer::readRawSamples(float* output, int numSamples)
+{
+    const int regionLen = playEnd - playStart;
+    if (regionLen <= 0 || !playing)
+    {
+        std::memset(output, 0, sizeof(float) * static_cast<size_t>(numSamples));
+        return;
+    }
+
+    const double srRatio = bufferOriginalSR / playbackSampleRate;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        output[i] = lanczosSample(readPosition);
+        readPosition += srRatio; // 1:1 speed, only SR correction
+
+        if (readPosition >= static_cast<double>(playEnd))
+        {
+            if (loopMode == LoopMode::OneShot)
+            {
+                playing = false;
+                std::memset(output + i + 1, 0,
+                            sizeof(float) * static_cast<size_t>(numSamples - i - 1));
+                return;
+            }
+            else
+            {
+                readPosition -= static_cast<double>(regionLen);
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// renderPitchedBlock — pitch-preserving transposition via Signalsmith Stretch
+// ═══════════════════════════════════════════════════════════════════
+
+void SamplePlayer::renderPitchedBlock(float* output, int numSamples)
+{
+    if (!audioLoaded || !playing)
+    {
+        std::memset(output, 0, sizeof(float) * static_cast<size_t>(numSamples));
+        return;
+    }
+
+    // Re-prepare buffer if settings changed
+    if (needsReprepareFlag && !sharedMode)
+        preparePlaybackBuffer();
+
+    // Bypass: original speed-based transposition (with sinc interpolation)
+    if (pitchQuality == PitchShiftQuality::Bypass)
+    {
+        for (int i = 0; i < numSamples; ++i)
+        {
+            output[i] = processSample();
+            if (!playing)
+            {
+                std::memset(output + i + 1, 0,
+                            sizeof(float) * static_cast<size_t>(numSamples - i - 1));
+                return;
+            }
+        }
+        return;
+    }
+
+    if (!stretcherPrepared)
+        prepareStretcher();
+
+    // Process in sub-chunks for smooth glide transitions
+    int remaining = numSamples;
+    int offset = 0;
+
+    while (remaining > 0 && playing)
+    {
+        int chunkSize = std::min(remaining, PITCH_PROCESS_CHUNK);
+
+        // Advance glide state for this chunk
+        if (glideSamplesLeft > 0)
+        {
+            int steps = std::min(glideSamplesLeft, chunkSize);
+            transposeRatio += glideRatioIncr * steps;
+            glideSamplesLeft -= steps;
+            if (glideSamplesLeft <= 0)
+            {
+                transposeRatio = glideTargetRatio;
+                glideSamplesLeft = 0;
+            }
+        }
+
+        // Set pitch transposition on the stretcher
+        float semitones = static_cast<float>(12.0 * std::log2(transposeRatio));
+        stretcher.setTransposeSemitones(semitones);
+
+        // Read raw samples at original speed (SR-corrected only)
+        if (rawReadBuf.size() < static_cast<size_t>(chunkSize))
+            rawReadBuf.resize(static_cast<size_t>(chunkSize));
+        readRawSamples(rawReadBuf.data(), chunkSize);
+
+        // Pitch-shift through Signalsmith Stretch (mono: 1 channel)
+        float* inPtr = rawReadBuf.data();
+        float* outPtr = output + offset;
+        stretcher.process(&inPtr, chunkSize, &outPtr, chunkSize);
+
+        offset += chunkSize;
+        remaining -= chunkSize;
+    }
+
+    // Zero remainder if playback stopped mid-block
+    if (offset < numSamples)
+        std::memset(output + offset, 0,
+                    sizeof(float) * static_cast<size_t>(numSamples - offset));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Pitch shifter configuration
+// ═══════════════════════════════════════════════════════════════════
+
+void SamplePlayer::prepareStretcher()
+{
+    float sr = static_cast<float>(playbackSampleRate);
+    switch (pitchQuality)
+    {
+        case PitchShiftQuality::Bypass:
+            break; // no stretcher needed
+        case PitchShiftQuality::Efficient:
+            stretcher.presetCheaper(1, sr);
+            break;
+        case PitchShiftQuality::HighQuality:
+            stretcher.presetDefault(1, sr);
+            // Larger block for higher quality (4096 samples, 256 interval)
+            stretcher.configure(1, 4096, 256);
+            break;
+        case PitchShiftQuality::Default:
+        default:
+            stretcher.presetDefault(1, sr);
+            break;
+    }
+    stretcherPrepared = (pitchQuality != PitchShiftQuality::Bypass);
+}
+
+void SamplePlayer::setPitchShiftQuality(PitchShiftQuality quality)
+{
+    if (quality != pitchQuality)
+    {
+        pitchQuality = quality;
+        prepareStretcher();
+    }
 }
 
 void SamplePlayer::processBlock(juce::AudioBuffer<float>& output)

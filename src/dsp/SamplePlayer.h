@@ -1,5 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
+#include <vector>
+#include "signalsmith-stretch.h"
 
 /**
  * Sample playback engine (ported from useSamplePlayer.ts).
@@ -10,13 +12,15 @@
  *   - Cross-correlation loop-point optimization
  *   - Peak normalization (0.95 target)
  *   - Fractional loop start/end ("brackets")
- *   - MIDI transposition via playback rate
+ *   - MIDI transposition via Signalsmith Stretch (pitch-preserving)
+ *   - 6-tap Lanczos sinc interpolation for buffer reads
  *   - Retrigger (hard restart for non-legato)
  */
 class SamplePlayer
 {
 public:
     enum class LoopMode { OneShot, Loop, PingPong };
+    enum class PitchShiftQuality { Bypass, Efficient, Default, HighQuality };
 
     SamplePlayer() = default;
 
@@ -29,8 +33,14 @@ public:
     /** Process a block (writes into output buffer). */
     void processBlock(juce::AudioBuffer<float>& output);
 
-    /** Render one mono sample (channel 0, linear interpolation). Advances read position. */
+    /** Render one mono sample (channel 0, Lanczos sinc interpolation).
+     *  Uses speed-based transposition (Bypass mode). Advances read position. */
     float processSample();
+
+    /** Render a block of pitch-shifted mono samples.
+     *  Uses Signalsmith Stretch for pitch-preserving transposition.
+     *  Falls back to speed-based transposition in Bypass mode. */
+    void renderPitchedBlock(float* output, int numSamples);
 
     bool hasAudio() const { return audioLoaded; }
 
@@ -78,6 +88,10 @@ public:
     /** Re-build playBuffer from originalBuffer with current settings. */
     void preparePlaybackBuffer();
 
+    // ─── Pitch shift quality ───
+    void setPitchShiftQuality(PitchShiftQuality quality);
+    PitchShiftQuality getPitchShiftQuality() const { return pitchQuality; }
+
 private:
     // Original (unprocessed) buffer — kept for re-preparation when settings change
     juce::AudioBuffer<float> originalBuffer;
@@ -115,6 +129,28 @@ private:
     // Shared-buffer mode: reads from external playBuffer, no ownership
     bool sharedMode = false;
     const juce::AudioBuffer<float>* sharedPlayBuffer = nullptr;
+
+    // ─── Pitch shifting (Signalsmith Stretch) ───
+    signalsmith::stretch::SignalsmithStretch<float> stretcher;
+    PitchShiftQuality pitchQuality = PitchShiftQuality::Default;
+    bool stretcherPrepared = false;
+    std::vector<float> rawReadBuf;
+    int maxBlockSize = 512;
+
+    static constexpr int PITCH_PROCESS_CHUNK = 64;
+
+    // ─── Lanczos sinc interpolation ───
+    static constexpr int SINC_KERNEL_A = 6;
+
+    /** 6-tap Lanczos sinc interpolation at fractional buffer position. */
+    float lanczosSample(double pos) const;
+
+    /** Read raw samples at 1:1 speed (SR-corrected only, no transposition).
+     *  Advances readPosition and handles loop wrapping. */
+    void readRawSamples(float* output, int numSamples);
+
+    /** Initialize/reconfigure the Signalsmith Stretch instance. */
+    void prepareStretcher();
 
     /** Cross-correlation loop-end optimizer (channel 0). */
     int optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen) const;

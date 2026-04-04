@@ -35,9 +35,15 @@ void VoiceManager::noteOn(int note, float velocity, bool isGlide, float glideMs,
     {
         auto& v = voices[0];
         bool legato = v.isActive() && !v.isReleasing();
-        if (legato || isGlide)
+        if (legato || (isGlide && v.isActive()))
         {
             // Glide pitch without retriggering envelopes
+            // (If voice is releasing, re-hold it so it stays alive during glide)
+            if (v.isReleasing())
+            {
+                v.noteOn(v.getCurrentNote(), velocity, false);
+                // Don't retrigger sampler — keep audio continuous
+            }
             v.glideToNote(note, glideMs > 0.0f ? glideMs : 30.0f);
             return;
         }

@@ -5,6 +5,7 @@
 #include "LFO.h"
 #include "StateVariableFilter.h"
 #include "BlockParams.h"
+#include <vector>
 
 /**
  * Single synthesizer voice — owns all per-voice DSP state:
@@ -107,4 +108,8 @@ private:
     float lastMod2Val_ = 0.0f;
     float lastModulatedCutoff_ = 20000.0f;
     float lastModulatedScan_ = 0.0f;
+
+    // Pre-rendered sampler block (pitch-shifted via Signalsmith Stretch)
+    int maxBlockSize_ = 512;
+    std::vector<float> samplerBlockBuf_;
 };

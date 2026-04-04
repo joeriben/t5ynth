@@ -20,6 +20,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
+# ── Signalsmith Stretch (header-only, for pitch-preserving transposition) ──────
+FetchContent_Declare(
+    signalsmith_stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        1.1.0
+)
+FetchContent_MakeAvailable(signalsmith_stretch)
+
 add_subdirectory(JUCE)
 
 juce_add_plugin(T5ynth
@@ -85,6 +93,9 @@ target_sources(T5ynth PRIVATE
 
 target_include_directories(T5ynth PRIVATE
     src
+)
+target_include_directories(T5ynth SYSTEM PRIVATE
+    ${signalsmith_stretch_SOURCE_DIR}
 )
 
 juce_add_binary_data(T5ynthData SOURCES
