@@ -58,10 +58,22 @@ juce::String PipeInference::findPython(const juce::File& backendDir) const
     return "python3";
 }
 
+bool PipeInference::isConnected() const
+{
+   #ifdef _WIN32
+    return hChildStdinWr_ != INVALID_HANDLE_VALUE;
+   #else
+    return stdinFd_ >= 0;
+   #endif
+}
+
 bool PipeInference::isChildAlive() const
 {
 #ifdef _WIN32
-    return false;
+    if (hProcess_ == INVALID_HANDLE_VALUE) return false;
+    DWORD exitCode = 0;
+    if (!GetExitCodeProcess(hProcess_, &exitCode)) return false;
+    return exitCode == STILL_ACTIVE;
 #else
     if (childPid_ <= 0) return false;
     int status = 0;
@@ -81,10 +93,6 @@ bool PipeInference::tryRestart()
 
 bool PipeInference::launch(const juce::File& backendDir)
 {
-#ifdef _WIN32
-    juce::Logger::writeToLog("PipeInference: not supported on Windows yet");
-    return false;
-#else
     backendDir_ = backendDir;
 
     // Resolve executable: bundled binary (PyInstaller) or Python + script
@@ -110,7 +118,71 @@ bool PipeInference::launch(const juce::File& backendDir)
         juce::Logger::writeToLog("PipeInference: launching " + execPath + " " + scriptPath);
     }
 
-    // Create bidirectional pipes: parent→child (stdin), child→parent (stdout)
+#ifdef _WIN32
+    // ── Windows: CreatePipe + CreateProcess ──────────────────────────
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = nullptr;
+
+    HANDLE hChildStdinRd = INVALID_HANDLE_VALUE;
+    HANDLE hChildStdinWr = INVALID_HANDLE_VALUE;
+    HANDLE hChildStdoutRd = INVALID_HANDLE_VALUE;
+    HANDLE hChildStdoutWr = INVALID_HANDLE_VALUE;
+
+    if (!CreatePipe(&hChildStdoutRd, &hChildStdoutWr, &sa, 0)
+        || !CreatePipe(&hChildStdinRd, &hChildStdinWr, &sa, 0))
+    {
+        juce::Logger::writeToLog("PipeInference: CreatePipe failed");
+        return false;
+    }
+
+    // Parent-side handles must NOT be inherited
+    SetHandleInformation(hChildStdoutRd, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(hChildStdinWr, HANDLE_FLAG_INHERIT, 0);
+
+    STARTUPINFOW si = {};
+    si.cb = sizeof(si);
+    si.hStdInput = hChildStdinRd;
+    si.hStdOutput = hChildStdoutWr;
+    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    si.dwFlags |= STARTF_USESTDHANDLES;
+
+    PROCESS_INFORMATION pi = {};
+
+    // Build command line
+    juce::String cmdLine;
+    if (scriptPath.isEmpty())
+        cmdLine = "\"" + execPath + "\"";
+    else
+        cmdLine = "\"" + execPath + "\" \"" + scriptPath + "\"";
+
+    auto cmdWide = cmdLine.toWideCharPointer();
+    std::wstring cmdBuf(cmdWide);
+
+    if (!CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
+                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+    {
+        juce::Logger::writeToLog("PipeInference: CreateProcess failed (error "
+                                  + juce::String((int)GetLastError()) + ")");
+        CloseHandle(hChildStdinRd);
+        CloseHandle(hChildStdinWr);
+        CloseHandle(hChildStdoutRd);
+        CloseHandle(hChildStdoutWr);
+        return false;
+    }
+
+    // Close child-side handles (now owned by child process)
+    CloseHandle(hChildStdinRd);
+    CloseHandle(hChildStdoutWr);
+    CloseHandle(pi.hThread);
+
+    hChildStdinWr_ = hChildStdinWr;
+    hChildStdoutRd_ = hChildStdoutRd;
+    hProcess_ = pi.hProcess;
+
+#else
+    // ── POSIX: pipe + fork + exec ───────────────────────────────────
     int pipeIn[2];   // parent writes to pipeIn[1], child reads from pipeIn[0]
     int pipeOut[2];  // child writes to pipeOut[1], parent reads from pipeOut[0]
 
@@ -130,8 +202,8 @@ bool PipeInference::launch(const juce::File& backendDir)
     if (childPid_ == 0)
     {
         // Child process
-        close(pipeIn[1]);   // close write end of stdin pipe
-        close(pipeOut[0]);  // close read end of stdout pipe
+        close(pipeIn[1]);
+        close(pipeOut[0]);
         dup2(pipeIn[0], STDIN_FILENO);
         dup2(pipeOut[1], STDOUT_FILENO);
         close(pipeIn[0]);
@@ -139,24 +211,21 @@ bool PipeInference::launch(const juce::File& backendDir)
 
         auto execStr = execPath.toStdString();
         if (scriptPath.isEmpty())
-        {
-            // Bundled binary — no arguments
             execlp(execStr.c_str(), execStr.c_str(), nullptr);
-        }
         else
         {
-            // Python + script
             auto scriptStr = scriptPath.toStdString();
             execlp(execStr.c_str(), execStr.c_str(), scriptStr.c_str(), nullptr);
         }
-        _exit(1);  // exec failed
+        _exit(1);
     }
 
     // Parent process
-    close(pipeIn[0]);   // close read end of stdin pipe
-    close(pipeOut[1]);  // close write end of stdout pipe
+    close(pipeIn[0]);
+    close(pipeOut[1]);
     stdinFd_ = pipeIn[1];
     stdoutFd_ = pipeOut[0];
+#endif
 
     // Wait for ready signal (\x02 + uint16 len + JSON) with 120s timeout
     // (loading two pipelines can take 30-60s)
@@ -207,13 +276,22 @@ bool PipeInference::launch(const juce::File& backendDir)
     ready_ = true;
     juce::Logger::writeToLog("PipeInference: ready");
     return true;
-#endif
 }
 
 void PipeInference::shutdown()
 {
     ready_ = false;
-#ifndef _WIN32
+#ifdef _WIN32
+    if (hChildStdinWr_ != INVALID_HANDLE_VALUE) { CloseHandle(hChildStdinWr_); hChildStdinWr_ = INVALID_HANDLE_VALUE; }
+    if (hChildStdoutRd_ != INVALID_HANDLE_VALUE) { CloseHandle(hChildStdoutRd_); hChildStdoutRd_ = INVALID_HANDLE_VALUE; }
+    if (hProcess_ != INVALID_HANDLE_VALUE)
+    {
+        TerminateProcess(hProcess_, 0);
+        WaitForSingleObject(hProcess_, 3000);
+        CloseHandle(hProcess_);
+        hProcess_ = INVALID_HANDLE_VALUE;
+    }
+#else
     if (stdinFd_ >= 0) { close(stdinFd_); stdinFd_ = -1; }
     if (stdoutFd_ >= 0) { close(stdoutFd_); stdoutFd_ = -1; }
     if (childPid_ > 0)
@@ -227,9 +305,6 @@ void PipeInference::shutdown()
 
 bool PipeInference::readExact(void* dest, int numBytes, int timeoutMs)
 {
-#ifdef _WIN32
-    return false;
-#else
     auto* ptr = static_cast<char*>(dest);
     int remaining = numBytes;
     auto deadline = juce::Time::getMillisecondCounter() + static_cast<juce::uint32>(timeoutMs);
@@ -238,9 +313,17 @@ bool PipeInference::readExact(void* dest, int numBytes, int timeoutMs)
     {
         if (juce::Time::getMillisecondCounter() > deadline)
             return false;
-        if (stdoutFd_ < 0)
-            return false;
 
+       #ifdef _WIN32
+        if (hChildStdoutRd_ == INVALID_HANDLE_VALUE) return false;
+        DWORD bytesRead = 0;
+        if (!ReadFile(hChildStdoutRd_, ptr, static_cast<DWORD>(remaining), &bytesRead, nullptr))
+            return false;
+        if (bytesRead == 0) return false;  // pipe broken
+        ptr += bytesRead;
+        remaining -= static_cast<int>(bytesRead);
+       #else
+        if (stdoutFd_ < 0) return false;
         auto n = read(stdoutFd_, ptr, static_cast<size_t>(remaining));
         if (n > 0)
         {
@@ -256,21 +339,25 @@ bool PipeInference::readExact(void* dest, int numBytes, int timeoutMs)
             if (errno == EINTR) continue;
             juce::Thread::sleep(1);
         }
+       #endif
     }
     return true;
-#endif
 }
 
 bool PipeInference::writeExact(const void* src, int numBytes)
 {
-#ifdef _WIN32
-    return false;
-#else
-    if (stdinFd_ < 0) return false;
+    if (!isConnected()) return false;
     auto* ptr = static_cast<const char*>(src);
     int remaining = numBytes;
     while (remaining > 0)
     {
+       #ifdef _WIN32
+        DWORD bytesWritten = 0;
+        if (!WriteFile(hChildStdinWr_, ptr, static_cast<DWORD>(remaining), &bytesWritten, nullptr))
+            return false;
+        ptr += bytesWritten;
+        remaining -= static_cast<int>(bytesWritten);
+       #else
         auto n = write(stdinFd_, ptr, static_cast<size_t>(remaining));
         if (n > 0)
         {
@@ -281,9 +368,9 @@ bool PipeInference::writeExact(const void* src, int numBytes)
         {
             return false;
         }
+       #endif
     }
     return true;
-#endif
 }
 
 PipeInference::Result PipeInference::generate(const Request& request)
@@ -302,7 +389,7 @@ PipeInference::Result PipeInference::generate(const Request& request)
         juce::Logger::writeToLog("PipeInference: restarted successfully");
     }
 
-    if (!ready_ || stdinFd_ < 0)
+    if (!ready_ || !isConnected())
     {
         result.errorMessage = "Inference not ready";
         return result;
@@ -445,7 +532,7 @@ PipeInference::Result PipeInference::generate(const Request& request)
 
 bool PipeInference::preload(const juce::String& model, const juce::String& device)
 {
-    if (!ready_ || stdinFd_ < 0) return false;
+    if (!ready_ || !isConnected()) return false;
 
     auto json = juce::DynamicObject::Ptr(new juce::DynamicObject());
     json->setProperty("mode", "preload");

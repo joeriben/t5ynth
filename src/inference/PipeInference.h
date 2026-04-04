@@ -4,6 +4,9 @@
 #include <vector>
 #include <utility>
 #include <map>
+#ifdef _WIN32
+ #include <windows.h>
+#endif
 
 /**
  * Pipe-based inference — runs diffusers in a Python subprocess.
@@ -79,11 +82,20 @@ public:
     /** Check if the Python subprocess is still alive. */
     bool isChildAlive() const;
 
+    /** Check if pipe handles are connected. */
+    bool isConnected() const;
+
 private:
     std::atomic<bool> ready_ { false };
+   #ifdef _WIN32
+    HANDLE hChildStdinWr_  = INVALID_HANDLE_VALUE;  // parent → child
+    HANDLE hChildStdoutRd_ = INVALID_HANDLE_VALUE;  // child → parent
+    HANDLE hProcess_       = INVALID_HANDLE_VALUE;
+   #else
     int stdinFd_ = -1;   // parent → child (write)
     int stdoutFd_ = -1;  // child → parent (read)
     pid_t childPid_ = -1;
+   #endif
 
     juce::StringArray availableDevices_;
     juce::String defaultDevice_;
