@@ -1,6 +1,7 @@
 #include "SetupWizard.h"
 #include "GuiHelpers.h"
 #include <nlohmann/json.hpp>
+#include <thread>
 
 // A valid model directory contains one of these marker files
 static const juce::String kModelMarkers[] = { "model_index.json", "model_config.json" };

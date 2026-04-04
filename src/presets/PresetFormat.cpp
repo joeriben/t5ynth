@@ -1,5 +1,6 @@
 #include "PresetFormat.h"
 #include "../PluginProcessor.h"
+#include <cstring>
 
 // ═══════════════════════════════════════════════════════════════════
 // Save: T5YN header + JSON + raw float32 PCM

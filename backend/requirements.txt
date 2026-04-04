@@ -1,7 +1,9 @@
 torch>=2.0.0
 diffusers>=0.24.0
 transformers>=4.30.0
-Flask>=2.0
+safetensors
+accelerate
+stable-audio-tools
 soundfile>=0.12.0
 numpy
 scipy

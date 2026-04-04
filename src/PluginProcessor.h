@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <limits>
 #include "dsp/VoiceManager.h"
 #include "dsp/LFO.h"
 #include "dsp/DriftLFO.h"

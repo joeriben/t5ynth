@@ -1,4 +1,5 @@
 #include "SynthVoice.h"
+#include <cstring>
 
 void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
 {

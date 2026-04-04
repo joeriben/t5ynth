@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <functional>
+#include <limits>
 
 // ── Color constants (shared across all GUI files) ──────────────────────────
 static const auto kAccent  = juce::Colour(0xffe91e63);  // C — Pink (engine accent)
