@@ -28,6 +28,7 @@ public:
         juce::String presetName;
         juce::String promptA, promptB;
         int seed = 123456789;
+        bool randomSeed = false;
         juce::String device;
 
         // Embedded audio (empty if old-format preset)

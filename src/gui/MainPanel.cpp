@@ -553,7 +553,7 @@ void MainPanel::loadDefaultPreset()
         return;
 
     promptPanel.loadPresetData(result.promptA, result.promptB,
-                               result.seed, true, result.device);
+                               result.seed, result.randomSeed, result.device);
 
     if (result.hasAudio)
     {
@@ -760,7 +760,7 @@ void MainPanel::loadPreset()
 
             // Restore prompts/seed to GUI
             promptPanel.loadPresetData(result.promptA, result.promptB,
-                                       result.seed, true, result.device);
+                                       result.seed, result.randomSeed, result.device);
 
             // Restore audio into engine (skips generation!)
             if (result.hasAudio)

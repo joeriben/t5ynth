@@ -127,7 +127,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"gen_start", 1}, "Start Position",
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"gen_seed", 1}, "Seed", -1, 999999999, -1));
+        juce::ParameterID{"gen_seed", 1}, "Seed", -1, 999999999, 123456789));
 
     // Engine mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
