@@ -56,6 +56,10 @@ public:
     /** Smooth pitch ramp to target semitones over durationMs (portamento). */
     void glideToSemitones(int semitones, float durationMs);
 
+    /** Set pitch modulation factor (1.0 = no mod). Applied on top of transposeRatio
+     *  in renderPitchedBlock. Use for envelope/LFO pitch modulation at block rate. */
+    void setPitchModulation(float factor) { pitchModFactor = factor; }
+
     bool isPlaying() const { return playing; }
 
     // ─── Loop region ("brackets") ───
@@ -102,6 +106,7 @@ private:
     double bufferOriginalSR   = 44100.0;
     double readPosition       = 0.0;
     double transposeRatio     = 1.0;
+    float  pitchModFactor     = 1.0f;  // block-rate pitch mod from envelopes/LFOs
     double glideTargetRatio   = 1.0;
     double glideRatioIncr     = 0.0;  // per-sample increment
     int    glideSamplesLeft   = 0;
@@ -148,6 +153,10 @@ private:
 
     /** Initialize/reconfigure the Signalsmith Stretch instance. */
     void prepareStretcher();
+
+    /** Prime the stretcher by feeding half-window of audio (output discarded).
+     *  Eliminates STFT ramp-up latency so first real output sample is valid. */
+    void primeStretcher();
 
     /** Cross-correlation loop-end optimizer (channel 0). */
     int optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen) const;

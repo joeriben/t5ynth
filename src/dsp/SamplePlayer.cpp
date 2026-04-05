@@ -70,7 +70,10 @@ void SamplePlayer::retrigger()
     readPosition = static_cast<double>(coldStart);
     playing = true;
     if (stretcherPrepared)
+    {
         stretcher.reset();
+        primeStretcher();
+    }
 }
 
 void SamplePlayer::setLoopStart(float frac)
@@ -322,7 +325,8 @@ void SamplePlayer::renderPitchedBlock(float* output, int numSamples)
 
     // Bypass: speed-based transposition (with cubic interpolation)
     // Also bypass when transposition is negligible (< 0.1 semitone)
-    float semitones = static_cast<float>(12.0 * std::log2(std::max(transposeRatio, 1e-6)));
+    double effectiveRatio = transposeRatio * static_cast<double>(pitchModFactor);
+    float semitones = static_cast<float>(12.0 * std::log2(std::max(effectiveRatio, 1e-6)));
     bool nearUnity = std::abs(semitones) < 0.1f;
 
     if (pitchQuality == PitchShiftQuality::Bypass || nearUnity)
@@ -379,6 +383,27 @@ void SamplePlayer::prepareStretcher()
             break;
     }
     stretcherPrepared = (pitchQuality != PitchShiftQuality::Bypass);
+}
+
+void SamplePlayer::primeStretcher()
+{
+    // Feed ~half-window of audio to fill the STFT analysis buffer.
+    // Output is discarded — after priming, the first real output sample is valid.
+    int primeSamples = static_cast<int>(playbackSampleRate * 0.06); // ~60ms (generous)
+    if (primeSamples <= 0) return;
+
+    std::vector<float> primeBuf(static_cast<size_t>(primeSamples));
+    std::vector<float> discardBuf(static_cast<size_t>(primeSamples));
+
+    // Read audio from current position (advances readPosition)
+    readRawSamples(primeBuf.data(), primeSamples);
+
+    // Process through stretcher — output is ramp-up garbage, discard it
+    float* inPtr = primeBuf.data();
+    float* outPtr = discardBuf.data();
+    stretcher.process(&inPtr, primeSamples, &outPtr, primeSamples);
+    // readPosition is now advanced past the prime region — correct,
+    // the stretcher holds those samples in its internal state
 }
 
 void SamplePlayer::setPitchShiftQuality(PitchShiftQuality quality)
