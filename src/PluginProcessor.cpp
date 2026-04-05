@@ -369,6 +369,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::StringArray{"Octave Bounce", "Wide Leap", "Off-Beat Minor", "Glide Groove", "Sparse Stab",
                           "Rising Arc", "Scatter", "Chromatic", "Bass Walk", "Gated Pulse"}, 0));
 
+    // HF boost: compensate VAE decoder high-frequency rolloff
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"gen_hf_boost", 1}, "HF Boost", true));
+
     // Master volume: purely attenuative (0dB max). DAW fader handles boost.
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"master_vol", 1}, "Master Volume",
@@ -628,40 +632,16 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // Consume bar-start flag (for future background regen integration)
     stepSequencer.barStartFlag.exchange(false);
 
-    // ── MIDI → VoiceManager (polyphonic) ──────────────────────────────────
+    // ── Sample-accurate MIDI + Voice rendering ──────────────────────────────
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo1_mode")->load()) == 1;
     bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo2_mode")->load()) == 1;
 
-    for (const auto metadata : midiMessages)
-    {
-        const auto msg = metadata.getMessage();
-        if (msg.isNoteOn())
-        {
-            int note = msg.getNoteNumber();
-            float velocity = msg.getFloatVelocity();
-            bool isGlide = (msg.getChannel() == 2);
-
-            lastMidiNote.store(note, std::memory_order_relaxed);
-            lastMidiVelocity.store(juce::roundToInt(velocity * 127.0f), std::memory_order_relaxed);
-            lastMidiNoteOn.store(true, std::memory_order_relaxed);
-
-            voiceManager.noteOn(note, velocity, isGlide, stepSequencer.getGlideTime(),
-                                lfo1TrigMode, lfo2TrigMode);
-        }
-        else if (msg.isNoteOff())
-        {
-            voiceManager.noteOff(msg.getNoteNumber());
-            if (!voiceManager.hasActiveVoices())
-                lastMidiNoteOn.store(false, std::memory_order_relaxed);
-        }
-    }
-
-    // Re-check after MIDI processing (seq/arp may have generated notes)
-    if (voiceManager.hasActiveVoices())
+    // Re-check: seq/arp may have generated notes
+    if (voiceManager.hasActiveVoices() || !midiMessages.isEmpty())
         silentBlockCount = 0;
 
-    // PHASE 1: No voices active → skip synthesis, but keep LFO phase + run effects for tail
-    bool skipSynthesis = (silentBlockCount > 0 && !voiceManager.hasActiveVoices());
+    bool skipSynthesis = (silentBlockCount > 0 && !voiceManager.hasActiveVoices()
+                          && midiMessages.isEmpty());
 
     // Modulation values (zero when skipping synthesis)
     float modDelayTime = 0.0f, modDelayFb = 0.0f, modDelayMix = 0.0f, modReverbMix = 0.0f;
@@ -713,8 +693,55 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             if (bp.lfo2Target == LfoTarget::Env3Amt) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l2End));
         }
 
-        // Render all voices (summed with 1/sqrt(N) scaling)
-        voiceOut = voiceManager.renderBlock(buffer, bp, lfo1Buf, lfo2Buf, numSamples);
+        // ── Sample-accurate rendering: split block at MIDI event boundaries ──
+        {
+            auto midiIter = midiMessages.cbegin();
+            int renderPos = 0;
+
+            while (renderPos < numSamples)
+            {
+                // Next sub-block ends at the next MIDI event or block end
+                int subEnd = numSamples;
+                if (midiIter != midiMessages.cend())
+                    subEnd = juce::jmin((*midiIter).samplePosition, numSamples);
+
+                // Render voices up to this point
+                int subLen = subEnd - renderPos;
+                if (subLen > 0)
+                    voiceOut = voiceManager.renderBlock(buffer, bp,
+                        lfo1Buf + renderPos, lfo2Buf + renderPos, renderPos, subLen);
+
+                // Process all MIDI events at this sample position
+                while (midiIter != midiMessages.cend()
+                       && (*midiIter).samplePosition <= subEnd)
+                {
+                    const auto msg = (*midiIter).getMessage();
+                    if (msg.isNoteOn())
+                    {
+                        int note = msg.getNoteNumber();
+                        float velocity = msg.getFloatVelocity();
+                        bool isGlide = (msg.getChannel() == 2);
+
+                        lastMidiNote.store(note, std::memory_order_relaxed);
+                        lastMidiVelocity.store(juce::roundToInt(velocity * 127.0f),
+                                               std::memory_order_relaxed);
+                        lastMidiNoteOn.store(true, std::memory_order_relaxed);
+
+                        voiceManager.noteOn(note, velocity, isGlide,
+                            stepSequencer.getGlideTime(), lfo1TrigMode, lfo2TrigMode);
+                    }
+                    else if (msg.isNoteOff())
+                    {
+                        voiceManager.noteOff(msg.getNoteNumber());
+                        if (!voiceManager.hasActiveVoices())
+                            lastMidiNoteOn.store(false, std::memory_order_relaxed);
+                    }
+                    ++midiIter;
+                }
+
+                renderPos = subEnd;
+            }
+        }
         lastTriggeredNote = voiceOut.lastTriggeredNote;
 
         // Capture last LFO values for block-rate modulation
@@ -967,21 +994,35 @@ bool T5ynthProcessor::isSamplerMode() const
 
 void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBuffer, double sr)
 {
-    // Store full audio for preset embedding
-    generatedAudioFull.makeCopyOf(audioBuffer);
+    // Store raw audio (unmodified) for preset embedding and re-apply on toggle
+    if (&audioBuffer != &generatedAudioRaw)
+        generatedAudioRaw.makeCopyOf(audioBuffer);
     generatedSampleRate = sr;
 
+    // Conditionally apply HF boost to compensate VAE decoder rolloff
+    bool hfOn = parameters.getRawParameterValue("gen_hf_boost")->load() > 0.5f;
+    juce::AudioBuffer<float> boostedBuffer;
+    if (hfOn)
+    {
+        boostedBuffer.makeCopyOf(audioBuffer);
+        applyHfBoost(boostedBuffer, sr);
+    }
+    const auto& feedBuffer = hfOn ? boostedBuffer : audioBuffer;
+
+    // Keep generatedAudioFull in sync (used for waveform display + presets)
+    generatedAudioFull.makeCopyOf(feedBuffer);
+
     // Feed the sampler/voice chain
-    masterSampler.loadBuffer(audioBuffer, sr);
+    masterSampler.loadBuffer(feedBuffer, sr);
 
     // In wavetable mode, auto-position brackets to the active signal region
     // (trim leading/trailing silence so extraction doesn't produce useless frames)
     if (isWavetableMode())
     {
-        const int numSamples = audioBuffer.getNumSamples();
+        const int numSamples = feedBuffer.getNumSamples();
         if (numSamples > 0)
         {
-            const float* data = audioBuffer.getReadPointer(0);
+            const float* data = feedBuffer.getReadPointer(0);
             const int windowSize = 256;
             const float threshold = 0.002f; // Peak threshold (~-54dB)
 
@@ -1034,19 +1075,21 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     // Wavetable extraction respects the bracket region
     float extractStart = masterSampler.getLoopStart();
     float extractEnd   = masterSampler.getLoopEnd();
-    masterOsc.extractFramesFromBuffer(audioBuffer, sr, extractStart, extractEnd);
+    masterOsc.extractFramesFromBuffer(feedBuffer, sr, extractStart, extractEnd);
 
     voiceManager.distributeSamplerBuffer(masterSampler);
     voiceManager.distributeWavetableFrames(masterOsc);
 
     // Snapshot channel 0 for waveform display
-    if (audioBuffer.getNumChannels() > 0 && audioBuffer.getNumSamples() > 0)
+    if (feedBuffer.getNumChannels() > 0 && feedBuffer.getNumSamples() > 0)
     {
-        waveformSnapshot.setSize(1, audioBuffer.getNumSamples(), false, false, true);
-        waveformSnapshot.copyFrom(0, 0, audioBuffer, 0, 0, audioBuffer.getNumSamples());
+        waveformSnapshot.setSize(1, feedBuffer.getNumSamples(), false, false, true);
+        waveformSnapshot.copyFrom(0, 0, feedBuffer, 0, 0, feedBuffer.getNumSamples());
 
-        // Normalize display to match wavetable frame normalization
-        if (isWavetableMode())
+        // Normalize display when wavetable mode or sampler normalize is active
+        bool normDisplay = isWavetableMode()
+            || (parameters.getRawParameterValue("normalize")->load() > 0.5f);
+        if (normDisplay)
         {
             float peak = 0.0f;
             const float* d = waveformSnapshot.getReadPointer(0);
@@ -1235,6 +1278,34 @@ static juce::String driftWaveToString(int i) {
 static void setParam(juce::AudioProcessorValueTreeState& p, const juce::String& id, float val) {
     if (auto* param = p.getParameter(id))
         param->setValueNotifyingHost(param->convertTo0to1(val));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HF boost — two-band high shelf to compensate VAE decoder rolloff
+// ═══════════════════════════════════════════════════════════════════
+
+void T5ynthProcessor::applyHfBoost(juce::AudioBuffer<float>& buffer, double sampleRate)
+{
+    auto shelf1 = juce::dsp::IIR::Coefficients<float>::makeHighShelf(
+        sampleRate, 4000.0, 0.6, juce::Decibels::decibelsToGain(3.0f));
+    auto shelf2 = juce::dsp::IIR::Coefficients<float>::makeHighShelf(
+        sampleRate, 10000.0, 0.6, juce::Decibels::decibelsToGain(4.5f));
+
+    juce::dsp::IIR::Filter<float> f1, f2;
+    f1.coefficients = shelf1;
+    f2.coefficients = shelf2;
+
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        f1.reset();
+        f2.reset();
+        auto* data = buffer.getWritePointer(ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            data[i] = f1.processSample(data[i]);
+            data[i] = f2.processSample(data[i]);
+        }
+    }
 }
 
 juce::String T5ynthProcessor::exportJsonPreset() const

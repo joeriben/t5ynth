@@ -92,6 +92,26 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     };
     addAndMakeVisible(mainGenerateBtn);
 
+    // HF boost toggle — compensates VAE decoder high-frequency rolloff
+    hfBoostBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    hfBoostBtn.setColour(juce::TextButton::buttonOnColourId, kOscCol);
+    hfBoostBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    hfBoostBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    hfBoostBtn.setClickingTogglesState(true);
+    hfBoostBtn.setToggleState(
+        processorRef.getValueTreeState().getRawParameterValue("gen_hf_boost")->load() > 0.5f,
+        juce::dontSendNotification);
+    hfBoostBtn.onClick = [this] {
+        bool on = hfBoostBtn.getToggleState();
+        processorRef.getValueTreeState().getParameter("gen_hf_boost")
+            ->setValueNotifyingHost(on ? 1.0f : 0.0f);
+        // Re-apply HF boost from raw audio without re-generating
+        const auto& raw = processorRef.getGeneratedAudioRaw();
+        if (raw.getNumSamples() > 0)
+            processorRef.loadGeneratedAudio(raw, processorRef.getGeneratedSampleRate());
+    };
+    addAndMakeVisible(hfBoostBtn);
+
     // Status callback — show in Generate button
     startTimerHz(30);  // 30fps glow animation
 
@@ -446,10 +466,17 @@ void MainPanel::resized()
     if (!dimExplorerVisible)
         dimensionExplorer.setBounds(genCol);
 
-    // Generate button — compact, centered (not full-width like headers)
+    // Generate button — centered at 60% width
     int genW = juce::roundToInt(genBtnArea.getWidth() * 0.6f);
     int genX = genBtnArea.getX() + (genBtnArea.getWidth() - genW) / 2;
     mainGenerateBtn.setBounds(genX, genBtnArea.getY(), genW, genBtnArea.getHeight());
+
+    // HF toggle — 60% height, centered between Generate right edge and genCol right edge
+    int hfH = juce::roundToInt(genBtnArea.getHeight() * 0.6f);
+    int hfW = hfH;  // square
+    int hfMidX = genX + genW + (genBtnArea.getRight() - (genX + genW)) / 2;
+    int hfY = genBtnArea.getY() + (genBtnArea.getHeight() - hfH) / 2;
+    hfBoostBtn.setBounds(hfMidX - hfW / 2, hfY, hfW, hfH);
 
     // Col 2: ENGINE
     synthPanel.setBounds(b);

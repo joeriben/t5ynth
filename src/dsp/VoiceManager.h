@@ -38,9 +38,11 @@ public:
     };
 
     /** Render all active voices into buffer (summed with 1/sqrt(N) scaling).
-     *  Global LFOs are ticked externally; their per-sample values are passed in. */
+     *  Global LFOs are ticked externally; their per-sample values are passed in.
+     *  startSample: offset into the output buffer (for sample-accurate rendering). */
     VoiceOutput renderBlock(juce::AudioBuffer<float>& buffer, const BlockParams& bp,
-                            const float* lfo1Buf, const float* lfo2Buf, int numSamples);
+                            const float* lfo1Buf, const float* lfo2Buf,
+                            int startSample, int numSamples);
 
     // ── Engine data distribution ──
     void setEngineMode(SynthVoice::EngineMode mode);

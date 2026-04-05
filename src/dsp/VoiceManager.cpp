@@ -138,7 +138,8 @@ void VoiceManager::allNotesOff()
 
 VoiceManager::VoiceOutput VoiceManager::renderBlock(
     juce::AudioBuffer<float>& buffer, const BlockParams& bp,
-    const float* lfo1Buf, const float* lfo2Buf, int numSamples)
+    const float* lfo1Buf, const float* lfo2Buf,
+    int startSample, int numSamples)
 {
     VoiceOutput out;
 
@@ -209,7 +210,7 @@ VoiceManager::VoiceOutput VoiceManager::renderBlock(
         sum *= currentGain;
 
         for (int ch = 0; ch < numChannels; ++ch)
-            buffer.setSample(ch, i, sum);
+            buffer.setSample(ch, startSample + i, sum);
     }
 
     // Update gain target if voices became inactive during this block

@@ -70,8 +70,10 @@ public:
     const std::vector<float>& getLastEmbeddingA() const { return lastEmbeddingA; }
     const std::vector<float>& getLastEmbeddingB() const { return lastEmbeddingB; }
 
-    /** Get the raw generated audio buffer (channel 0 snapshot for display). */
+    /** Get the processed audio buffer (with HF boost if enabled). */
     const juce::AudioBuffer<float>& getGeneratedAudio() const { return generatedAudioFull; }
+    /** Get the raw VAE output (unmodified, for re-apply on HF toggle). */
+    const juce::AudioBuffer<float>& getGeneratedAudioRaw() const { return generatedAudioRaw; }
     double getGeneratedSampleRate() const { return generatedSampleRate; }
 
     // Sequencer
@@ -128,8 +130,12 @@ private:
     juce::String lastPromptA, lastPromptB;
     int lastSeed = 123456789;
     std::vector<float> lastEmbeddingA, lastEmbeddingB;
-    juce::AudioBuffer<float> generatedAudioFull;  // full stereo buffer for preset embedding
+    juce::AudioBuffer<float> generatedAudioFull;  // boosted buffer for engines + display
+    juce::AudioBuffer<float> generatedAudioRaw;   // raw VAE output (for re-apply on toggle)
     double generatedSampleRate = 44100.0;
+
+    /** Two-band high shelf to compensate VAE decoder HF rolloff. */
+    static void applyHfBoost(juce::AudioBuffer<float>& buffer, double sampleRate);
 
     // Last triggered note (for pitch modulation in block-rate section)
     int lastTriggeredNote = -1;
