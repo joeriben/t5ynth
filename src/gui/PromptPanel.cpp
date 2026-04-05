@@ -270,10 +270,6 @@ void PromptPanel::resized()
         area.removeFromTop(gap);
     }
 
-    // ── Reserve bottom: Info label only ──
-    setFs(infoLabel, fSmall);
-    infoLabel.setBounds(area.removeFromBottom(compactRowH));
-
     // Show hints only if enough vertical space remains
     bool showHints = area.getHeight() > 350;
 
@@ -370,12 +366,10 @@ void PromptPanel::resized()
     layoutCompactPair(stepsLabel, stepsSlider, stepsValue, &stepsHint,
                       cfgLabel, cfgSlider, cfgValue, &cfgHint);
 
-    area.removeFromTop(gap);
-
-    // Seed + Device row (top-down, after compact params)
+    // Seed + Device row (compact, same height as Duration/Steps rows)
     {
         setFs(seedLabel, fSmall);
-        auto seedRow = area.removeFromTop(rowH);
+        auto seedRow = area.removeFromTop(compactRowH);
         int btnW = juce::roundToInt(seedRow.getWidth() * 0.11f);
         gpuBtn.setBounds(seedRow.removeFromLeft(btnW));
         cpuBtn.setBounds(seedRow.removeFromLeft(btnW));
@@ -387,6 +381,11 @@ void PromptPanel::resized()
         seedEditor.setFont(juce::FontOptions(fSmall));
         seedEditor.setBounds(seedRow.reduced(0, 1));
     }
+
+    // Info label at the bottom of the sequential layout
+    area.removeFromTop(gap);
+    setFs(infoLabel, fSmall);
+    infoLabel.setBounds(area.removeFromTop(compactRowH));
 }
 
 void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String& promptB,
