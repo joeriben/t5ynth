@@ -112,9 +112,10 @@ void SamplePlayer::setNormalize(bool on)
     if (on != normalizeOn) { normalizeOn = on; needsReprepareFlag = true; }
 }
 
-void SamplePlayer::setLoopOptimize(bool on)
+void SamplePlayer::setLoopOptimizeLevel(int level)
 {
-    if (on != loopOptimizeOn) { loopOptimizeOn = on; needsReprepareFlag = true; }
+    int clamped = juce::jlimit(0, 2, level);
+    if (clamped != loopOptimizeLevel) { loopOptimizeLevel = clamped; needsReprepareFlag = true; }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -137,8 +138,8 @@ void SamplePlayer::preparePlaybackBuffer()
     {
         // Ping-pong: optionally optimize, then create palindrome (no crossfade)
         int actualEnd = le;
-        if (loopOptimizeOn && numCh > 0)
-            actualEnd = optimizeLoopEnd(originalBuffer.getReadPointer(0), ls, le, bufLen);
+        if (loopOptimizeLevel > 0 && numCh > 0)
+            actualEnd = optimizeLoopEnd(originalBuffer.getReadPointer(0), ls, le, bufLen, loopOptimizeLevel);
 
         // Copy original into working buffer
         juce::AudioBuffer<float> working;
@@ -158,8 +159,8 @@ void SamplePlayer::preparePlaybackBuffer()
         playBuffer.makeCopyOf(originalBuffer);
 
         int actualEnd = le;
-        if (loopOptimizeOn && numCh > 0 && loopMode == LoopMode::Loop)
-            actualEnd = optimizeLoopEnd(originalBuffer.getReadPointer(0), ls, le, bufLen);
+        if (loopOptimizeLevel > 0 && numCh > 0 && loopMode == LoopMode::Loop)
+            actualEnd = optimizeLoopEnd(originalBuffer.getReadPointer(0), ls, le, bufLen, loopOptimizeLevel);
 
         int fadeSamples = 0;
         if (loopMode == LoopMode::Loop)
@@ -471,13 +472,13 @@ void SamplePlayer::processBlock(juce::AudioBuffer<float>& output)
 // Cross-correlation loop optimizer (from useSamplePlayer.ts)
 // ═══════════════════════════════════════════════════════════════════
 
-int SamplePlayer::optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen) const
+int SamplePlayer::optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen, int level) const
 {
-    int win = std::min(XCORR_WINDOW, (loopEnd - loopStart) / 4);
+    int win = std::min(XCORR_WINDOW[level], (loopEnd - loopStart) / 4);
     if (win < 16) return loopEnd;
 
-    int searchLo = std::max(loopStart + win * 2, loopEnd - XCORR_SEARCH);
-    int searchHi = std::min(bufLen, loopEnd + XCORR_SEARCH);
+    int searchLo = std::max(loopStart + win * 2, loopEnd - XCORR_SEARCH[level]);
+    int searchHi = std::min(bufLen, loopEnd + XCORR_SEARCH[level]);
 
     float bestCorr = -1e30f;
     int   bestEnd  = loopEnd;

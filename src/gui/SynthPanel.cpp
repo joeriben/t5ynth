@@ -259,31 +259,51 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     crossfadeA = std::make_unique<SA>(apvts, "crossfade_ms", crossfadeRow->getSlider());
     crossfadeRow->updateValue();
 
-    // Loop optimize + Normalize — rectangular on/off buttons (connected switchbox)
+    // Normalize toggle
     normalizeToggle.setConnectedEdges(juce::Button::ConnectedOnRight);
-    loopOptimizeToggle.setConnectedEdges(juce::Button::ConnectedOnLeft);
-    for (auto* btn : { &loopOptimizeToggle, &normalizeToggle })
-    {
-        btn->setColour(juce::TextButton::buttonColourId, kSurface);
-        btn->setColour(juce::TextButton::buttonOnColourId, kAccent);
-        btn->setColour(juce::TextButton::textColourOffId, kDim);
-        btn->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-        btn->setClickingTogglesState(true);
-        addAndMakeVisible(btn);
-    }
-    loopOptimizeToggle.onClick = [this] {
-        auto* param = processorRef.getValueTreeState().getParameter("loop_optimize");
-        if (param) param->setValueNotifyingHost(loopOptimizeToggle.getToggleState() ? 1.0f : 0.0f);
-    };
+    normalizeToggle.setColour(juce::TextButton::buttonColourId, kSurface);
+    normalizeToggle.setColour(juce::TextButton::buttonOnColourId, kAccent);
+    normalizeToggle.setColour(juce::TextButton::textColourOffId, kDim);
+    normalizeToggle.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    normalizeToggle.setClickingTogglesState(true);
+    addAndMakeVisible(normalizeToggle);
     normalizeToggle.onClick = [this] {
         auto* param = processorRef.getValueTreeState().getParameter("normalize");
         if (param) param->setValueNotifyingHost(normalizeToggle.getToggleState() ? 1.0f : 0.0f);
     };
-    // Sync initial state from APVTS
-    loopOptimizeToggle.setToggleState(
-        apvts.getRawParameterValue("loop_optimize")->load() > 0.5f, juce::dontSendNotification);
     normalizeToggle.setToggleState(
         apvts.getRawParameterValue("normalize")->load() > 0.5f, juce::dontSendNotification);
+
+    // Loop optimize cycling button (Off → Low → High)
+    loopOptimizeBtn.setConnectedEdges(juce::Button::ConnectedOnLeft);
+    loopOptimizeBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    loopOptimizeBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    addAndMakeVisible(loopOptimizeBtn);
+    {
+        int initLevel = static_cast<int>(apvts.getRawParameterValue("loop_optimize")->load());
+        static const char* labels[] = { "Opt: Off", "Opt: Low", "Opt: High" };
+        loopOptimizeBtn.setButtonText(labels[juce::jlimit(0, 2, initLevel)]);
+        loopOptimizeBtn.setToggleState(initLevel > 0, juce::dontSendNotification);
+        if (initLevel > 0)
+        {
+            loopOptimizeBtn.setColour(juce::TextButton::buttonColourId, kAccent);
+            loopOptimizeBtn.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+        }
+    }
+    loopOptimizeBtn.onClick = [this] {
+        auto* param = processorRef.getValueTreeState().getParameter("loop_optimize");
+        if (!param) return;
+        int cur = static_cast<int>(param->convertFrom0to1(param->getValue()));
+        int next = (cur + 1) % 3;
+        param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(next)));
+        static const char* labels[] = { "Opt: Off", "Opt: Low", "Opt: High" };
+        loopOptimizeBtn.setButtonText(labels[next]);
+        loopOptimizeBtn.setToggleState(next > 0, juce::dontSendNotification);
+        auto col = next > 0 ? kAccent : kSurface;
+        auto textCol = next > 0 ? juce::Colours::white : kDim;
+        loopOptimizeBtn.setColour(juce::TextButton::buttonColourId, col);
+        loopOptimizeBtn.setColour(juce::TextButton::textColourOffId, textCol);
+    };
 
     // ── Scan ──
     scanRow = std::make_unique<SliderRow>("", fmtF2);
@@ -534,7 +554,7 @@ void SynthPanel::updateVisibility()
     loopModeBtn.setVisible(isSampler);
     pingpongBtn.setVisible(isSampler);
     crossfadeRow->setVisible(isSampler);
-    loopOptimizeToggle.setVisible(isSampler);
+    loopOptimizeBtn.setVisible(isSampler);
     normalizeToggle.setVisible(isSampler);
 
     // Wavetable-only controls
@@ -936,8 +956,8 @@ void SynthPanel::resized()
         int optW = juce::roundToInt(f * 5.0f);
         normalizeToggle.setBounds(loopRow.removeFromLeft(optW));
         loopRow.removeFromLeft(2);
-        loopOptimizeToggle.setBounds(loopRow.removeFromLeft(optW));
-        optSwitchBounds = normalizeToggle.getBounds().getUnion(loopOptimizeToggle.getBounds());
+        loopOptimizeBtn.setBounds(loopRow.removeFromLeft(optW));
+        optSwitchBounds = normalizeToggle.getBounds().getUnion(loopOptimizeBtn.getBounds());
 
         area.removeFromTop(gap);
         engineCardBottom = oneshotBtn.getBottom();

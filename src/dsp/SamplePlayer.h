@@ -80,7 +80,7 @@ public:
     void setLoopMode(LoopMode mode);
     void setCrossfadeMs(float ms);
     void setNormalize(bool on);
-    void setLoopOptimize(bool on);
+    void setLoopOptimizeLevel(int level);   // 0=Off, 1=Low, 2=High
 
     LoopMode getLoopMode()  const { return loopMode; }
     float getCrossfadeMs()  const { return crossfadeMsVal; }
@@ -126,7 +126,7 @@ private:
     LoopMode loopMode     = LoopMode::Loop;
     float crossfadeMsVal  = 150.0f;
     bool  normalizeOn     = false;
-    bool  loopOptimizeOn  = false;
+    int   loopOptimizeLevel = 0;   // 0=Off, 1=Low, 2=High
 
     // Dirty flag — when settings change, re-prepare on next processBlock
     bool needsReprepareFlag = false;
@@ -160,7 +160,7 @@ private:
     void primeStretcher();
 
     /** Cross-correlation loop-end optimizer (channel 0). */
-    int optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen) const;
+    int optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen, int level) const;
 
     /** Apply equal-power crossfade at loop boundary. */
     void applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopStart, int& loopEnd) const;
@@ -175,6 +175,7 @@ private:
     /** Remove leading near-zero samples (< ~-60 dB) from originalBuffer. */
     void trimLeadingSilence();
 
-    static constexpr int XCORR_WINDOW = 512;
-    static constexpr int XCORR_SEARCH = 2000;
+    // Per-level xcorr parameters: [0]=unused, [1]=Low, [2]=High
+    static constexpr int XCORR_WINDOW[3] = { 0,  512, 2048 };
+    static constexpr int XCORR_SEARCH[3] = { 0, 2000, 8000 };
 };

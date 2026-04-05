@@ -47,7 +47,7 @@ private:
     juce::TextButton pingpongBtn;  // ⇄ ping-pong
     juce::ComboBox loopModeHidden;
     std::unique_ptr<SliderRow> crossfadeRow;
-    juce::TextButton loopOptimizeToggle { "Auto-opt" };
+    juce::TextButton loopOptimizeBtn { "Opt: Off" };
     juce::TextButton normalizeToggle { "Normalize" };
 
     // ── Scan ──
