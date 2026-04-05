@@ -357,13 +357,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"arp_mode", 1}, "Arp Mode",
         juce::StringArray{"Off", "Up", "Down", "UpDown", "Random"}, 0));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{"arp_gate", 1}, "Arp Gate",
-        juce::NormalisableRange<float>(0.1f, 1.0f, 0.01f), 0.8f));
     // Global seq gate + preset
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"seq_gate", 1}, "Seq Gate",
         juce::NormalisableRange<float>(0.1f, 1.0f, 0.01f), 0.8f));
+    // Seq octave shift: -2..+2 octaves (choice index 0..4, default 2 = no shift)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"seq_octave", 1}, "Seq Octave",
+        juce::StringArray{"-2", "-1", "0", "+1", "+2"}, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"seq_preset", 1}, "Seq Preset",
         juce::StringArray{"Octave Bounce", "Wide Leap", "Off-Beat Minor", "Glide Groove", "Sparse Stab",
@@ -575,7 +576,6 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     int arpMode = arpModeRaw > 0 ? arpModeRaw - 1 : 0; // 0=Up,1=Down,2=UpDown,3=Random
     int arpRate = static_cast<int>(parameters.getRawParameterValue("arp_rate")->load());
     int arpOctaves = static_cast<int>(parameters.getRawParameterValue("arp_octaves")->load());
-    float arpGate = parameters.getRawParameterValue("arp_gate")->load();
 
     // Preset change detection
     if (seqPreset != lastSeqPreset)
@@ -595,14 +595,34 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         stepSequencer.stop();
     stepSequencer.processBlock(buffer, midiMessages);
 
+    // Octave transposition (only when sequencer is driving)
+    int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue("seq_octave")->load());
+    int semitoneShift = (seqOctaveIdx - 2) * 12;
+    if (semitoneShift != 0 && seqRunning)
+    {
+        juce::MidiBuffer transposed;
+        for (const auto metadata : midiMessages)
+        {
+            auto msg = metadata.getMessage();
+            if (msg.isNoteOnOrOff())
+                msg.setNoteNumber(juce::jlimit(0, 127, msg.getNoteNumber() + semitoneShift));
+            transposed.addEvent(msg, metadata.samplePosition);
+        }
+        midiMessages.swapWith(transposed);
+    }
+
+    // Arp bar-sync: reset arp phase at sequencer bar boundaries
+    bool barStart = stepSequencer.barStartFlag.exchange(false);
+
     // Stage 2: Arpeggiator (consumes seq note events, generates arpeggiated output)
     if (arpEnabled)
     {
+        if (barStart)
+            arpeggiator.syncToBar();
         arpeggiator.setBpm(static_cast<double>(seqBpm));
         arpeggiator.setRate(arpRate);
         arpeggiator.setOctaveRange(arpOctaves);
         arpeggiator.setMode(static_cast<T5ynthArpeggiator::Mode>(arpMode));
-        arpeggiator.setGate(arpGate);
 
         juce::MidiBuffer filtered;
         for (const auto metadata : midiMessages)
@@ -631,8 +651,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         arpeggiator.reset();
     }
 
-    // Consume bar-start flag (for future background regen integration)
-    stepSequencer.barStartFlag.exchange(false);
+    // (barStartFlag already consumed above for arp bar-sync)
 
     // ── Sample-accurate MIDI + Voice rendering ──────────────────────────────
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo1_mode")->load()) == 1;
@@ -1486,6 +1505,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
         stepArr.add(s.get());
     }
     seq->setProperty("steps", stepArr);
+    seq->setProperty("octaveShift", static_cast<int>(get("seq_octave")) - 2);
     root->setProperty("sequencer", seq.get());
 
     // Arpeggiator
@@ -1714,6 +1734,11 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
                 else if (s->hasProperty("glide"))  // backward compat
                     stepSequencer.setStepBind(i, static_cast<bool>(s->getProperty("glide")));
             }
+        }
+        if (seq->hasProperty("octaveShift"))
+        {
+            int oct = static_cast<int>(seq->getProperty("octaveShift"));
+            setParam(parameters, "seq_octave", static_cast<float>(oct + 2));
         }
     }
 

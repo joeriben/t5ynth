@@ -18,7 +18,7 @@ class SequencerPanel : public juce::Component, private juce::Timer
 {
 public:
     explicit SequencerPanel(T5ynthProcessor& processor);
-    ~SequencerPanel() override = default;
+    ~SequencerPanel() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -41,12 +41,25 @@ private:
     std::unique_ptr<SliderRow> bpmRow;
     juce::Label midiMonitor;
 
+    // Octave shift [-2][-1][0][+1][+2]
+    static constexpr int kNumOctShiftBtns = 5;
+    juce::TextButton octShiftBtns[kNumOctShiftBtns];
+    juce::ComboBox octShiftHidden;
+
     // Row 2: Seq params
     juce::ComboBox presetBox;
     juce::TextButton seqSaveBtn { "S" };
     juce::TextButton seqLoadBtn { "L" };
     std::unique_ptr<SliderRow> gateRow;
 
+    // Icon LookAndFeel for save/load buttons
+    struct IconLnF : juce::LookAndFeel_V4
+    {
+        juce::Path icon;
+        void drawButtonBackground(juce::Graphics&, juce::Button&, const juce::Colour&, bool, bool) override;
+        void drawButtonText(juce::Graphics&, juce::TextButton&, bool, bool) override;
+    };
+    IconLnF saveLnf, loadLnf;
 
     // Row 3: Step grid
     struct StepColumn : public juce::Component
@@ -79,13 +92,12 @@ private:
     static constexpr int kNumOctBtns = 4;
     juce::TextButton arpOctBtns[kNumOctBtns];  // [1][2][3][4]
     juce::ComboBox arpOctHidden;                 // hidden, for APVTS
-    std::unique_ptr<SliderRow> arpGateRow;
 
     // APVTS attachments
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SA> bpmA, gateA, arpGateA;
-    std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA;
+    std::unique_ptr<SA> bpmA, gateA;
+    std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA, octShiftA;
 
     int currentStep = -1;
 

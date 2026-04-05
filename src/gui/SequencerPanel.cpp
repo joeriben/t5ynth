@@ -9,6 +9,23 @@ static juce::String noteName(int n)
     return juce::String(names[n % 12]) + juce::String(oct);
 }
 
+// ─── IconLnF ──────────────────────────────────────────────────────
+void SequencerPanel::IconLnF::drawButtonBackground(juce::Graphics& g, juce::Button& b,
+                                                     const juce::Colour&, bool over, bool down)
+{
+    g.setColour(down ? kSurface.darker(0.1f) : over ? kSurface.brighter(0.15f) : kSurface);
+    g.fillRect(b.getLocalBounds());
+}
+
+void SequencerPanel::IconLnF::drawButtonText(juce::Graphics& g, juce::TextButton& b,
+                                               bool over, bool)
+{
+    auto bounds = b.getLocalBounds().toFloat().reduced(4.0f);
+    g.setColour(over ? kSeqCol : kDim);
+    g.strokePath(icon, juce::PathStrokeType(1.3f),
+                 icon.getTransformToScaleToFit(bounds, true));
+}
+
 // ─── StepColumn ────────────────────────────────────────────────────
 
 void SequencerPanel::StepColumn::paint(juce::Graphics& g)
@@ -230,13 +247,38 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     addAndMakeVisible(presetBox);
     presetA = std::make_unique<CA>(apvts, "seq_preset", presetBox);
 
-    // Save/Load buttons for sequencer patterns
+    // Save/Load buttons for sequencer patterns (icon-based)
     for (auto* btn : { &seqSaveBtn, &seqLoadBtn })
     {
         btn->setColour(juce::TextButton::buttonColourId, kSurface);
         btn->setColour(juce::TextButton::textColourOffId, kDim);
         addAndMakeVisible(btn);
     }
+    // Save icon (floppy disk outline)
+    {
+        juce::Path p;
+        p.startNewSubPath(2.0f, 1.0f);
+        p.lineTo(11.0f, 1.0f); p.lineTo(14.0f, 4.0f);
+        p.lineTo(14.0f, 15.0f); p.lineTo(2.0f, 15.0f); p.closeSubPath();
+        p.startNewSubPath(5.0f, 1.0f);
+        p.lineTo(5.0f, 5.5f); p.lineTo(11.0f, 5.5f); p.lineTo(11.0f, 1.0f);
+        p.startNewSubPath(4.0f, 9.0f);
+        p.lineTo(12.0f, 9.0f); p.lineTo(12.0f, 14.0f); p.lineTo(4.0f, 14.0f); p.closeSubPath();
+        saveLnf.icon = p;
+    }
+    // Load icon (folder outline)
+    {
+        juce::Path p;
+        p.startNewSubPath(2.0f, 5.0f); p.lineTo(2.0f, 2.0f);
+        p.lineTo(7.0f, 2.0f); p.lineTo(8.5f, 5.0f);
+        p.lineTo(14.0f, 5.0f); p.lineTo(14.0f, 15.0f);
+        p.lineTo(2.0f, 15.0f); p.closeSubPath();
+        loadLnf.icon = p;
+    }
+    seqSaveBtn.setLookAndFeel(&saveLnf);
+    seqLoadBtn.setLookAndFeel(&loadLnf);
+    seqSaveBtn.setTooltip("Save pattern");
+    seqLoadBtn.setTooltip("Load pattern");
     seqSaveBtn.onClick = [this] {
         auto chooser = std::make_shared<juce::FileChooser>("Save Sequencer Pattern", juce::File(), "*.t5seq");
         chooser->launchAsync(juce::FileBrowserComponent::saveMode, [this, chooser](const juce::FileChooser& fc) {
@@ -254,7 +296,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             obj->setProperty("arpMode", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_mode")->load()));
             obj->setProperty("arpRate", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_rate")->load()));
             obj->setProperty("arpOctaves", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_octaves")->load()));
-            obj->setProperty("arpGate", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue("arp_gate")->load()));
+            obj->setProperty("octave", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("seq_octave")->load()));
             juce::Array<juce::var> steps;
             for (int i = 0; i < seq.getNumSteps(); ++i)
             {
@@ -300,9 +342,10 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             if (root.hasProperty("arpOctaves"))
                 apvts.getParameter("arp_octaves")->setValueNotifyingHost(
                     apvts.getParameter("arp_octaves")->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
-            if (root.hasProperty("arpGate"))
-                apvts.getParameter("arp_gate")->setValueNotifyingHost(
-                    apvts.getParameter("arp_gate")->convertTo0to1(static_cast<float>(root["arpGate"])));
+            // arpGate removed — old files silently ignored
+            if (root.hasProperty("octave"))
+                apvts.getParameter("seq_octave")->setValueNotifyingHost(
+                    apvts.getParameter("seq_octave")->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
             auto* stepsArr = root["steps"].getArray();
             if (stepsArr)
             {
@@ -327,6 +370,28 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     gateA = std::make_unique<SA>(apvts, "seq_gate", gateRow->getSlider());
     gateRow->getSlider().onValueChange = [this] { gateRow->updateValue(); };
     gateRow->updateValue();
+
+    // ── Octave shift [-2][-1][0][+1][+2] ──
+    octShiftHidden.addItemList({"-2", "-1", "0", "+1", "+2"}, 1);
+    octShiftHidden.onChange = [this] {
+        int id = octShiftHidden.getSelectedId();
+        for (int i = 0; i < kNumOctShiftBtns; ++i)
+            octShiftBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+    };
+    static const char* octLabels[] = {"-2", "-1", "0", "+1", "+2"};
+    for (int i = 0; i < kNumOctShiftBtns; ++i)
+    {
+        octShiftBtns[i].setButtonText(octLabels[i]);
+        octShiftBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+        octShiftBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
+        octShiftBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+        octShiftBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        octShiftBtns[i].setClickingTogglesState(true);
+        octShiftBtns[i].setRadioGroupId(2004);
+        octShiftBtns[i].onClick = [this, i] { octShiftHidden.setSelectedId(i + 1); };
+        addAndMakeVisible(octShiftBtns[i]);
+    }
+    octShiftA = std::make_unique<CA>(apvts, "seq_octave", octShiftHidden);
 
     // ── Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd) ──
     arpModeBox.addItemList({"Off","Up","Down","UpDown","Random"}, 1);
@@ -381,12 +446,6 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     }
     arpOctA = std::make_unique<CA>(apvts, "arp_octaves", arpOctHidden);
 
-    arpGateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; }, kSeqCol);
-    addAndMakeVisible(*arpGateRow);
-    arpGateA = std::make_unique<SA>(apvts, "arp_gate", arpGateRow->getSlider());
-    arpGateRow->getSlider().onValueChange = [this] { arpGateRow->updateValue(); };
-    arpGateRow->updateValue();
-
     // ── Step columns ──
     for (int i = 0; i < MAX_COLS; ++i)
     {
@@ -398,6 +457,12 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
 
     syncStepCount();
     startTimerHz(10);
+}
+
+SequencerPanel::~SequencerPanel()
+{
+    seqSaveBtn.setLookAndFeel(nullptr);
+    seqLoadBtn.setLookAndFeel(nullptr);
 }
 
 void SequencerPanel::syncStepCount()
@@ -528,8 +593,8 @@ void SequencerPanel::resized()
 
     stepCountBox.setBounds(r1.removeFromLeft(50)); r1.removeFromLeft(g);
 
-    // Division toggle strip
-    int divBtnW = 26;
+    // Division toggle strip (wider to fit "1/16")
+    int divBtnW = 30;
     for (int i = 0; i < kNumDivBtns; ++i)
     {
         int edges = 0;
@@ -540,14 +605,26 @@ void SequencerPanel::resized()
     }
     r1.removeFromLeft(g);
 
+    // Octave shift strip [-2][-1][0][+1][+2]
+    int octBtnW = 26;
+    for (int i = 0; i < kNumOctShiftBtns; ++i)
+    {
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < kNumOctShiftBtns - 1) edges |= juce::Button::ConnectedOnRight;
+        octShiftBtns[i].setConnectedEdges(edges);
+        octShiftBtns[i].setBounds(r1.removeFromLeft(octBtnW));
+    }
+    r1.removeFromLeft(g);
+
     // MIDI monitor on far right
     midiMonitor.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.6f)));
     midiMonitor.setBounds(r1.removeFromRight(80));
     r1.removeFromRight(g);
 
-    // BPM and Gate share remaining width
-    int halfW = r1.getWidth() / 2 - 1;
-    bpmRow->setBounds(r1.removeFromLeft(halfW));
+    // BPM (75%) and Gate (25%) — BPM needs resolution, gate is less critical
+    int bpmW = r1.getWidth() * 3 / 4 - 1;
+    bpmRow->setBounds(r1.removeFromLeft(bpmW));
     r1.removeFromLeft(2);
     gateRow->setBounds(r1);
 
@@ -573,17 +650,15 @@ void SequencerPanel::resized()
     // Oct label + toggle strip [1][2][3][4]
     arpOctLabel.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.55f)));
     arpOctLabel.setBounds(r4.removeFromLeft(28));   r4.removeFromLeft(2);
-    int octBtnW = 22;
+    int arpOctBtnW = 22;
     for (int i = 0; i < kNumOctBtns; ++i)
     {
         int edges = 0;
         if (i > 0) edges |= juce::Button::ConnectedOnLeft;
         if (i < kNumOctBtns - 1) edges |= juce::Button::ConnectedOnRight;
         arpOctBtns[i].setConnectedEdges(edges);
-        arpOctBtns[i].setBounds(r4.removeFromLeft(octBtnW));
+        arpOctBtns[i].setBounds(r4.removeFromLeft(arpOctBtnW));
     }
-    r4.removeFromLeft(g);
-    arpGateRow->setBounds(r4);
 
     area.removeFromBottom(g);
 

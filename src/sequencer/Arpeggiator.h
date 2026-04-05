@@ -42,6 +42,9 @@ public:
     /** Stop arpeggiator. */
     void stopArp();
 
+    /** Resync arp phase to sequencer bar boundary. */
+    void syncToBar() { if (active) { currentIndex = 0; samplesUntilNext = 0.0; } }
+
     bool isActive() const { return active; }
     int getLastPlayedNote() const { return lastPlayedNote; }
 
@@ -60,7 +63,7 @@ private:
     int currentIndex = 0;
     double sampleRateVal = 44100.0;
     double bpm = 120.0;
-    float gate = 0.8f;
+    float gate = 1.0f;
     double samplesUntilNext = 0.0;
     double samplesUntilGateOff = -1.0;
     int lastPlayedNote = -1;
