@@ -41,8 +41,6 @@ public:
     /** Status callback — called with status text (e.g. "generating...", "12.3s | seed 42 | mps") */
     std::function<void(const juce::String&, bool generating)> onStatusChanged;
 
-    float fs() const;
-
 private:
     void timerCallback() override;
     void triggerGeneration();

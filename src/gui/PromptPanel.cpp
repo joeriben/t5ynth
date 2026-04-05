@@ -39,16 +39,22 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
 
     // Alpha
     makeSlider(alphaSlider, this);
-    makeLabel(alphaLabel, "Alpha", kDim, juce::Justification::centredLeft, this);
-    makeLabel(alphaValue, "0.00", kOscCol, juce::Justification::centredRight, this);
+    makeLabel(alphaLabel, "Alpha (A <-> B)", kDim, juce::Justification::centredLeft, this);
+    makeLabel(alphaValue, "0", kOscCol, juce::Justification::centredRight, this);
     makeLabel(alphaHint, "Interpolation: -1.0 = A only, 1.0 = B only", kDim, juce::Justification::centredLeft, this);
     alphaSlider.onValueChange = [this] {
-        alphaValue.setText(juce::String(alphaSlider.getValue(), 3), juce::dontSendNotification);
+        float v = static_cast<float>(alphaSlider.getValue());
+        if (std::abs(v) < 0.001f)
+            alphaValue.setText("0", juce::dontSendNotification);
+        else if (v < 0.0f)
+            alphaValue.setText("A " + juce::String(-v, 3), juce::dontSendNotification);
+        else
+            alphaValue.setText("B " + juce::String(v, 3), juce::dontSendNotification);
     };
 
     // Magnitude
     makeSlider(magnitudeSlider, this);
-    makeLabel(magLabel, "Magnitude", kDim, juce::Justification::centredLeft, this);
+    makeLabel(magLabel, "Magnitude (Embedding Scale)", kDim, juce::Justification::centredLeft, this);
     makeLabel(magValue, "1.00", kOscCol, juce::Justification::centredRight, this);
     makeLabel(magHint, "Embedding scale (1.0 = unchanged)", kDim, juce::Justification::centredLeft, this);
     magnitudeSlider.onValueChange = [this] {
@@ -57,7 +63,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
 
     // Noise
     makeSlider(noiseSlider, this);
-    makeLabel(noiseLabel, "Noise", kDim, juce::Justification::centredLeft, this);
+    makeLabel(noiseLabel, "Noise (Embedding Chaos)", kDim, juce::Justification::centredLeft, this);
     makeLabel(noiseValue, "0.000", kOscCol, juce::Justification::centredRight, this);
     makeLabel(noiseHint, "Gaussian noise on embedding (0 = none)", kDim, juce::Justification::centredLeft, this);
     noiseSlider.onValueChange = [this] {
@@ -223,16 +229,6 @@ void PromptPanel::timerCallback()
     }
 }
 
-float PromptPanel::fs() const
-{
-    float h = static_cast<float>(getHeight());
-    float w = static_cast<float>(getWidth());
-    float pad = w * 0.04f;
-    float available = h - 2.0f * pad;
-    float maxF = available / 28.0f;
-    return juce::jlimit(12.0f, 20.0f, maxF);
-}
-
 void PromptPanel::paint(juce::Graphics& g)
 {
     // Model switchbox border (always 3 fixed slots)
@@ -243,19 +239,38 @@ void PromptPanel::resized()
 {
     auto b = getLocalBounds();
     float w = static_cast<float>(b.getWidth());
-    float h = static_cast<float>(b.getHeight());
     int pad = juce::roundToInt(w * 0.04f);
     auto area = b.reduced(pad);
 
-    float f = fs();
-    float fSmall = f;
+    // ── Row heights in font-size units (single source of truth) ──
+    constexpr float kRow        = 1.4f;   // label row
+    constexpr float kSlider     = 1.2f;   // full slider
+    constexpr float kInput      = 1.8f;   // text editor
+    constexpr float kCompactRow = 1.2f;   // compact label row
+    constexpr float kCompactSl  = 0.9f;   // compact slider
+    constexpr float kGap        = 0.3f;   // gap
+
+    // Total content budget (f-units):
+    //   model:      kCompactRow + kGap                    = 1.5
+    //   prompt A:   kRow + kInput + kGap                  = 3.5
+    //   prompt B:   kRow + kInput + kGap*2                = 3.8
+    //   3× slider:  (kRow + kSlider + kGap) * 3           = 8.7
+    //   gap:        kGap                                  = 0.3
+    //   2× compact: (kCompactRow + kCompactSl + kGap) * 2 = 4.8
+    //   seed row:    kInput                                 = 1.8
+    //                                               Total: 24.4
+    constexpr float kContentUnits = 24.4f;
+    constexpr float kHintExtra    = 5.2f;  // 3×1.1 + 2×0.94 hint rows
+
+    float f = juce::jlimit(10.0f, 20.0f,
+        (static_cast<float>(area.getHeight()) - 2.0f) / kContentUnits);
     float fHint = f * 0.85f;
-    int rowH = juce::roundToInt(f * 1.4f);
-    int sliderH = juce::roundToInt(f * 1.2f);
+    int rowH = juce::roundToInt(f * kRow);
+    int sliderH = juce::roundToInt(f * kSlider);
     int hintH = juce::roundToInt(fHint * 1.3f);
-    int inputH = juce::roundToInt(f * 1.8f);
-    int gap = juce::roundToInt(f * 0.3f);
-    int compactRowH = juce::roundToInt(fSmall * 1.2f);
+    int inputH = juce::roundToInt(f * kInput);
+    int gap = juce::roundToInt(f * kGap);
+    int compactRowH = juce::roundToInt(f * kCompactRow);
 
     auto setFs = [](juce::Label& l, float size) { l.setFont(juce::FontOptions(size)); };
 
@@ -270,8 +285,9 @@ void PromptPanel::resized()
         area.removeFromTop(gap);
     }
 
-    // Show hints only if enough vertical space remains
-    bool showHints = area.getHeight() > 350;
+    // Show hints only when the extra hint rows fit within available space
+    bool showHints = static_cast<float>(area.getHeight())
+                     > (kContentUnits + kHintExtra) * f + 2.0f;
 
     // --- Main slider layout: [Label ... Value] \n [slider] \n [hint?] ---
     auto layoutSlider = [&](juce::Label& label, juce::Slider& slider, juce::Label& value,
@@ -298,14 +314,14 @@ void PromptPanel::resized()
     };
 
     // Prompt A
-    setFs(promptALabel, fSmall);
+    setFs(promptALabel, f);
     promptALabel.setBounds(area.removeFromTop(rowH));
     promptAEditor.setFont(juce::FontOptions(f));
     promptAEditor.setBounds(area.removeFromTop(inputH));
     area.removeFromTop(gap);
 
     // Prompt B
-    setFs(promptBLabel, fSmall);
+    setFs(promptBLabel, f);
     promptBLabel.setBounds(area.removeFromTop(rowH));
     promptBEditor.setFont(juce::FontOptions(f));
     promptBEditor.setBounds(area.removeFromTop(inputH));
@@ -333,10 +349,10 @@ void PromptPanel::resized()
         hdrRow.removeFromLeft(colGap);
         auto rightHdr = hdrRow;
 
-        setFs(lbl1, fSmall); setFs(val1, fSmall);
+        setFs(lbl1, f); setFs(val1, f);
         lbl1.setBounds(leftHdr.removeFromLeft(leftHdr.getWidth() * 2 / 3));
         val1.setBounds(leftHdr);
-        setFs(lbl2, fSmall); setFs(val2, fSmall);
+        setFs(lbl2, f); setFs(val2, f);
         lbl2.setBounds(rightHdr.removeFromLeft(rightHdr.getWidth() * 2 / 3));
         val2.setBounds(rightHdr);
 
@@ -366,25 +382,25 @@ void PromptPanel::resized()
     layoutCompactPair(stepsLabel, stepsSlider, stepsValue, &stepsHint,
                       cfgLabel, cfgSlider, cfgValue, &cfgHint);
 
-    // Seed + Device row (compact, same height as Duration/Steps rows)
+    // Seed + Device row — same height as prompt input boxes
     {
-        setFs(seedLabel, fSmall);
-        auto seedRow = area.removeFromTop(compactRowH);
+        auto seedRow = area.removeFromTop(inputH);
         int btnW = juce::roundToInt(seedRow.getWidth() * 0.11f);
         gpuBtn.setBounds(seedRow.removeFromLeft(btnW));
         cpuBtn.setBounds(seedRow.removeFromLeft(btnW));
         seedRow.removeFromLeft(gap);
-        int seedLabelW = juce::roundToInt(fSmall * 2.5f);
+        setFs(seedLabel, f);
+        int seedLabelW = juce::roundToInt(f * 2.5f);
         seedLabel.setBounds(seedRow.removeFromLeft(seedLabelW));
         int toggleW = juce::roundToInt(seedRow.getWidth() * 0.30f);
         randomSeedToggle.setBounds(seedRow.removeFromRight(toggleW));
-        seedEditor.setFont(juce::FontOptions(fSmall));
-        seedEditor.setBounds(seedRow.reduced(0, 1));
+        seedEditor.setFont(juce::FontOptions(f));
+        seedEditor.setBounds(seedRow);
     }
 
     // Info label at the bottom of the sequential layout
     area.removeFromTop(gap);
-    setFs(infoLabel, fSmall);
+    setFs(infoLabel, f);
     infoLabel.setBounds(area.removeFromTop(compactRowH));
 }
 
