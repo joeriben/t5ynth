@@ -138,8 +138,8 @@ void T5ynthArpeggiator::processBlock(juce::AudioBuffer<float>& buffer,
             lastPlayedNote = midiNote;
             currentIndex++;
 
-            // Schedule gate-off
-            samplesUntilGateOff = gate * samplesPerStep;
+            // Schedule gate-off (skip for 100% gate — true legato, no retrigger)
+            samplesUntilGateOff = (gate >= 1.0f) ? -1.0 : gate * samplesPerStep;
 
             // Rebuild intervals on each cycle for random pattern freshness
             if (mode == Mode::Random && currentIndex % static_cast<int>(intervals.size()) == 0)

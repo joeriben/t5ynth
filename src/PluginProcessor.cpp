@@ -611,14 +611,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         midiMessages.swapWith(transposed);
     }
 
-    // Arp bar-sync: reset arp phase at sequencer bar boundaries
-    bool barStart = stepSequencer.barStartFlag.exchange(false);
+    // Consume bar-start flag
+    stepSequencer.barStartFlag.exchange(false);
 
     // Stage 2: Arpeggiator (consumes seq note events, generates arpeggiated output)
     if (arpEnabled)
     {
-        if (barStart)
-            arpeggiator.syncToBar();
         arpeggiator.setBpm(static_cast<double>(seqBpm));
         arpeggiator.setRate(arpRate);
         arpeggiator.setOctaveRange(arpOctaves);
@@ -651,7 +649,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         arpeggiator.reset();
     }
 
-    // (barStartFlag already consumed above for arp bar-sync)
+    // (barStartFlag consumed above)
 
     // ── Sample-accurate MIDI + Voice rendering ──────────────────────────────
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo1_mode")->load()) == 1;

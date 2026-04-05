@@ -42,9 +42,6 @@ public:
     /** Stop arpeggiator. */
     void stopArp();
 
-    /** Resync arp phase to sequencer bar boundary. */
-    void syncToBar() { if (active) { currentIndex = 0; samplesUntilNext = 0.0; } }
-
     bool isActive() const { return active; }
     int getLastPlayedNote() const { return lastPlayedNote; }
 
