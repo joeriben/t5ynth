@@ -54,9 +54,11 @@ public:
     bool launchPipeInference(const juce::File& backendDir);
     bool isPipeInferenceReady() const { return pipeInference.isReady(); }
 
-    // Last device used for generation (for preset tagging)
+    // Last device/model used for generation (for preset tagging)
     void setLastDevice(const juce::String& dev) { lastDevice = dev; }
     const juce::String& getLastDevice() const { return lastDevice; }
+    void setLastModel(const juce::String& m) { lastModel = m; }
+    const juce::String& getLastModel() const { return lastModel; }
 
     // Preset metadata (GUI-only state that must survive save/load)
     void setLastPrompts(const juce::String& a, const juce::String& b) { lastPromptA = a; lastPromptB = b; }
@@ -125,6 +127,7 @@ private:
     // Inference (Python subprocess)
     PipeInference pipeInference;
     juce::String lastDevice;
+    juce::String lastModel;
 
     // Preset metadata (stored here so preset save can access them)
     juce::String lastPromptA, lastPromptB;

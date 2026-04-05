@@ -30,6 +30,7 @@ public:
         int seed = 123456789;
         bool randomSeed = false;
         juce::String device;
+        juce::String model;
 
         // Embedded audio (empty if old-format preset)
         juce::AudioBuffer<float> audio;

@@ -22,6 +22,7 @@ bool PresetFormat::saveToFile(const juce::File& file, T5ynthProcessor& processor
         synth->setProperty("promptB", processor.getLastPromptB());
         synth->setProperty("seed", processor.getLastSeed());
         synth->setProperty("device", processor.getLastDevice());
+        synth->setProperty("model", processor.getLastModel());
         auto genSeed = static_cast<int>(processor.getValueTreeState()
                            .getRawParameterValue("gen_seed")->load());
         synth->setProperty("randomSeed", genSeed == -1);
@@ -128,9 +129,9 @@ PresetFormat::LoadResult PresetFormat::loadFromFile(const juce::File& file, T5yn
             int s = static_cast<int>(synth->getProperty("seed"));
             if (s > 0) result.seed = s;
             result.device = synth->getProperty("device").toString();
+            result.model = synth->getProperty("model").toString();
             if (synth->hasProperty("randomSeed"))
                 result.randomSeed = static_cast<bool>(synth->getProperty("randomSeed"));
-
         }
 
         // Extract embeddings
@@ -189,6 +190,7 @@ PresetFormat::LoadResult PresetFormat::loadFromFile(const juce::File& file, T5yn
                         int s = static_cast<int>(synth->getProperty("seed"));
                         if (s > 0) result.seed = s;
                         result.device = synth->getProperty("device").toString();
+                        result.model = synth->getProperty("model").toString();
                         if (synth->hasProperty("randomSeed"))
                             result.randomSeed = static_cast<bool>(synth->getProperty("randomSeed"));
                     }

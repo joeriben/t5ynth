@@ -390,7 +390,8 @@ void PromptPanel::resized()
 
 void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String& promptB,
                                   int seed, bool randomSeed,
-                                  const juce::String& device)
+                                  const juce::String& device,
+                                  const juce::String& model)
 {
     promptAEditor.setText(promptA, false);
     promptBEditor.setText(promptB, false);
@@ -404,6 +405,19 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
         cpuBtn.setToggleState(true, juce::dontSendNotification);
     else
         gpuBtn.setToggleState(true, juce::dontSendNotification);
+
+    // Select model from preset (match by model directory name)
+    if (model.isNotEmpty() && modelsPopulated)
+    {
+        for (int i = 0; i < kNumModelSlots; ++i)
+        {
+            if (modelSlotIds[i] == model)
+            {
+                modelBtns[i].setToggleState(true, juce::dontSendNotification);
+                break;
+            }
+        }
+    }
 }
 
 void PromptPanel::populateDeviceButtons()
@@ -559,6 +573,7 @@ void PromptPanel::triggerGeneration()
             {
                 processor->loadGeneratedAudio(result.audio, 44100.0);
                 processor->setLastDevice(deviceForLabel);
+                processor->setLastModel(modelForLabel);
                 processor->setLastSeed(result.seed);
                 processor->setLastPrompts(promptAEditor.getText().trim(),
                                           promptBEditor.getText().trim());

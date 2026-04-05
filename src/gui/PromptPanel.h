@@ -18,10 +18,11 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
 
-    /** Load preset data that isn't in APVTS (prompts, seed, random toggle, device). */
+    /** Load preset data that isn't in APVTS (prompts, seed, random toggle, device, model). */
     void loadPresetData(const juce::String& promptA, const juce::String& promptB,
                         int seed, bool randomSeed,
-                        const juce::String& device = {});
+                        const juce::String& device = {},
+                        const juce::String& model = {});
 
     /** Read current prompt/seed state (for preset save). */
     juce::String getPromptA() const { return promptAEditor.getText().trim(); }
