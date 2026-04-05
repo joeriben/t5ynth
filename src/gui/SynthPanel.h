@@ -42,7 +42,7 @@ private:
     juce::Rectangle<int> voiceSwitchBounds;
 
     // ── Loop controls ──
-    juce::TextButton oneshotBtn;   // ▶ one-shot (icon drawn in paintOverChildren)
+    juce::TextButton oneshotBtn;   // → one-shot (icon drawn in paintOverChildren)
     juce::TextButton loopModeBtn;  // ↻ loop
     juce::TextButton pingpongBtn;  // ⇄ ping-pong
     juce::ComboBox loopModeHidden;

@@ -148,8 +148,10 @@ public:
         int labelW = juce::jlimit(30, 55, juce::roundToInt(b.getWidth() * 0.18f));
         int valueW = juce::jlimit(30, 50, juce::roundToInt(b.getWidth() * 0.16f));
 
-        label.setFont(juce::FontOptions(f * 0.75f));
-        value.setFont(juce::FontOptions(f * 0.75f));
+        // Scale fonts to fit available width (prevents "Da...", "0...." truncation in narrow 2-col layouts)
+        float maxFs = f * 0.75f;
+        label.setFont(juce::FontOptions(juce::jmax(8.0f, juce::jmin(maxFs, static_cast<float>(labelW) * 0.33f))));
+        value.setFont(juce::FontOptions(juce::jmax(8.0f, juce::jmin(maxFs, static_cast<float>(valueW) * 0.33f))));
 
         label.setBounds(b.removeFromLeft(labelW));
         value.setBounds(b.removeFromRight(valueW));
