@@ -67,6 +67,7 @@ private:
         int stepIndex = 0;
         T5ynthProcessor* processor = nullptr;
         bool isCurrentStep = false;
+        bool euclideanActive = true;  // true = passes Euclidean filter (or EUC off)
         int dragZone = -1;        // 0=dot, 1=note, 2=glide, 3=velocity
         float dragStartVal = 0.f;
         void paint(juce::Graphics& g) override;
@@ -83,7 +84,14 @@ private:
     int numVisibleSteps = 16;
     juce::Rectangle<int> gridArea;
 
-    // Row 4: Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd)
+    // Row 4 left: Generative controls (Euclidean + Scale)
+    juce::TextButton eucToggle { "EUCLIDEAN" };
+    std::unique_ptr<SliderRow> eucPulsesRow;
+    std::unique_ptr<SliderRow> eucRotationRow;
+    juce::ComboBox scaleRootBox;
+    juce::ComboBox scaleTypeBox;
+
+    // Row 4 right: Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd)
     static constexpr int kNumModeBtns = 5;
     juce::TextButton arpModeBtns[kNumModeBtns]; // [OFF][Up][Dn][U/D][Rnd]
     juce::ComboBox arpModeBox;                   // hidden, for APVTS
@@ -96,8 +104,11 @@ private:
     // APVTS attachments
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SA> bpmA, gateA;
-    std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA, octShiftA;
+    using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    std::unique_ptr<SA> bpmA, gateA, eucPulsesA, eucRotationA;
+    std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA, octShiftA,
+                        scaleRootA, scaleTypeA;
+    std::unique_ptr<BA> eucEnabledA;
 
     int currentStep = -1;
 

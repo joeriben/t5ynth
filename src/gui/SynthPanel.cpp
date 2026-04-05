@@ -607,6 +607,24 @@ void SynthPanel::updateVisibility()
     };
     setDriftDimmed(drift1);
     setDriftDimmed(drift2);
+
+    // Regen buttons only active when a drift target requires audio regeneration
+    // Osc targets: Alpha(2), Axis1(3), Axis2(4), Axis3(5) in ComboBox 1-based IDs
+    {
+        auto isOscTarget = [](int selId) {
+            int tgt = selId - 1; // 1-based → 0-based APVTS index
+            return tgt >= 1 && tgt <= 4;
+        };
+        bool regenAvailable = isOscTarget(drift1.targetBox.getSelectedId())
+                           || isOscTarget(drift2.targetBox.getSelectedId());
+        float regenAlpha = regenAvailable ? 1.0f : dimAlpha;
+        for (int i = 0; i < kNumRegenBtns; ++i)
+        {
+            regenBtns[i].setAlpha(regenAlpha);
+            regenBtns[i].setEnabled(regenAvailable);
+        }
+        regenHeader.setAlpha(regenAlpha);
+    }
 }
 
 float SynthPanel::fs() const

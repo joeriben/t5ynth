@@ -216,7 +216,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     stepsA  = std::make_unique<Attachment>(apvts, "gen_steps", stepsSlider);
     cfgA    = std::make_unique<Attachment>(apvts, "gen_cfg", cfgSlider);
 
-    startTimerHz(2);  // poll for device availability
+    startTimerHz(10);  // poll for device availability + drift regen + ghost
 }
 
 void PromptPanel::timerCallback()
@@ -225,14 +225,48 @@ void PromptPanel::timerCallback()
     {
         populateDeviceButtons();
         populateModelSelector();
-        stopTimer();
+        // Don't stop timer — continue for drift regen polling + ghost updates
     }
+
+    // Ghost indicator for alpha slider (drift modulation)
+    {
+        float prev = alphaGhostValue_;
+        alphaGhostValue_ = processorRef.modulatedValues.driftAlpha.load(std::memory_order_relaxed);
+        // Only repaint if ghost changed visibility or position meaningfully
+        bool prevVisible = !std::isnan(prev);
+        bool nowVisible = !std::isnan(alphaGhostValue_);
+        if (prevVisible != nowVisible || (prevVisible && nowVisible && std::abs(prev - alphaGhostValue_) > 0.005f))
+            repaint(alphaSlider.getBounds().expanded(4));
+    }
+
+    // Auto-regen polling
+    pollDriftRegen();
 }
 
 void PromptPanel::paint(juce::Graphics& g)
 {
     // Model switchbox border (always 3 fixed slots)
     paintSwitchBoxBorder(g, modelSwitchBounds);
+}
+
+void PromptPanel::paintOverChildren(juce::Graphics& g)
+{
+    if (std::isnan(alphaGhostValue_)) return;
+
+    // Draw orange ghost circle on the alpha slider at the modulated position
+    auto sb = alphaSlider.getBounds();
+    double norm = alphaSlider.valueToProportionOfLength(static_cast<double>(alphaGhostValue_));
+    norm = juce::jlimit(0.0, 1.0, norm);
+
+    int thumbW = alphaSlider.getLookAndFeel().getSliderThumbRadius(alphaSlider) * 2;
+    int trackX = sb.getX() + thumbW / 2;
+    int trackW = sb.getWidth() - thumbW;
+    float gx = static_cast<float>(trackX) + static_cast<float>(trackW) * static_cast<float>(norm);
+    float gy = static_cast<float>(sb.getCentreY());
+    float r = static_cast<float>(sb.getHeight()) * 0.28f;
+
+    g.setColour(juce::Colour(0xccff9800)); // orange ghost
+    g.fillEllipse(gx - r, gy - r, r * 2.0f, r * 2.0f);
 }
 
 void PromptPanel::resized()
@@ -523,6 +557,46 @@ void PromptPanel::triggerGenerationWithOffsets(std::vector<std::pair<int, float>
     triggerGeneration();
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Shared request builder
+// ──────────────────────────────────────────────────────────────────────────────
+PipeInference::Request PromptPanel::buildInferenceRequest(
+    float alphaOverride, std::map<juce::String, float> axesOverride)
+{
+    auto& apvts = processorRef.getValueTreeState();
+    float alpha = std::isnan(alphaOverride)
+                      ? apvts.getRawParameterValue("gen_alpha")->load()
+                      : alphaOverride;
+    float magnitude = apvts.getRawParameterValue("gen_magnitude")->load();
+    float noiseSigma = apvts.getRawParameterValue("gen_noise")->load();
+    float duration = apvts.getRawParameterValue("gen_duration")->load();
+    float startPos = apvts.getRawParameterValue("gen_start")->load();
+    int steps = static_cast<int>(apvts.getRawParameterValue("gen_steps")->load());
+    float cfgScale = apvts.getRawParameterValue("gen_cfg")->load();
+    int seed = randomSeedToggle.getToggleState() ? -1 : seedEditor.getText().getIntValue();
+
+    PipeInference::Request req;
+    req.promptA = promptAEditor.getText().trim();
+    auto promptB = promptBEditor.getText().trim();
+    if (promptB.isNotEmpty()) req.promptB = promptB;
+    req.alpha = alpha;
+    req.magnitude = magnitude;
+    req.noiseSigma = noiseSigma;
+    req.durationSeconds = duration;
+    req.startPosition = startPos;
+    req.steps = steps;
+    req.cfgScale = cfgScale;
+    req.seed = seed;
+    req.device = cpuBtn.getToggleState() ? "cpu" : gpuBackend_;
+    req.model = getSelectedModel();
+    req.dimensionOffsets = std::move(pendingOffsets_);
+    req.semanticAxes = axesOverride.empty() ? std::move(pendingAxes_) : std::move(axesOverride);
+    return req;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Manual generation (Generate button / Enter)
+// ──────────────────────────────────────────────────────────────────────────────
 void PromptPanel::triggerGeneration()
 {
     if (generating) return;
@@ -535,21 +609,6 @@ void PromptPanel::triggerGeneration()
         return;
     }
 
-    generating = true;
-    generateButton.setEnabled(false);
-    if (onStatusChanged) onStatusChanged("generating...", true);
-
-    auto& apvts = processorRef.getValueTreeState();
-    float alpha = apvts.getRawParameterValue("gen_alpha")->load();
-    float magnitude = apvts.getRawParameterValue("gen_magnitude")->load();
-    float noiseSigma = apvts.getRawParameterValue("gen_noise")->load();
-    float duration = apvts.getRawParameterValue("gen_duration")->load();
-    float startPos = apvts.getRawParameterValue("gen_start")->load();
-    int steps = static_cast<int>(apvts.getRawParameterValue("gen_steps")->load());
-    float cfgScale = apvts.getRawParameterValue("gen_cfg")->load();
-    int seed = randomSeedToggle.getToggleState() ? -1 : seedEditor.getText().getIntValue();
-    auto promptB = promptBEditor.getText().trim();
-
     // Populate device/model info from Python if not yet done
     auto& pipeInf = processorRef.getPipeInference();
     if (!devicesPopulated && pipeInf.isReady())
@@ -558,38 +617,19 @@ void PromptPanel::triggerGeneration()
         populateModelSelector();
     }
 
-    // Resolve selected device: GPU → gpuBackend_ (mps/cuda), CPU → "cpu"
-    juce::String selectedDevice = cpuBtn.getToggleState() ? "cpu" : gpuBackend_;
-
-    // Resolve selected model
-    juce::String selectedModel = getSelectedModel();
-
     if (!processorRef.isPipeInferenceReady())
     {
-        generating = false;
-        generateButton.setEnabled(true);
         if (onStatusChanged) onStatusChanged("Backend not ready", false);
         return;
     }
 
-    PipeInference::Request req;
-    req.promptA = promptA;
-    if (promptB.isNotEmpty()) req.promptB = promptB;
-    req.alpha = alpha;
-    req.magnitude = magnitude;
-    req.noiseSigma = noiseSigma;
-    req.durationSeconds = duration;
-    req.startPosition = startPos;
-    req.steps = steps;
-    req.cfgScale = cfgScale;
-    req.seed = seed;
-    req.device = selectedDevice;
-    req.model = selectedModel;
-    req.dimensionOffsets = std::move(pendingOffsets_);
-    req.semanticAxes = std::move(pendingAxes_);
+    generating = true;
+    generateButton.setEnabled(false);
+    if (onStatusChanged) onStatusChanged("generating...", true);
 
-    auto deviceForLabel = selectedDevice.isEmpty() ? pipeInf.getDefaultDevice() : selectedDevice;
-    auto modelForLabel = selectedModel.isEmpty() ? pipeInf.getDefaultModel() : selectedModel;
+    auto req = buildInferenceRequest();
+    auto deviceForLabel = req.device.isEmpty() ? pipeInf.getDefaultDevice() : req.device;
+    auto modelForLabel = req.model.isEmpty() ? pipeInf.getDefaultModel() : req.model;
     auto* processor = &processorRef;
     std::thread([this, processor, req, deviceForLabel, modelForLabel]()
     {
@@ -625,4 +665,134 @@ void PromptPanel::triggerGeneration()
             }
         });
     }).detach();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Drift auto-regeneration
+// ──────────────────────────────────────────────────────────────────────────────
+void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
+                                            std::map<juce::String, float> effectiveAxes,
+                                            bool holdForBar)
+{
+    if (generating) return;
+    if (promptAEditor.getText().trim().isEmpty()) return;
+    if (!processorRef.isPipeInferenceReady()) return;
+
+    generating = true;
+    generateButton.setEnabled(false);
+    if (onStatusChanged) onStatusChanged("drift regen...", true);
+
+    lastGenAlpha_ = effectiveAlpha;
+    lastGenAxes_ = effectiveAxes;
+
+    auto req = buildInferenceRequest(effectiveAlpha, effectiveAxes);
+    auto* processor = &processorRef;
+    std::thread([this, processor, req, holdForBar]()
+    {
+        auto result = processor->getPipeInference().generate(req);
+        juce::MessageManager::callAsync([this, processor, result = std::move(result), holdForBar]()
+        {
+            generating = false;
+            generateButton.setEnabled(true);
+            if (result.success)
+            {
+                if (holdForBar)
+                {
+                    // 1st Bar mode: defer audio load until bar boundary
+                    pendingAudio_ = result.audio;
+                    pendingSampleRate_ = 44100.0;
+                    pendingBarLoad_ = true;
+                }
+                else
+                {
+                    // Auto mode: load immediately
+                    processor->loadGeneratedAudio(result.audio, 44100.0);
+                }
+                processor->setLastSeed(result.seed);
+                seedEditor.setText(juce::String(result.seed), false);
+                auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | drift regen";
+                if (onStatusChanged) onStatusChanged(info, false);
+
+                if (!result.embeddingA.empty())
+                {
+                    processor->setLastEmbeddings(result.embeddingA, result.embeddingB);
+                    if (onEmbeddingsReady)
+                        onEmbeddingsReady(result.embeddingA, result.embeddingB);
+                }
+            }
+            else
+            {
+                if (onStatusChanged) onStatusChanged(result.errorMessage, false);
+            }
+        });
+    }).detach();
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Drift regen polling (called from timerCallback at 10 Hz)
+// ──────────────────────────────────────────────────────────────────────────────
+void PromptPanel::pollDriftRegen()
+{
+    if (generating) return;
+    if (!processorRef.driftHasOscTarget.load(std::memory_order_relaxed)) return;
+
+    int regenMode = processorRef.driftRegenMode.load(std::memory_order_relaxed);
+    if (regenMode == 0) return; // Manual — no auto-regen
+
+    // 1st Bar: check if pending audio should be loaded at bar boundary
+    if (pendingBarLoad_)
+    {
+        bool barHit = processorRef.barBoundaryFlag.exchange(false, std::memory_order_relaxed);
+        // Also trigger on first MIDI note when sequencer is not running
+        bool midiTrigger = processorRef.lastMidiNoteOn.load(std::memory_order_relaxed);
+        if (barHit || midiTrigger)
+        {
+            processorRef.loadGeneratedAudio(pendingAudio_, pendingSampleRate_);
+            pendingBarLoad_ = false;
+            if (onStatusChanged) onStatusChanged("drift regen loaded", false);
+        }
+        return; // don't start new generation while waiting to load
+    }
+
+    // Read effective drift values from processor atomics
+    auto& mv = processorRef.modulatedValues;
+    float effAlpha = mv.driftAlpha.load(std::memory_order_relaxed);
+    float dAxis1 = mv.driftAxis1.load(std::memory_order_relaxed);
+    float dAxis2 = mv.driftAxis2.load(std::memory_order_relaxed);
+    float dAxis3 = mv.driftAxis3.load(std::memory_order_relaxed);
+
+    // Build effective axes: AxesPanel base values + per-slot drift offsets
+    std::map<juce::String, float> effAxes;
+    if (getAxisValuesCallback)
+    {
+        float o1 = std::isnan(dAxis1) ? 0.0f : dAxis1;
+        float o2 = std::isnan(dAxis2) ? 0.0f : dAxis2;
+        float o3 = std::isnan(dAxis3) ? 0.0f : dAxis3;
+        effAxes = getAxisValuesCallback(o1, o2, o3);
+    }
+
+    // Check if values changed enough from last generation
+    constexpr float DRIFT_THRESHOLD = 0.02f;
+    bool alphaChanged = !std::isnan(effAlpha) &&
+        (std::isnan(lastGenAlpha_) || std::abs(effAlpha - lastGenAlpha_) > DRIFT_THRESHOLD);
+
+    bool axesChanged = false;
+    for (auto& [key, val] : effAxes)
+    {
+        auto it = lastGenAxes_.find(key);
+        if (it == lastGenAxes_.end() || std::abs(val - it->second) > DRIFT_THRESHOLD)
+        {
+            axesChanged = true;
+            break;
+        }
+    }
+
+    if (!alphaChanged && !axesChanged) return;
+
+    float genAlpha = std::isnan(effAlpha)
+        ? processorRef.getValueTreeState().getRawParameterValue("gen_alpha")->load()
+        : effAlpha;
+
+    bool holdForBar = (regenMode == 2); // 1st Bar
+    triggerDriftRegeneration(genAlpha, effAxes, holdForBar);
 }

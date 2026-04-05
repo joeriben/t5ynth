@@ -92,6 +92,11 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     };
     addAndMakeVisible(mainGenerateBtn);
 
+    // Wire axis values callback for drift auto-regen (offsets applied per slot)
+    promptPanel.getAxisValuesCallback = [this](float o1, float o2, float o3) {
+        return axesPanel.getAxisValuesWithOffsets(o1, o2, o3);
+    };
+
     // HF boost toggle — compensates VAE decoder high-frequency rolloff
     hfBoostBtn.setColour(juce::TextButton::buttonColourId, kSurface);
     hfBoostBtn.setColour(juce::TextButton::buttonOnColourId, kOscCol);
@@ -398,6 +403,13 @@ void MainPanel::timerCallback()
     if (glowPhase > juce::MathConstants<float>::twoPi)
         glowPhase -= juce::MathConstants<float>::twoPi;
     repaint(mainGenerateBtn.getBounds().expanded(16));
+
+    // Poll drift ghost offsets for AxesPanel (30Hz)
+    auto& mv = processorRef.modulatedValues;
+    axesPanel.setGhostOffsets(
+        mv.driftAxis1.load(std::memory_order_relaxed),
+        mv.driftAxis2.load(std::memory_order_relaxed),
+        mv.driftAxis3.load(std::memory_order_relaxed));
 }
 
 void MainPanel::resized()

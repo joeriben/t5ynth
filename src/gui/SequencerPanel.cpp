@@ -1,5 +1,6 @@
 #include "SequencerPanel.h"
 #include "../PluginProcessor.h"
+#include "../sequencer/EuclideanRhythm.h"
 
 // ─── Note name helper ──────────────────────────────────────────────
 static juce::String noteName(int n)
@@ -35,9 +36,15 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
     auto b = getLocalBounds().reduced(1);
     int w = b.getWidth();
 
-    // Background
-    g.setColour(isCurrentStep ? kSeqCol.withAlpha(0.35f)
-                : step.enabled ? kSurface : kBg);
+    // Effective "active" state: Euclidean override or manual enable
+    bool active = euclideanActive && step.enabled;
+
+    // Background — dim Euclidean-inactive steps
+    if (!euclideanActive)
+        g.setColour(kBg.brighter(0.03f));
+    else
+        g.setColour(isCurrentStep ? kSeqCol.withAlpha(0.35f)
+                    : step.enabled ? kSurface : kBg);
     g.fillRect(b);
 
     // Beat group border
@@ -56,12 +63,12 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
         float frac = juce::jlimit(0.0f, 1.0f, static_cast<float>(semi - 36) / 48.0f);
         int fillH = juce::roundToInt(frac * static_cast<float>(noteR.getHeight()));
 
-        g.setColour(kDimmer.withAlpha(0.3f));
+        g.setColour(kDimmer.withAlpha(euclideanActive ? 0.3f : 0.12f));
         g.fillRect(noteR);
-        g.setColour(step.enabled ? kSeqCol.withAlpha(0.5f) : kDim.withAlpha(0.3f));
+        g.setColour(active ? kSeqCol.withAlpha(0.5f) : kDim.withAlpha(euclideanActive ? 0.3f : 0.12f));
         g.fillRect(noteR.getX(), noteR.getBottom() - fillH, noteR.getWidth(), fillH);
 
-        g.setColour(step.enabled ? juce::Colours::white : kDim);
+        g.setColour(active ? juce::Colours::white : kDim.withAlpha(euclideanActive ? 1.0f : 0.3f));
         float fs = juce::jlimit(7.0f, 13.0f, static_cast<float>(w) * 0.24f);
         g.setFont(juce::FontOptions(fs));
         g.drawText(noteName(semi), noteR, juce::Justification::centredTop);
@@ -72,10 +79,10 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
     auto velR = b.removeFromTop(vB);
     if (velR.getHeight() > 2)
     {
-        g.setColour(kDimmer.withAlpha(0.3f));
+        g.setColour(kDimmer.withAlpha(euclideanActive ? 0.3f : 0.12f));
         g.fillRect(velR);
         float velPx = step.velocity * static_cast<float>(velR.getWidth());
-        g.setColour(step.enabled ? kSeqCol.withAlpha(0.7f) : kDim.withAlpha(0.4f));
+        g.setColour(active ? kSeqCol.withAlpha(0.7f) : kDim.withAlpha(euclideanActive ? 0.4f : 0.15f));
         g.fillRect(velR.getX(), velR.getY(), juce::roundToInt(velPx), velR.getHeight());
     }
 
@@ -87,16 +94,18 @@ void SequencerPanel::StepColumn::paint(juce::Graphics& g)
     float btnFs = juce::jlimit(7.0f, 11.0f, static_cast<float>(w) * 0.20f);
 
     // On button
-    g.setColour(step.enabled ? kSeqCol.withAlpha(0.45f) : kDimmer.withAlpha(0.15f));
+    float btnAlpha = euclideanActive ? 1.0f : 0.3f;
+    g.setColour(active ? kSeqCol.withAlpha(0.45f * btnAlpha) : kDimmer.withAlpha(0.15f * btnAlpha));
     g.fillRect(onR.reduced(1));
-    g.setColour(step.enabled ? juce::Colours::white : kDimmer);
+    g.setColour(active ? juce::Colours::white.withAlpha(btnAlpha) : kDimmer.withAlpha(btnAlpha));
     g.setFont(juce::FontOptions(btnFs));
     g.drawText("On", onR, juce::Justification::centred);
 
     // Bind button
-    g.setColour(step.bind ? kSeqCol.withAlpha(0.30f) : kDimmer.withAlpha(0.15f));
+    bool bindActive = step.bind && euclideanActive;
+    g.setColour(bindActive ? kSeqCol.withAlpha(0.30f) : kDimmer.withAlpha(0.15f * btnAlpha));
     g.fillRect(glR.reduced(1));
-    g.setColour(step.bind ? juce::Colours::white : kDimmer);
+    g.setColour(bindActive ? juce::Colours::white : kDimmer.withAlpha(btnAlpha));
     g.setFont(juce::FontOptions(btnFs));
     g.drawText("Bind", glR, juce::Justification::centred);
 }
@@ -297,6 +306,12 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             obj->setProperty("arpRate", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_rate")->load()));
             obj->setProperty("arpOctaves", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_octaves")->load()));
             obj->setProperty("octave", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("seq_octave")->load()));
+            // Euclidean + Scale settings
+            obj->setProperty("eucEnabled", processorRef.getValueTreeState().getRawParameterValue("euc_enabled")->load() > 0.5f);
+            obj->setProperty("eucPulses", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("euc_pulses")->load()));
+            obj->setProperty("eucRotation", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("euc_rotation")->load()));
+            obj->setProperty("scaleRoot", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("scale_root")->load()));
+            obj->setProperty("scaleType", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("scale_type")->load()));
             juce::Array<juce::var> steps;
             for (int i = 0; i < seq.getNumSteps(); ++i)
             {
@@ -343,6 +358,22 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
                 apvts.getParameter("arp_octaves")->setValueNotifyingHost(
                     apvts.getParameter("arp_octaves")->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
             // arpGate removed — old files silently ignored
+            // Euclidean + Scale settings (backward-compatible)
+            if (root.hasProperty("eucEnabled"))
+                apvts.getParameter("euc_enabled")->setValueNotifyingHost(
+                    static_cast<bool>(root["eucEnabled"]) ? 1.0f : 0.0f);
+            if (root.hasProperty("eucPulses"))
+                apvts.getParameter("euc_pulses")->setValueNotifyingHost(
+                    apvts.getParameter("euc_pulses")->convertTo0to1(static_cast<float>(static_cast<int>(root["eucPulses"]))));
+            if (root.hasProperty("eucRotation"))
+                apvts.getParameter("euc_rotation")->setValueNotifyingHost(
+                    apvts.getParameter("euc_rotation")->convertTo0to1(static_cast<float>(static_cast<int>(root["eucRotation"]))));
+            if (root.hasProperty("scaleRoot"))
+                apvts.getParameter("scale_root")->setValueNotifyingHost(
+                    apvts.getParameter("scale_root")->convertTo0to1(static_cast<float>(static_cast<int>(root["scaleRoot"]))));
+            if (root.hasProperty("scaleType"))
+                apvts.getParameter("scale_type")->setValueNotifyingHost(
+                    apvts.getParameter("scale_type")->convertTo0to1(static_cast<float>(static_cast<int>(root["scaleType"]))));
             if (root.hasProperty("octave"))
                 apvts.getParameter("seq_octave")->setValueNotifyingHost(
                     apvts.getParameter("seq_octave")->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
@@ -392,6 +423,43 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         addAndMakeVisible(octShiftBtns[i]);
     }
     octShiftA = std::make_unique<CA>(apvts, "seq_octave", octShiftHidden);
+
+    // ── Generative controls (Euclidean + Scale) ──
+    eucToggle.setColour(juce::TextButton::buttonColourId, kSurface);
+    eucToggle.setColour(juce::TextButton::buttonOnColourId, kSeqCol);
+    eucToggle.setColour(juce::TextButton::textColourOffId, kDim);
+    eucToggle.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    eucToggle.setClickingTogglesState(true);
+    addAndMakeVisible(eucToggle);
+    eucEnabledA = std::make_unique<BA>(apvts, "euc_enabled", eucToggle);
+
+    eucPulsesRow = std::make_unique<SliderRow>("Pulses",
+        [](double v) { return juce::String(juce::roundToInt(v)); }, kSeqCol);
+    addAndMakeVisible(*eucPulsesRow);
+    eucPulsesA = std::make_unique<SA>(apvts, "euc_pulses", eucPulsesRow->getSlider());
+    eucPulsesRow->getSlider().onValueChange = [this] { eucPulsesRow->updateValue(); };
+    eucPulsesRow->updateValue();
+
+    eucRotationRow = std::make_unique<SliderRow>("Rotation",
+        [](double v) { return juce::String(juce::roundToInt(v)); }, kSeqCol);
+    addAndMakeVisible(*eucRotationRow);
+    eucRotationA = std::make_unique<SA>(apvts, "euc_rotation", eucRotationRow->getSlider());
+    eucRotationRow->getSlider().onValueChange = [this] { eucRotationRow->updateValue(); };
+    eucRotationRow->updateValue();
+
+    scaleRootBox.addItemList({"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 1);
+    scaleRootBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
+    scaleRootBox.setColour(juce::ComboBox::textColourId, kSeqCol);
+    scaleRootBox.setColour(juce::ComboBox::outlineColourId, kBorder);
+    addAndMakeVisible(scaleRootBox);
+    scaleRootA = std::make_unique<CA>(apvts, "scale_root", scaleRootBox);
+
+    scaleTypeBox.addItemList({"Off","Maj","Min","Pent","Dor","Harm","WhlT"}, 1);
+    scaleTypeBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
+    scaleTypeBox.setColour(juce::ComboBox::textColourId, kSeqCol);
+    scaleTypeBox.setColour(juce::ComboBox::outlineColourId, kBorder);
+    addAndMakeVisible(scaleTypeBox);
+    scaleTypeA = std::make_unique<CA>(apvts, "scale_type", scaleTypeBox);
 
     // ── Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd) ──
     arpModeBox.addItemList({"Off","Up","Down","UpDown","Random"}, 1);
@@ -524,6 +592,28 @@ void SequencerPanel::timerCallback()
     if (steps != numVisibleSteps)
         syncStepCount();
 
+    // Euclidean overlay for step grid visualization
+    bool eucOn = processorRef.getValueTreeState()
+        .getRawParameterValue("euc_enabled")->load() > 0.5f;
+    if (eucOn)
+    {
+        int pulses = static_cast<int>(processorRef.getValueTreeState()
+            .getRawParameterValue("euc_pulses")->load());
+        int rotation = static_cast<int>(processorRef.getValueTreeState()
+            .getRawParameterValue("euc_rotation")->load());
+        int clampedPulses = juce::jlimit(0, numVisibleSteps, pulses);
+        int clampedRotation = numVisibleSteps > 0 ? rotation % numVisibleSteps : 0;
+        auto pattern = EuclideanRhythm::generate(numVisibleSteps, clampedPulses, clampedRotation);
+        for (int i = 0; i < MAX_COLS; ++i)
+            stepCols[static_cast<size_t>(i)]->euclideanActive =
+                i < numVisibleSteps ? pattern[static_cast<size_t>(i)] : false;
+    }
+    else
+    {
+        for (int i = 0; i < MAX_COLS; ++i)
+            stepCols[static_cast<size_t>(i)]->euclideanActive = true;
+    }
+
     // Repaint only steps that changed (current + previous)
     static int prevStep = -1;
     if (currentStep != prevStep)
@@ -534,6 +624,11 @@ void SequencerPanel::timerCallback()
             stepCols[static_cast<size_t>(currentStep)]->repaint();
         prevStep = currentStep;
     }
+
+    // Repaint all steps when euclidean state may have changed
+    if (eucOn)
+        for (int i = 0; i < numVisibleSteps; ++i)
+            stepCols[static_cast<size_t>(i)]->repaint();
 }
 
 // kSeqCol is now a global in GuiHelpers.h
@@ -630,10 +725,8 @@ void SequencerPanel::resized()
 
     area.removeFromTop(g);
 
-    // ═══ Row 4 (bottom): Arp controls ═══
-    auto r4 = area.removeFromBottom(rH);
-
-    // Mode switchbox [OFF][Up][Dn][U/D][Rnd]
+    // ═══ Row 5 (bottom): Arp controls ═══
+    auto r5 = area.removeFromBottom(rH);
     int modeBtnW = 32;
     for (int i = 0; i < kNumModeBtns; ++i)
     {
@@ -641,15 +734,12 @@ void SequencerPanel::resized()
         if (i > 0) edges |= juce::Button::ConnectedOnLeft;
         if (i < kNumModeBtns - 1) edges |= juce::Button::ConnectedOnRight;
         arpModeBtns[i].setConnectedEdges(edges);
-        arpModeBtns[i].setBounds(r4.removeFromLeft(modeBtnW));
+        arpModeBtns[i].setBounds(r5.removeFromLeft(modeBtnW));
     }
-    r4.removeFromLeft(g);
-
-    arpRateBox.setBounds(r4.removeFromLeft(60));   r4.removeFromLeft(g);
-
-    // Oct label + toggle strip [1][2][3][4]
+    r5.removeFromLeft(g);
+    arpRateBox.setBounds(r5.removeFromLeft(60));   r5.removeFromLeft(g);
     arpOctLabel.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.55f)));
-    arpOctLabel.setBounds(r4.removeFromLeft(28));   r4.removeFromLeft(2);
+    arpOctLabel.setBounds(r5.removeFromLeft(28));   r5.removeFromLeft(2);
     int arpOctBtnW = 22;
     for (int i = 0; i < kNumOctBtns; ++i)
     {
@@ -657,8 +747,20 @@ void SequencerPanel::resized()
         if (i > 0) edges |= juce::Button::ConnectedOnLeft;
         if (i < kNumOctBtns - 1) edges |= juce::Button::ConnectedOnRight;
         arpOctBtns[i].setConnectedEdges(edges);
-        arpOctBtns[i].setBounds(r4.removeFromLeft(arpOctBtnW));
+        arpOctBtns[i].setBounds(r5.removeFromLeft(arpOctBtnW));
     }
+    area.removeFromBottom(g);
+
+    // ═══ Row 4: Euclidean + Scale controls (own row, generous height) ═══
+    int genH = juce::jmax(rH, 26);
+    auto r4 = area.removeFromBottom(genH);
+    eucToggle.setBounds(r4.removeFromLeft(74));  r4.removeFromLeft(g);
+    scaleRootBox.setBounds(r4.removeFromRight(48));  r4.removeFromRight(2);
+    scaleTypeBox.setBounds(r4.removeFromRight(75));  r4.removeFromRight(g);
+    // Pulses and Rotation split remaining space equally
+    int sliderW = (r4.getWidth() - g) / 2;
+    eucPulsesRow->setBounds(r4.removeFromLeft(sliderW));  r4.removeFromLeft(g);
+    eucRotationRow->setBounds(r4);
 
     area.removeFromBottom(g);
 

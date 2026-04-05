@@ -3,6 +3,9 @@
 #include <vector>
 #include <utility>
 #include <functional>
+#include <map>
+#include <limits>
+#include "../inference/PipeInference.h"
 
 class T5ynthProcessor;
 
@@ -41,9 +44,29 @@ public:
     /** Status callback — called with status text (e.g. "generating...", "12.3s | seed 42 | mps") */
     std::function<void(const juce::String&, bool generating)> onStatusChanged;
 
+    /** Callback to read AxesPanel values with per-slot drift offsets (wired by MainPanel). */
+    std::function<std::map<juce::String, float>(float, float, float)> getAxisValuesCallback;
+
+    /** Paint ghost overlay for alpha slider (drift modulation indicator). */
+    void paintOverChildren(juce::Graphics& g) override;
+
+    bool isGenerating() const { return generating; }
+
 private:
     void timerCallback() override;
     void triggerGeneration();
+
+    /** Build a PipeInference::Request from current UI state, with optional alpha/axes override. */
+    PipeInference::Request buildInferenceRequest(float alphaOverride = std::numeric_limits<float>::quiet_NaN(),
+                                                  std::map<juce::String, float> axesOverride = {});
+
+    /** Trigger generation from drift auto-regen. holdForBar=true defers audio load to bar boundary. */
+    void triggerDriftRegeneration(float effectiveAlpha,
+                                  std::map<juce::String, float> effectiveAxes,
+                                  bool holdForBar);
+
+    /** Check if drift requires auto-regeneration (called from timerCallback). */
+    void pollDriftRegen();
 
     T5ynthProcessor& processorRef;
 
@@ -93,6 +116,14 @@ private:
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<Attachment> alphaA, magA, noiseA, durA, startA, stepsA, cfgA;
+
+    // Auto-regen state
+    float lastGenAlpha_ = std::numeric_limits<float>::quiet_NaN();
+    std::map<juce::String, float> lastGenAxes_;
+    bool pendingBarLoad_ = false;
+    juce::AudioBuffer<float> pendingAudio_;
+    double pendingSampleRate_ = 44100.0;
+    float alphaGhostValue_ = std::numeric_limits<float>::quiet_NaN();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PromptPanel)
 };

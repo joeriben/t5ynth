@@ -2,6 +2,8 @@
 #include <JuceHeader.h>
 #include <vector>
 #include <map>
+#include <limits>
+#include <cmath>
 
 /**
  * 3 semantic axis slots — each choosable from the 8 most effective axes
@@ -20,6 +22,12 @@ public:
     void resized() override;
 
     std::map<juce::String, float> getAxisValues() const;
+
+    /** Return axis values with per-slot additive offsets from drift LFO. */
+    std::map<juce::String, float> getAxisValuesWithOffsets(float off1, float off2, float off3) const;
+
+    /** Set per-slot ghost offsets for drift visualization. NaN = no ghost. */
+    void setGhostOffsets(float o1, float o2, float o3);
 
 private:
     float fs() const;
@@ -40,6 +48,9 @@ private:
 
     void initSlot(AxisSlot& slot, const juce::StringArray& options, int axisIndex);
     void layoutSlots(std::vector<AxisSlot>& slots, juce::Rectangle<int>& area, float f, int dotOffset);
+
+    static constexpr float NO_GHOST = std::numeric_limits<float>::quiet_NaN();
+    float ghostOffsets_[3] = { NO_GHOST, NO_GHOST, NO_GHOST };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(AxesPanel)
 };

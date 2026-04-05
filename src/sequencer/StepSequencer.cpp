@@ -1,4 +1,5 @@
 #include "StepSequencer.h"
+#include "ScaleQuantizer.h"
 
 // ─── Preset patterns (exact port from useStepSequencer.ts) ─────────────────
 
@@ -174,20 +175,27 @@ void T5ynthStepSequencer::processBlock(juce::AudioBuffer<float>& buffer,
             lastPlayedNote = -1;
         }
 
-        // Note-on for current step if enabled
-        if (step.enabled)
+        // Note-on for current step if active (Euclidean override or manual enable)
+        bool stepActive = eucOverride ? (*eucOverride)[static_cast<size_t>(stepIdx)]
+                                      : step.enabled;
+        if (stepActive)
         {
             int vel = juce::jlimit(1, 127, juce::roundToInt(step.velocity * 127.0f));
             int channel = step.bind ? 2 : 1;
-            midi.addEvent(juce::MidiMessage::noteOn(channel, step.note,
+            int outputNote = (scaleType_ > 0)
+                ? ScaleQuantizer::quantize(step.note, scaleRoot_,
+                      static_cast<ScaleQuantizer::Scale>(scaleType_))
+                : step.note;
+            midi.addEvent(juce::MidiMessage::noteOn(channel, outputNote,
                           static_cast<juce::uint8>(vel)), eventPos);
-            lastPlayedNote = step.note;
+            lastPlayedNote = outputNote;
 
             // If the NEXT step has bind, hold this note for the full step
             // (no early gate-off, so the voice stays alive for the pitch change)
             int nextIdx = (scheduledStep + 1) % numSteps;
-            bool nextIsBind = steps[static_cast<size_t>(nextIdx)].bind
-                           && steps[static_cast<size_t>(nextIdx)].enabled;
+            bool nextActive = eucOverride ? (*eucOverride)[static_cast<size_t>(nextIdx)]
+                                          : steps[static_cast<size_t>(nextIdx)].enabled;
+            bool nextIsBind = steps[static_cast<size_t>(nextIdx)].bind && nextActive;
             samplesUntilGateOff = nextIsBind ? -1.0 : step.gate * stepDur;
         }
         else

@@ -72,6 +72,8 @@ target_sources(T5ynth PRIVATE
     # Sequencer
     src/sequencer/StepSequencer.cpp
     src/sequencer/Arpeggiator.cpp
+    src/sequencer/EuclideanRhythm.h
+    src/sequencer/ScaleQuantizer.h
 
     # Inference (Python pipe IPC)
     src/inference/PipeInference.cpp

@@ -111,6 +111,21 @@ float AxesPanel::fs() const
     return juce::jlimit(12.0f, 22.0f, topH * 0.022f);
 }
 
+void AxesPanel::setGhostOffsets(float o1, float o2, float o3)
+{
+    float newOff[] = { o1, o2, o3 };
+    bool changed = false;
+    for (int i = 0; i < 3; ++i)
+    {
+        bool wasNaN = std::isnan(ghostOffsets_[i]);
+        bool isNaN  = std::isnan(newOff[i]);
+        if (wasNaN != isNaN || (!wasNaN && !isNaN && std::abs(ghostOffsets_[i] - newOff[i]) > 0.005f))
+            changed = true;
+        ghostOffsets_[i] = newOff[i];
+    }
+    if (changed) repaint();
+}
+
 void AxesPanel::paint(juce::Graphics& g)
 {
     // Background + card painted by MainPanel
@@ -127,6 +142,25 @@ void AxesPanel::paint(juce::Graphics& g)
         g.setColour(kAxisColors[i]);
         g.fillEllipse(static_cast<float>(dotX), static_cast<float>(dotY),
                        static_cast<float>(dotSize), static_cast<float>(dotSize));
+
+        // Ghost circle for drift-modulated axis value
+        if (i < 3 && !std::isnan(ghostOffsets_[i]) && slot.slider && slot.slider->isVisible())
+        {
+            auto sb = slot.slider->getBounds();
+            float ghostVal = static_cast<float>(slot.slider->getValue()) + ghostOffsets_[i];
+            double norm = slot.slider->valueToProportionOfLength(static_cast<double>(ghostVal));
+            norm = juce::jlimit(0.0, 1.0, norm);
+
+            int thumbW = slot.slider->getLookAndFeel().getSliderThumbRadius(*slot.slider) * 2;
+            int trackX = sb.getX() + thumbW / 2;
+            int trackW = sb.getWidth() - thumbW;
+            float gx = static_cast<float>(trackX) + static_cast<float>(trackW) * static_cast<float>(norm);
+            float gy = static_cast<float>(sb.getCentreY());
+            float gr = static_cast<float>(sb.getHeight()) * 0.28f;
+
+            g.setColour(juce::Colour(0xccff9800)); // orange ghost
+            g.fillEllipse(gx - gr, gy - gr, gr * 2.0f, gr * 2.0f);
+        }
     }
 }
 
@@ -198,6 +232,23 @@ std::map<juce::String, float> AxesPanel::getAxisValues() const
             auto key = axisDisplayToKey(slot.dropdown->getText());
             if (key.isNotEmpty())
                 vals[key] = static_cast<float>(slot.slider->getValue());
+        }
+    }
+    return vals;
+}
+
+std::map<juce::String, float> AxesPanel::getAxisValuesWithOffsets(float off1, float off2, float off3) const
+{
+    const float offsets[] = { off1, off2, off3 };
+    std::map<juce::String, float> vals;
+    for (size_t i = 0; i < slots.size(); ++i)
+    {
+        auto& slot = slots[i];
+        if (slot.dropdown->getSelectedId() > 1)
+        {
+            auto key = axisDisplayToKey(slot.dropdown->getText());
+            if (key.isNotEmpty())
+                vals[key] = static_cast<float>(slot.slider->getValue()) + offsets[i];
         }
     }
     return vals;

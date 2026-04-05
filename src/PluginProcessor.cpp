@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "BinaryData.h"
+#include "sequencer/EuclideanRhythm.h"
 
 T5ynthProcessor::T5ynthProcessor()
     : AudioProcessor(BusesProperties()
@@ -371,6 +372,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::StringArray{"Octave Bounce", "Wide Leap", "Off-Beat Minor", "Glide Groove", "Sparse Stab",
                           "Rising Arc", "Scatter", "Chromatic", "Bass Walk", "Gated Pulse"}, 0));
 
+    // Euclidean rhythm generator
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{"euc_enabled", 1}, "Euclidean", false));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{"euc_pulses", 1}, "Euc Pulses", 1, 64, 4));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{"euc_rotation", 1}, "Euc Rotation", 0, 63, 0));
+    // Scale quantizer
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"scale_root", 1}, "Scale Root",
+        juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"scale_type", 1}, "Scale Type",
+        juce::StringArray{"Off","Maj","Min","Pent","Dor","Harm","WhlT"}, 0));
+
     // HF boost: compensate VAE decoder high-frequency rolloff
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"gen_hf_boost", 1}, "HF Boost", true));
@@ -532,6 +548,13 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     int d3t = static_cast<int>(parameters.getRawParameterValue("drift3_target")->load());
     // Auto-enable drift when any target is set (target 0 = "---" = None)
     bool driftHasTarget = (d1t != 0) || (d2t != 0) || (d3t != 0);
+    // Osc targets (Alpha=1, Axis1-3=2-4) require regeneration
+    bool hasOsc = false;
+    for (int t : {d1t, d2t, d3t})
+        if (t >= DriftLFO::TgtAlpha && t <= DriftLFO::TgtAxis3) hasOsc = true;
+    driftHasOscTarget.store(hasOsc, std::memory_order_relaxed);
+    driftRegenMode.store(static_cast<int>(parameters.getRawParameterValue("drift_regen")->load()),
+                         std::memory_order_relaxed);
     bool driftManualEnable = parameters.getRawParameterValue("drift_enabled")->load() > 0.5f;
     driftLfo.setEnabled(driftHasTarget || driftManualEnable);
     driftLfo.setLfoRate(0, parameters.getRawParameterValue("drift1_rate")->load());
@@ -558,6 +581,25 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.ampAmount  = juce::jlimit(0.0f, 1.0f, bp.ampAmount  + driftLfo.getOffsetForTarget(DriftLFO::TgtEnv1Amt));
     bp.mod1Amount = juce::jlimit(0.0f, 1.0f, bp.mod1Amount + driftLfo.getOffsetForTarget(DriftLFO::TgtEnv2Amt));
     bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount + driftLfo.getOffsetForTarget(DriftLFO::TgtEnv3Amt));
+
+    // Drift → Osc targets (Alpha, Axes) — store effective values for GUI ghost + auto-regen
+    {
+        static constexpr float NO_GHOST = std::numeric_limits<float>::quiet_NaN();
+        float alphaOff = driftLfo.getOffsetForTarget(DriftLFO::TgtAlpha);
+        float ax1Off   = driftLfo.getOffsetForTarget(DriftLFO::TgtAxis1);
+        float ax2Off   = driftLfo.getOffsetForTarget(DriftLFO::TgtAxis2);
+        float ax3Off   = driftLfo.getOffsetForTarget(DriftLFO::TgtAxis3);
+        float baseAlpha = parameters.getRawParameterValue("gen_alpha")->load();
+        modulatedValues.driftAlpha.store(
+            std::abs(alphaOff) > 0.001f ? baseAlpha + alphaOff : NO_GHOST,
+            std::memory_order_relaxed);
+        modulatedValues.driftAxis1.store(
+            std::abs(ax1Off) > 0.001f ? ax1Off : NO_GHOST, std::memory_order_relaxed);
+        modulatedValues.driftAxis2.store(
+            std::abs(ax2Off) > 0.001f ? ax2Off : NO_GHOST, std::memory_order_relaxed);
+        modulatedValues.driftAxis3.store(
+            std::abs(ax3Off) > 0.001f ? ax3Off : NO_GHOST, std::memory_order_relaxed);
+    }
 
     // ── Sampler settings ─────────────────────────────────────────────────────
     int loopModeIdx = static_cast<int>(parameters.getRawParameterValue("loop_mode")->load());
@@ -590,6 +632,26 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     stepSequencer.setNumSteps(seqSteps);
     stepSequencer.setDivision(static_cast<int>(parameters.getRawParameterValue("seq_division")->load()));
     stepSequencer.setAllGates(seqGate);
+
+    // Euclidean rhythm overlay
+    bool eucEnabled = parameters.getRawParameterValue("euc_enabled")->load() > 0.5f;
+    std::array<bool, T5ynthStepSequencer::MAX_STEPS> eucPattern{};
+    if (eucEnabled)
+    {
+        int eucPulses = juce::jlimit(0, seqSteps,
+            static_cast<int>(parameters.getRawParameterValue("euc_pulses")->load()));
+        int eucRotation = seqSteps > 0
+            ? static_cast<int>(parameters.getRawParameterValue("euc_rotation")->load()) % seqSteps
+            : 0;
+        eucPattern = EuclideanRhythm::generate(seqSteps, eucPulses, eucRotation);
+    }
+    stepSequencer.setEuclideanOverride(eucEnabled ? &eucPattern : nullptr);
+
+    // Scale quantizer overlay
+    int scaleType = static_cast<int>(parameters.getRawParameterValue("scale_type")->load());
+    int scaleRoot = static_cast<int>(parameters.getRawParameterValue("scale_root")->load());
+    stepSequencer.setScaleQuantizer(scaleType, scaleRoot);
+
     if (seqRunning)
         stepSequencer.start();
     else
@@ -612,8 +674,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         midiMessages.swapWith(transposed);
     }
 
-    // Consume bar-start flag
-    stepSequencer.barStartFlag.exchange(false);
+    // Consume bar-start flag → forward to GUI for 1st-bar regen mode
+    if (stepSequencer.barStartFlag.exchange(false))
+        barBoundaryFlag.store(true, std::memory_order_relaxed);
 
     // Stage 2: Arpeggiator (consumes seq note events, generates arpeggiated output)
     if (arpEnabled)
@@ -650,7 +713,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         arpeggiator.reset();
     }
 
-    // (barStartFlag consumed above)
+    // (barStartFlag consumed + forwarded to barBoundaryFlag above)
 
     // ── Sample-accurate MIDI + Voice rendering ──────────────────────────────
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue("lfo1_mode")->load()) == 1;
@@ -1526,6 +1589,16 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     }
     seq->setProperty("steps", stepArr);
     seq->setProperty("octaveShift", static_cast<int>(get("seq_octave")) - 2);
+    // Euclidean + Scale
+    seq->setProperty("euclidean", get("euc_enabled") > 0.5f);
+    seq->setProperty("eucPulses", static_cast<int>(get("euc_pulses")));
+    seq->setProperty("eucRotation", static_cast<int>(get("euc_rotation")));
+    static const char* scaleRootNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    int srIdx = static_cast<int>(get("scale_root"));
+    seq->setProperty("scaleRoot", srIdx >= 0 && srIdx < 12 ? scaleRootNames[srIdx] : "C");
+    static const char* scaleTypeNames[] = {"off","major","minor","pentatonic","dorian","harmonic_minor","whole_tone"};
+    int stIdx = static_cast<int>(get("scale_type"));
+    seq->setProperty("scaleType", stIdx >= 0 && stIdx < 7 ? scaleTypeNames[stIdx] : "off");
     root->setProperty("sequencer", seq.get());
 
     // Arpeggiator
@@ -1759,6 +1832,33 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         {
             int oct = static_cast<int>(seq->getProperty("octaveShift"));
             setParam(parameters, "seq_octave", static_cast<float>(oct + 2));
+        }
+        // Euclidean + Scale (backward-compatible)
+        if (seq->hasProperty("euclidean"))
+            setParam(parameters, "euc_enabled", static_cast<bool>(seq->getProperty("euclidean")) ? 1.0f : 0.0f);
+        if (seq->hasProperty("eucPulses"))
+            setParam(parameters, "euc_pulses", static_cast<float>(static_cast<int>(seq->getProperty("eucPulses"))));
+        if (seq->hasProperty("eucRotation"))
+            setParam(parameters, "euc_rotation", static_cast<float>(static_cast<int>(seq->getProperty("eucRotation"))));
+        if (seq->hasProperty("scaleRoot"))
+        {
+            juce::String rootStr = seq->getProperty("scaleRoot").toString();
+            static const char* rootNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+            int idx = 0;
+            for (int i = 0; i < 12; ++i) { if (rootStr == rootNames[i]) { idx = i; break; } }
+            setParam(parameters, "scale_root", static_cast<float>(idx));
+        }
+        if (seq->hasProperty("scaleType"))
+        {
+            juce::String typeStr = seq->getProperty("scaleType").toString();
+            int idx = 0; // Off
+            if (typeStr == "major") idx = 1;
+            else if (typeStr == "minor") idx = 2;
+            else if (typeStr == "pentatonic") idx = 3;
+            else if (typeStr == "dorian") idx = 4;
+            else if (typeStr == "harmonic_minor") idx = 5;
+            else if (typeStr == "whole_tone") idx = 6;
+            setParam(parameters, "scale_type", static_cast<float>(idx));
         }
     }
 
