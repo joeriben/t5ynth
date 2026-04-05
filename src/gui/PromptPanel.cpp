@@ -407,15 +407,22 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
         gpuBtn.setToggleState(true, juce::dontSendNotification);
 
     // Select model from preset (match by model directory name)
-    if (model.isNotEmpty() && modelsPopulated)
+    if (model.isNotEmpty())
     {
-        for (int i = 0; i < kNumModelSlots; ++i)
+        if (modelsPopulated)
         {
-            if (modelSlotIds[i] == model)
+            for (int i = 0; i < kNumModelSlots; ++i)
             {
-                modelBtns[i].setToggleState(true, juce::dontSendNotification);
-                break;
+                if (modelSlotIds[i] == model)
+                {
+                    modelBtns[i].setToggleState(true, juce::dontSendNotification);
+                    break;
+                }
             }
+        }
+        else
+        {
+            pendingModel_ = model;
         }
     }
 }
@@ -468,11 +475,16 @@ void PromptPanel::populateModelSelector()
         }
     }
 
-    // Select default model's slot, or first available
+    // Select model: pending preset model > SA Small (slot 1) > first available
     int selectIdx = -1;
-    for (int i = 0; i < kNumModelSlots; ++i)
-        if (modelSlotIds[i] == defaultModel) { selectIdx = i; break; }
-    if (selectIdx < 0) selectIdx = firstAvail;
+    if (pendingModel_.isNotEmpty())
+    {
+        for (int i = 0; i < kNumModelSlots; ++i)
+            if (modelSlotIds[i] == pendingModel_) { selectIdx = i; break; }
+        pendingModel_ = {};
+    }
+    if (selectIdx < 0)
+        selectIdx = modelSlotIds[1].isNotEmpty() ? 1 : firstAvail;
     if (selectIdx >= 0)
         modelBtns[selectIdx].setToggleState(true, juce::dontSendNotification);
 

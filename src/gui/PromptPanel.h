@@ -76,6 +76,7 @@ private:
     juce::String modelSlotIds[kNumModelSlots];  // resolved model directory name per slot
     juce::Rectangle<int> modelSwitchBounds;
     bool modelsPopulated = false;
+    juce::String pendingModel_;  // deferred model selection until models are populated
     void populateModelSelector();
     juce::String getSelectedModel() const;
 
