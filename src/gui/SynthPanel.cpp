@@ -762,43 +762,36 @@ void SynthPanel::paintOverChildren(juce::Graphics& g)
         return btn.getToggleState() ? juce::Colours::white : kDim;
     };
 
-    // ▶ One-shot: filled play triangle
+    // ▷ One-shot: outline play triangle (stroke, not filled)
     {
         auto b = oneshotBtn.getBounds().toFloat();
-        float s = b.getHeight() * 0.32f;
+        float s = b.getHeight() * 0.25f;
         float cx = b.getCentreX(), cy = b.getCentreY();
+        float sw = juce::jmax(1.5f, s * 0.18f);
         juce::Path p;
-        p.addTriangle(cx - s * 0.5f, cy - s,
-                      cx - s * 0.5f, cy + s,
+        p.addTriangle(cx - s * 0.4f, cy - s,
+                      cx - s * 0.4f, cy + s,
                       cx + s * 0.7f, cy);
         g.setColour(iconCol(oneshotBtn));
-        g.fillPath(p);
+        g.strokePath(p, juce::PathStrokeType(sw));
     }
 
-    // ↻ Loop: circular arc with arrowhead
+    // → Loop: simple forward arrow
     {
         auto b = loopModeBtn.getBounds().toFloat();
         float cx = b.getCentreX(), cy = b.getCentreY();
-        float r = b.getHeight() * 0.3f;
-        float sw = juce::jmax(1.5f, r * 0.22f);
+        float hw = b.getHeight() * 0.28f;  // half-width of arrow line
+        float sw = juce::jmax(1.5f, hw * 0.2f);
+        float as = hw * 0.7f;  // arrowhead size
 
-        juce::Path arc;
-        float startA = -juce::MathConstants<float>::halfPi;
-        float endA = startA + juce::MathConstants<float>::twoPi * 0.78f;
-        arc.addCentredArc(cx, cy, r, r, 0.0f, startA, endA, true);
         g.setColour(iconCol(loopModeBtn));
-        g.strokePath(arc, juce::PathStrokeType(sw, juce::PathStrokeType::curved));
-
-        // Arrowhead at arc end (pointing clockwise along tangent)
-        float ex = cx + r * std::cos(endA);
-        float ey = cy + r * std::sin(endA);
-        float as = r * 0.55f;
-        float tx = -std::sin(endA), ty = std::cos(endA);   // tangent
-        float nx = std::cos(endA),  ny = std::sin(endA);   // normal (outward)
+        // Shaft
+        g.drawLine(cx - hw, cy, cx + hw, cy, sw);
+        // Arrowhead
         juce::Path ah;
-        ah.addTriangle(ex + tx * as * 0.6f, ey + ty * as * 0.6f,
-                       ex - nx * as * 0.45f, ey - ny * as * 0.45f,
-                       ex + nx * as * 0.45f, ey + ny * as * 0.45f);
+        ah.addTriangle(cx + hw + as * 0.3f, cy,
+                       cx + hw - as * 0.5f, cy - as * 0.5f,
+                       cx + hw - as * 0.5f, cy + as * 0.5f);
         g.fillPath(ah);
     }
 

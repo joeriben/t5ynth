@@ -257,9 +257,9 @@ void PromptPanel::resized()
     //   3× slider:  (kRow + kSlider + kGap) * 3           = 8.7
     //   gap:        kGap                                  = 0.3
     //   2× compact: (kCompactRow + kCompactSl + kGap) * 2 = 4.8
-    //   seed row:    kInput                                 = 1.8
-    //                                               Total: 24.4
-    constexpr float kContentUnits = 24.4f;
+    //   seed row:    1.65                                    = 1.65
+    //                                               Total: 24.25
+    constexpr float kContentUnits = 24.25f;
     constexpr float kHintExtra    = 5.2f;  // 3×1.1 + 2×0.94 hint rows
 
     float f = juce::jlimit(10.0f, 20.0f,
@@ -382,9 +382,10 @@ void PromptPanel::resized()
     layoutCompactPair(stepsLabel, stepsSlider, stepsValue, &stepsHint,
                       cfgLabel, cfgSlider, cfgValue, &cfgHint);
 
-    // Seed + Device row — same height as prompt input boxes
+    // Seed + Device row — buttons need height ≈ f/0.6 so LnF auto-font matches f
     {
-        auto seedRow = area.removeFromTop(inputH);
+        int seedRowH = juce::roundToInt(f * 1.65f);
+        auto seedRow = area.removeFromTop(seedRowH);
         int btnW = juce::roundToInt(seedRow.getWidth() * 0.11f);
         gpuBtn.setBounds(seedRow.removeFromLeft(btnW));
         cpuBtn.setBounds(seedRow.removeFromLeft(btnW));
@@ -395,7 +396,7 @@ void PromptPanel::resized()
         int toggleW = juce::roundToInt(seedRow.getWidth() * 0.30f);
         randomSeedToggle.setBounds(seedRow.removeFromRight(toggleW));
         seedEditor.setFont(juce::FontOptions(f));
-        seedEditor.setBounds(seedRow);
+        seedEditor.setBounds(seedRow.reduced(0, 1));
     }
 
     // Info label at the bottom of the sequential layout
