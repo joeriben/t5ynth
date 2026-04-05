@@ -72,7 +72,7 @@ void SamplePlayer::retrigger()
     if (stretcherPrepared)
     {
         stretcher.reset();
-        primeStretcher();
+        stretcherNeedsPriming = true;
     }
 }
 
@@ -347,6 +347,12 @@ void SamplePlayer::renderPitchedBlock(float* output, int numSamples)
     if (!stretcherPrepared)
         prepareStretcher();
 
+    if (stretcherNeedsPriming)
+    {
+        primeStretcher();
+        stretcherNeedsPriming = false;
+    }
+
     // Set pitch transposition and process the full block at once
     stretcher.setTransposeSemitones(semitones);
 
@@ -387,23 +393,22 @@ void SamplePlayer::prepareStretcher()
 
 void SamplePlayer::primeStretcher()
 {
-    // Feed ~half-window of audio to fill the STFT analysis buffer.
-    // Output is discarded — after priming, the first real output sample is valid.
-    int primeSamples = static_cast<int>(playbackSampleRate * 0.06); // ~60ms (generous)
-    if (primeSamples <= 0) return;
+    // Use seek() to provide pre-roll context for the STFT analysis buffer.
+    // Unlike process(), seek() doesn't affect speed calculation and produces
+    // no output — the stretcher is ready to emit valid samples immediately.
+    int seekSamples = stretcher.blockSamples() + stretcher.intervalSamples();
+    if (seekSamples <= 0) return;
 
-    std::vector<float> primeBuf(static_cast<size_t>(primeSamples));
-    std::vector<float> discardBuf(static_cast<size_t>(primeSamples));
+    std::vector<float> seekBuf(static_cast<size_t>(seekSamples));
 
-    // Read audio from current position (advances readPosition)
-    readRawSamples(primeBuf.data(), primeSamples);
+    // Read audio from current position, then restore — real playback
+    // starts from the same position, seek only provides context.
+    double savedPos = readPosition;
+    readRawSamples(seekBuf.data(), seekSamples);
+    readPosition = savedPos;
 
-    // Process through stretcher — output is ramp-up garbage, discard it
-    float* inPtr = primeBuf.data();
-    float* outPtr = discardBuf.data();
-    stretcher.process(&inPtr, primeSamples, &outPtr, primeSamples);
-    // readPosition is now advanced past the prime region — correct,
-    // the stretcher holds those samples in its internal state
+    float* seekPtr = seekBuf.data();
+    stretcher.seek(&seekPtr, seekSamples, 1.0);
 }
 
 void SamplePlayer::setPitchShiftQuality(PitchShiftQuality quality)

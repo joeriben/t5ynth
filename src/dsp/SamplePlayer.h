@@ -139,6 +139,7 @@ private:
     signalsmith::stretch::SignalsmithStretch<float> stretcher;
     PitchShiftQuality pitchQuality = PitchShiftQuality::Default;
     bool stretcherPrepared = false;
+    bool stretcherNeedsPriming = false;
     std::vector<float> rawReadBuf;
     int maxBlockSize = 512;
 
