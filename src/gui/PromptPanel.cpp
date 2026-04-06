@@ -199,8 +199,8 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
                 // Apply model-specific parameter defaults
                 auto& apvts = processorRef.getValueTreeState();
                 bool isSmall = model.containsIgnoreCase("small");
-                apvts.getParameter("gen_steps")->setValueNotifyingHost(
-                    apvts.getParameter("gen_steps")->convertTo0to1(isSmall ? 8.0f : 20.0f));
+                apvts.getParameter("inf_steps")->setValueNotifyingHost(
+                    apvts.getParameter("inf_steps")->convertTo0to1(isSmall ? 8.0f : 20.0f));
                 apvts.getParameter("gen_cfg")->setValueNotifyingHost(
                     apvts.getParameter("gen_cfg")->convertTo0to1(isSmall ? 1.0f : 7.0f));
 
@@ -238,7 +238,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     noiseA  = std::make_unique<Attachment>(apvts, "gen_noise", noiseSlider);
     durA    = std::make_unique<Attachment>(apvts, "gen_duration", durationSlider);
     startA  = std::make_unique<Attachment>(apvts, "gen_start", startSlider);
-    stepsA  = std::make_unique<Attachment>(apvts, "gen_steps", stepsSlider);
+    stepsA  = std::make_unique<Attachment>(apvts, "inf_steps", stepsSlider);
     cfgA    = std::make_unique<Attachment>(apvts, "gen_cfg", cfgSlider);
 
     startTimerHz(10);  // poll for device availability + drift regen + ghost
@@ -589,7 +589,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
     float noiseSigma = apvts.getRawParameterValue("gen_noise")->load();
     float duration = apvts.getRawParameterValue("gen_duration")->load();
     float startPos = apvts.getRawParameterValue("gen_start")->load();
-    int steps = static_cast<int>(apvts.getRawParameterValue("gen_steps")->load());
+    int steps = static_cast<int>(apvts.getRawParameterValue("inf_steps")->load());
     float cfgScale = apvts.getRawParameterValue("gen_cfg")->load();
     int seed = randomSeedToggle.getToggleState() ? -1 : seedEditor.getText().getIntValue();
 

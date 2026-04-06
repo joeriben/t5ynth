@@ -119,7 +119,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"gen_duration", 1}, "Duration",
         juce::NormalisableRange<float>(0.1f, 47.0f, 0.1f, 0.3f), 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"gen_steps", 1}, "Steps", 1, 100, 20));
+        juce::ParameterID{"inf_steps", 1}, "Steps", 1, 100, 20));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"gen_cfg", 1}, "CFG Scale",
         juce::NormalisableRange<float>(1.0f, 15.0f, 0.1f), 7.0f));
@@ -1600,7 +1600,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     synth->setProperty("noise", get("gen_noise"));
     synth->setProperty("duration", get("gen_duration"));
     synth->setProperty("startPosition", get("gen_start"));
-    synth->setProperty("steps", static_cast<int>(get("gen_steps")));
+    synth->setProperty("steps", static_cast<int>(get("inf_steps")));
     synth->setProperty("cfg", get("gen_cfg"));
     synth->setProperty("seed", static_cast<int>(get("gen_seed")));
     synth->setProperty("device", lastDevice);
@@ -1780,7 +1780,7 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         setParam(parameters, "gen_noise", static_cast<float>(synth->getProperty("noise")));
         setParam(parameters, "gen_duration", static_cast<float>(synth->getProperty("duration")));
         setParam(parameters, "gen_start", static_cast<float>(synth->getProperty("startPosition")));
-        setParam(parameters, "gen_steps", static_cast<float>(static_cast<int>(synth->getProperty("steps"))));
+        setParam(parameters, "inf_steps", static_cast<float>(static_cast<int>(synth->getProperty("steps"))));
         setParam(parameters, "gen_cfg", static_cast<float>(synth->getProperty("cfg")));
         setParam(parameters, "gen_seed", static_cast<float>(static_cast<int>(synth->getProperty("seed"))));
     }
