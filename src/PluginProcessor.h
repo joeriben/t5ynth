@@ -10,6 +10,7 @@
 #include "dsp/AlgorithmicReverb.h"
 #include "dsp/Limiter.h"
 #include "sequencer/StepSequencer.h"
+#include "sequencer/GenerativeSequencer.h"
 #include "sequencer/Arpeggiator.h"
 #include "inference/PipeInference.h"
 
@@ -86,6 +87,7 @@ public:
 
     // Sequencer
     T5ynthStepSequencer& getStepSequencer() { return stepSequencer; }
+    T5ynthGenerativeSequencer& getGenerativeSequencer() { return generativeSequencer; }
     T5ynthArpeggiator& getArpeggiator() { return arpeggiator; }
 
     // Waveform display data
@@ -128,6 +130,7 @@ private:
 
     // Sequencer
     T5ynthStepSequencer stepSequencer;
+    T5ynthGenerativeSequencer generativeSequencer;
     T5ynthArpeggiator arpeggiator;
 
     // Inference (Python subprocess)

@@ -89,12 +89,6 @@ public:
 
     const Step& getStep(int idx) const { return steps[static_cast<size_t>(juce::jlimit(0, MAX_STEPS - 1, idx))]; }
 
-    /** Set Euclidean rhythm override (nullptr = disabled, manual mode). */
-    void setEuclideanOverride(const std::array<bool, MAX_STEPS>* pattern) { eucOverride = pattern; }
-
-    /** Set scale quantizer (type 0 = Off = pass-through). */
-    void setScaleQuantizer(int type, int root) { scaleType_ = type; scaleRoot_ = root; }
-
 private:
     std::array<Step, MAX_STEPS> steps;
     int numSteps = 16;
@@ -108,11 +102,6 @@ private:
     int lastPlayedNote = -1;
     int division = 3; // default 1/8 (index 3)
     // glideTimeMs removed — now computed automatically from BPM/division
-
-    // Generative overlays (non-owning, set per processBlock call)
-    const std::array<bool, MAX_STEPS>* eucOverride = nullptr;
-    int scaleType_ = 0;  // ScaleQuantizer::Off
-    int scaleRoot_ = 0;  // C
 
     double stepDurationSamples() const;
 

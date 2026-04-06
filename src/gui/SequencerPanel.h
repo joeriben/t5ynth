@@ -67,7 +67,6 @@ private:
         int stepIndex = 0;
         T5ynthProcessor* processor = nullptr;
         bool isCurrentStep = false;
-        bool euclideanActive = true;  // true = passes Euclidean filter (or EUC off)
         int dragZone = -1;        // 0=dot, 1=note, 2=glide, 3=velocity
         float dragStartVal = 0.f;
         void paint(juce::Graphics& g) override;
@@ -84,14 +83,17 @@ private:
     int numVisibleSteps = 16;
     juce::Rectangle<int> gridArea;
 
-    // Row 4 left: Generative controls (Euclidean + Scale)
-    juce::TextButton eucToggle { "EUCLIDEAN" };
-    std::unique_ptr<SliderRow> eucPulsesRow;
-    std::unique_ptr<SliderRow> eucRotationRow;
-    juce::ComboBox scaleRootBox;
-    juce::ComboBox scaleTypeBox;
+    // Generative sequencer controls
+    juce::TextButton genTransportBtn { "GEN" };
+    std::unique_ptr<SliderRow> genStepsRow, genPulsesRow, genRotationRow, genRangeRow, genMutationRow;
+    juce::ComboBox genScaleRootBox, genScaleTypeBox;
 
-    // Row 4 right: Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd)
+    // Gen visualisation (painted in paint(), positioned in resized())
+    juce::Rectangle<int> genVisArea;
+    bool genModeActive = false;
+    int genCurrentStep = -1;
+
+    // Row 4: Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd)
     static constexpr int kNumModeBtns = 5;
     juce::TextButton arpModeBtns[kNumModeBtns]; // [OFF][Up][Dn][U/D][Rnd]
     juce::ComboBox arpModeBox;                   // hidden, for APVTS
@@ -105,10 +107,10 @@ private:
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SA> bpmA, gateA, eucPulsesA, eucRotationA;
+    std::unique_ptr<SA> bpmA, gateA, genStepsA, genPulsesA, genRotationA, genRangeA, genMutationA;
     std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA, octShiftA,
-                        scaleRootA, scaleTypeA;
-    std::unique_ptr<BA> eucEnabledA;
+                        genScaleRootA, genScaleTypeA;
+    std::unique_ptr<BA> genRunningA;
 
     int currentStep = -1;
 

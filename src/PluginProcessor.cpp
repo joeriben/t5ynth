@@ -1,7 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "BinaryData.h"
-#include "sequencer/EuclideanRhythm.h"
 
 T5ynthProcessor::T5ynthProcessor()
     : AudioProcessor(BusesProperties()
@@ -375,14 +374,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::StringArray{"Octave Bounce", "Wide Leap", "Off-Beat Minor", "Glide Groove", "Sparse Stab",
                           "Rising Arc", "Scatter", "Chromatic", "Bass Walk", "Gated Pulse"}, 0));
 
-    // Euclidean rhythm generator
+    // Generative sequencer
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{"euc_enabled", 1}, "Euclidean", false));
+        juce::ParameterID{"gen_seq_running", 1}, "Gen Seq Running", false));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"euc_pulses", 1}, "Euc Pulses", 1, 64, 4));
+        juce::ParameterID{"gen_steps", 1}, "Gen Steps", 2, 32, 8));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"euc_rotation", 1}, "Euc Rotation", 0, 63, 0));
-    // Scale quantizer
+        juce::ParameterID{"gen_pulses", 1}, "Gen Pulses", 1, 32, 5));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{"gen_rotation", 1}, "Gen Rotation", 0, 31, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"gen_mutation", 1}, "Gen Mutation",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.15f));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{"gen_range", 1}, "Gen Range", 1, 4, 2));
+    // Scale (shared between gen seq and future features)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"scale_root", 1}, "Scale Root",
         juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 0));
@@ -419,6 +425,7 @@ void T5ynthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     lastReverbIr = 1; // 0=Bright, 1=Medium, 2=Dark
     limiter.prepare(sampleRate, samplesPerBlock);
     stepSequencer.prepare(sampleRate, samplesPerBlock);
+    generativeSequencer.prepare(sampleRate, samplesPerBlock);
     arpeggiator.prepare(sampleRate, samplesPerBlock);
     lfo1Buffer.resize(static_cast<size_t>(samplesPerBlock));
     lfo2Buffer.resize(static_cast<size_t>(samplesPerBlock));
@@ -630,41 +637,67 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         lastSeqPreset = seqPreset;
     }
 
-    // Stage 1: Step sequencer
-    stepSequencer.setBpm(static_cast<double>(seqBpm));
-    stepSequencer.setNumSteps(seqSteps);
-    stepSequencer.setDivision(static_cast<int>(parameters.getRawParameterValue("seq_division")->load()));
-    stepSequencer.setAllGates(seqGate);
+    // Generative sequencer parameters
+    bool genRunning = parameters.getRawParameterValue("gen_seq_running")->load() > 0.5f;
+    int seqDivision = static_cast<int>(parameters.getRawParameterValue("seq_division")->load());
 
-    // Euclidean rhythm overlay
-    bool eucEnabled = parameters.getRawParameterValue("euc_enabled")->load() > 0.5f;
-    std::array<bool, T5ynthStepSequencer::MAX_STEPS> eucPattern{};
-    if (eucEnabled)
+    // Mutual exclusion: starting one stops the other
+    if (genRunning && seqRunning)
     {
-        int eucPulses = juce::jlimit(0, seqSteps,
-            static_cast<int>(parameters.getRawParameterValue("euc_pulses")->load()));
-        int eucRotation = seqSteps > 0
-            ? static_cast<int>(parameters.getRawParameterValue("euc_rotation")->load()) % seqSteps
-            : 0;
-        eucPattern = EuclideanRhythm::generate(seqSteps, eucPulses, eucRotation);
+        parameters.getParameter("seq_running")->setValueNotifyingHost(0.0f);
+        seqRunning = false;
     }
-    stepSequencer.setEuclideanOverride(eucEnabled ? &eucPattern : nullptr);
+    if (seqRunning && generativeSequencer.isRunning())
+    {
+        parameters.getParameter("gen_seq_running")->setValueNotifyingHost(0.0f);
+        genRunning = false;
+    }
 
-    // Scale quantizer overlay
-    int scaleType = static_cast<int>(parameters.getRawParameterValue("scale_type")->load());
-    int scaleRoot = static_cast<int>(parameters.getRawParameterValue("scale_root")->load());
-    stepSequencer.setScaleQuantizer(scaleType, scaleRoot);
-
-    if (seqRunning)
-        stepSequencer.start();
-    else
+    // Stage 1: Step sequencer OR Generative sequencer
+    if (genRunning)
+    {
+        // Stop step sequencer if it was running
         stepSequencer.stop();
-    stepSequencer.processBlock(buffer, midiMessages);
 
-    // Octave transposition (only when sequencer is driving)
+        // Configure generative sequencer
+        generativeSequencer.setBpm(static_cast<double>(seqBpm));
+        generativeSequencer.setDivision(seqDivision);
+        generativeSequencer.setGate(seqGate);
+        generativeSequencer.setSteps(static_cast<int>(parameters.getRawParameterValue("gen_steps")->load()));
+        generativeSequencer.setPulses(static_cast<int>(parameters.getRawParameterValue("gen_pulses")->load()));
+        generativeSequencer.setRotation(static_cast<int>(parameters.getRawParameterValue("gen_rotation")->load()));
+        generativeSequencer.setMutation(parameters.getRawParameterValue("gen_mutation")->load());
+        generativeSequencer.setRange(static_cast<int>(parameters.getRawParameterValue("gen_range")->load()));
+        generativeSequencer.setScale(
+            static_cast<int>(parameters.getRawParameterValue("scale_type")->load()),
+            static_cast<int>(parameters.getRawParameterValue("scale_root")->load()));
+
+        generativeSequencer.start();
+        generativeSequencer.processBlock(buffer, midiMessages);
+    }
+    else
+    {
+        // Stop generative sequencer
+        generativeSequencer.stop();
+
+        // Step sequencer (original logic)
+        stepSequencer.setBpm(static_cast<double>(seqBpm));
+        stepSequencer.setNumSteps(seqSteps);
+        stepSequencer.setDivision(seqDivision);
+        stepSequencer.setAllGates(seqGate);
+
+        if (seqRunning)
+            stepSequencer.start();
+        else
+            stepSequencer.stop();
+        stepSequencer.processBlock(buffer, midiMessages);
+    }
+
+    // Octave transposition (both modes)
+    bool anySeqRunning = seqRunning || genRunning;
     int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue("seq_octave")->load());
     int semitoneShift = (seqOctaveIdx - 2) * 12;
-    if (semitoneShift != 0 && seqRunning)
+    if (semitoneShift != 0 && anySeqRunning)
     {
         juce::MidiBuffer transposed;
         for (const auto metadata : midiMessages)
