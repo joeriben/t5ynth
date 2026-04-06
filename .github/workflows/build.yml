@@ -62,13 +62,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: T5ynth-macOS-VST3
-          path: build/T5ynth_artefacts/Release/VST3/T5ynth.vst3
+          path: build/T5ynth_artefacts/Release/VST3/
 
       - name: Upload AU
         uses: actions/upload-artifact@v4
         with:
           name: T5ynth-macOS-AU
-          path: build/T5ynth_artefacts/Release/AU/T5ynth.component
+          path: build/T5ynth_artefacts/Release/AU/
 
   # ── Windows ─────────────────────────────────────────────────────
   windows:
@@ -117,7 +117,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: T5ynth-Windows-VST3
-          path: build/T5ynth_artefacts/Release/VST3/T5ynth.vst3
+          path: build/T5ynth_artefacts/Release/VST3/
 
   # ── Linux ───────────────────────────────────────────────────────
   linux:
@@ -184,7 +184,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: T5ynth-Linux-VST3
-          path: build/T5ynth_artefacts/Release/VST3/T5ynth.vst3
+          path: build/T5ynth_artefacts/Release/VST3/
 
   # ── Release (only on tags) ──────────────────────────────────────
   release:
