@@ -9,14 +9,23 @@
  *
  * Generates both rhythm AND melody from a single Euclidean pattern:
  * - Euclidean distribution determines which steps are pulses (rhythm)
- * - Gaps between pulses determine scale-degree jumps (melody → self-similar)
+ * - Stride-based permutation maps pulses to scale degrees (melody)
  * - Turing Machine mutation evolves the pattern every cycle
  * - Per-pulse probability adds rhythmic breath
+ * - Pulse count and rotation drift organically over time
  *
  * Three layers of generativity:
- * 1. Euclidean structure = seed (rhythm + melodic intervals)
- * 2. Turing mutation = generator (notes drift ±1 scale degree per cycle)
+ * 1. Euclidean structure = seed (rhythm + melodic stride)
+ * 2. Turing mutation = generator (notes drift ±1-4 scale degrees per cycle)
  * 3. Pulse probability = rhythmic breath (ghost notes, skipped pulses)
+ *
+ * References:
+ * - Toussaint, G.T. (2005). "The Euclidean Algorithm Generates Traditional
+ *   Musical Rhythms." Proc. BRIDGES: Mathematical Connections in Art, Music
+ *   and Science, pp. 47–56.
+ * - Conceptual inspiration: Music Thing Modular "Turing Machine" by
+ *   Tom Whitwell — LFSR with adjustable mutation probability for
+ *   pattern evolution. https://musicthing.co.uk/Turing-Machine/
  */
 class T5ynthGenerativeSequencer
 {
