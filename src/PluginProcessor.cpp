@@ -386,8 +386,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"gen_mutation", 1}, "Gen Mutation",
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.15f));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"gen_range", 1}, "Gen Range", 1, 4, 2));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"gen_range", 1}, "Gen Range",
+        juce::StringArray{"1","2","3","4"}, 1)); // default index 1 = "2" octaves
     // Scale (shared between gen seq and future features)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"scale_root", 1}, "Scale Root",
@@ -637,29 +638,62 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         lastSeqPreset = seqPreset;
     }
 
-    // Generative sequencer parameters
-    bool genRunning = parameters.getRawParameterValue("gen_seq_running")->load() > 0.5f;
+    // GEN mode toggle — PLAY is master transport, GEN switches engine
+    bool genModeWanted = parameters.getRawParameterValue("gen_seq_running")->load() > 0.5f;
     int seqDivision = static_cast<int>(parameters.getRawParameterValue("seq_division")->load());
 
-    // Mutual exclusion: starting one stops the other
-    if (genRunning && seqRunning)
+    // Detect mode switch: apply at step 0 boundary
+    if (genModeWanted != genModeActiveInAudio)
     {
-        parameters.getParameter("seq_running")->setValueNotifyingHost(0.0f);
-        seqRunning = false;
-    }
-    if (seqRunning && generativeSequencer.isRunning())
-    {
-        parameters.getParameter("gen_seq_running")->setValueNotifyingHost(0.0f);
-        genRunning = false;
+        // Check if either sequencer is at step 0 (or not running yet)
+        bool atBarBoundary = !seqRunning
+            || stepSequencer.getCurrentStep() == 0
+            || generativeSequencer.currentStepForGui.load(std::memory_order_relaxed) <= 0;
+
+        if (atBarBoundary)
+        {
+            if (genModeWanted)
+            {
+                // Step → Gen: stop step seq, start gen seq
+                stepSequencer.stop();
+                generativeSequencer.setBpm(static_cast<double>(seqBpm));
+                generativeSequencer.setDivision(seqDivision);
+                generativeSequencer.setGate(seqGate);
+                genModeActiveInAudio = true;
+            }
+            else
+            {
+                // Gen → Step: copy generated pattern into step data, then switch
+                int genSteps = generativeSequencer.numStepsForGui.load(std::memory_order_relaxed);
+                if (genSteps > 0)
+                {
+                    stepSequencer.setNumSteps(genSteps);
+                    if (auto* par = parameters.getParameter("seq_steps"))
+                        par->setValueNotifyingHost(par->convertTo0to1(static_cast<float>(genSteps)));
+                    for (int i = 0; i < genSteps; ++i)
+                    {
+                        int note = generativeSequencer.notePatternForGui[static_cast<size_t>(i)]
+                            .load(std::memory_order_relaxed);
+                        if (note > 0)
+                        {
+                            stepSequencer.setStepNote(i, note);
+                            stepSequencer.setStepEnabled(i, true);
+                        }
+                        else
+                        {
+                            stepSequencer.setStepEnabled(i, false);
+                        }
+                    }
+                }
+                generativeSequencer.stop();
+                genModeActiveInAudio = false;
+            }
+        }
     }
 
-    // Stage 1: Step sequencer OR Generative sequencer
-    if (genRunning)
+    // Configure + run the active engine
+    if (genModeActiveInAudio)
     {
-        // Stop step sequencer if it was running
-        stepSequencer.stop();
-
-        // Configure generative sequencer
         generativeSequencer.setBpm(static_cast<double>(seqBpm));
         generativeSequencer.setDivision(seqDivision);
         generativeSequencer.setGate(seqGate);
@@ -667,20 +701,19 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         generativeSequencer.setPulses(static_cast<int>(parameters.getRawParameterValue("gen_pulses")->load()));
         generativeSequencer.setRotation(static_cast<int>(parameters.getRawParameterValue("gen_rotation")->load()));
         generativeSequencer.setMutation(parameters.getRawParameterValue("gen_mutation")->load());
-        generativeSequencer.setRange(static_cast<int>(parameters.getRawParameterValue("gen_range")->load()));
+        generativeSequencer.setRange(static_cast<int>(parameters.getRawParameterValue("gen_range")->load()) + 1); // choice 0-3 → range 1-4
         generativeSequencer.setScale(
             static_cast<int>(parameters.getRawParameterValue("scale_type")->load()),
             static_cast<int>(parameters.getRawParameterValue("scale_root")->load()));
 
-        generativeSequencer.start();
+        if (seqRunning)
+            generativeSequencer.start();
+        else
+            generativeSequencer.stop();
         generativeSequencer.processBlock(buffer, midiMessages);
     }
     else
     {
-        // Stop generative sequencer
-        generativeSequencer.stop();
-
-        // Step sequencer (original logic)
         stepSequencer.setBpm(static_cast<double>(seqBpm));
         stepSequencer.setNumSteps(seqSteps);
         stepSequencer.setDivision(seqDivision);
@@ -694,10 +727,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // Octave transposition (both modes)
-    bool anySeqRunning = seqRunning || genRunning;
     int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue("seq_octave")->load());
     int semitoneShift = (seqOctaveIdx - 2) * 12;
-    if (semitoneShift != 0 && anySeqRunning)
+    if (semitoneShift != 0 && seqRunning)
     {
         juce::MidiBuffer transposed;
         for (const auto metadata : midiMessages)
@@ -1658,6 +1690,16 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     arp->setProperty("octaveRange", static_cast<int>(get("arp_octaves")));
     root->setProperty("arpeggiator", arp.get());
 
+    // Generative sequencer
+    juce::DynamicObject::Ptr genSeq = new juce::DynamicObject();
+    genSeq->setProperty("enabled", get("gen_seq_running") > 0.5f);
+    genSeq->setProperty("steps", static_cast<int>(get("gen_steps")));
+    genSeq->setProperty("pulses", static_cast<int>(get("gen_pulses")));
+    genSeq->setProperty("rotation", static_cast<int>(get("gen_rotation")));
+    genSeq->setProperty("mutation", get("gen_mutation"));
+    genSeq->setProperty("range", static_cast<int>(get("gen_range")));
+    root->setProperty("generativeSeq", genSeq.get());
+
     return juce::JSON::toString(root.get(), true);
 }
 
@@ -1939,6 +1981,28 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             else if (rateStr == "1/16T") rateIdx = 6;
             setParam(parameters, "arp_rate", static_cast<float>(rateIdx));
         }
+    }
+
+    // ── Generative sequencer ──
+    if (auto* gs = root->getProperty("generativeSeq").getDynamicObject())
+    {
+        setParam(parameters, "gen_seq_running",
+                 static_cast<bool>(gs->getProperty("enabled")) ? 1.0f : 0.0f);
+        if (gs->hasProperty("steps"))
+            setParam(parameters, "gen_steps",
+                     static_cast<float>(static_cast<int>(gs->getProperty("steps"))));
+        if (gs->hasProperty("pulses"))
+            setParam(parameters, "gen_pulses",
+                     static_cast<float>(static_cast<int>(gs->getProperty("pulses"))));
+        if (gs->hasProperty("rotation"))
+            setParam(parameters, "gen_rotation",
+                     static_cast<float>(static_cast<int>(gs->getProperty("rotation"))));
+        if (gs->hasProperty("mutation"))
+            setParam(parameters, "gen_mutation",
+                     static_cast<float>(gs->getProperty("mutation")));
+        if (gs->hasProperty("range"))
+            setParam(parameters, "gen_range",
+                     static_cast<float>(static_cast<int>(gs->getProperty("range"))));
     }
 
     return true;
