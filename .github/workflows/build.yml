@@ -56,7 +56,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: T5ynth-macOS-Standalone
-          path: build/T5ynth_artefacts/Release/Standalone/T5ynth.app
+          path: build/T5ynth_artefacts/Release/Standalone/
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
