@@ -447,7 +447,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genRangeLabel.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(genRangeLabel);
 
-    genMutationRow = std::make_unique<SliderRow>("Mutation",
+    genMutationRow = std::make_unique<SliderRow>("Evolve",
         [](double v) { return juce::String(juce::roundToInt(v * 100)) + "%"; }, kSeqCol);
     addAndMakeVisible(*genMutationRow);
     genMutationA = std::make_unique<SA>(apvts, "gen_mutation", genMutationRow->getSlider());
@@ -840,25 +840,36 @@ void SequencerPanel::resized()
 
     if (genModeActive)
     {
-        // ═══ Gen mode: two control rows + visualization ═══
-        int genCtrlH = juce::jmax(rH, 26);
+        // ═══ Gen mode: 2-column grid (matching SynthPanel pattern) ═══
+        int genCtrlH = rH;
+        int colGap = 4;
+        int colW = (area.getWidth() - colGap) / 2;
 
-        // Row A: [C▾](44) [Min▾](70) Steps[===140===] Pulses[===140===] Rotation[===140===]
-        auto rowA = area.removeFromTop(genCtrlH);
-        genScaleRootBox.setBounds(rowA.removeFromLeft(44));  rowA.removeFromLeft(2);
-        genScaleTypeBox.setBounds(rowA.removeFromLeft(70));  rowA.removeFromLeft(g);
-        {
-            int sliderW = (rowA.getWidth() - g * 2) / 3;
-            genStepsRow->setBounds(rowA.removeFromLeft(sliderW));     rowA.removeFromLeft(g);
-            genPulsesRow->setBounds(rowA.removeFromLeft(sliderW));    rowA.removeFromLeft(g);
-            genRotationRow->setBounds(rowA);
-        }
-        area.removeFromTop(g);
+        // Row 1:  Steps [=======]  |  Pulses [=======]
+        auto row1 = area.removeFromTop(genCtrlH);
+        genStepsRow->setBounds(row1.removeFromLeft(colW));
+        row1.removeFromLeft(colGap);
+        genPulsesRow->setBounds(row1);
+        area.removeFromTop(2);
 
-        // Row B: Range[1][2][3][4]  Mutation[===========]
-        auto rowB = area.removeFromTop(genCtrlH);
+        // Row 2:  Rotation [====]  |  Mutation [=====]
+        auto row2 = area.removeFromTop(genCtrlH);
+        genRotationRow->setBounds(row2.removeFromLeft(colW));
+        row2.removeFromLeft(colGap);
+        genMutationRow->setBounds(row2);
+        area.removeFromTop(2);
+
+        // Row 3:  [C▾] [Min▾]     |  Range [1][2][3][4]
+        auto row3 = area.removeFromTop(genCtrlH);
+        auto r3L = row3.removeFromLeft(colW);
+        row3.removeFromLeft(colGap);
+        auto r3R = row3;
+
+        genScaleRootBox.setBounds(r3L.removeFromLeft(55));  r3L.removeFromLeft(2);
+        genScaleTypeBox.setBounds(r3L.removeFromLeft(70));
+
         genRangeLabel.setFont(juce::FontOptions(juce::jmax(9.0f, genCtrlH * 0.55f)));
-        genRangeLabel.setBounds(rowB.removeFromLeft(42));  rowB.removeFromLeft(2);
+        genRangeLabel.setBounds(r3R.removeFromLeft(42));  r3R.removeFromLeft(2);
         int rangeBtnW = 22;
         for (int i = 0; i < kNumRangeBtns; ++i)
         {
@@ -866,10 +877,8 @@ void SequencerPanel::resized()
             if (i > 0) edges |= juce::Button::ConnectedOnLeft;
             if (i < kNumRangeBtns - 1) edges |= juce::Button::ConnectedOnRight;
             genRangeBtns[i].setConnectedEdges(edges);
-            genRangeBtns[i].setBounds(rowB.removeFromLeft(rangeBtnW));
+            genRangeBtns[i].setBounds(r3R.removeFromLeft(rangeBtnW));
         }
-        rowB.removeFromLeft(g * 2);
-        genMutationRow->setBounds(rowB);
 
         area.removeFromTop(g);
 

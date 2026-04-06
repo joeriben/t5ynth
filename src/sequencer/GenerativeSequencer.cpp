@@ -139,10 +139,18 @@ void T5ynthGenerativeSequencer::rebuildPattern()
     int totalDegrees = dpOct * rangeOctaves;
     int baseNote = 48; // C3
 
-    // 4. Assign notes to pulses using gap-derived intervals
-    int currentDegree = 0;
-    int pulseIdx = 0;
+    // 4. Assign notes using stride-based permutation through the scale
+    //    degree[i] = (pulseIndex * stride) % totalDegrees
+    //    Stride derived from Euclidean params (numSteps - numPulses).
+    //    If coprime with totalDegrees → visits every degree before repeating.
+    //    Creates a wide-ranging, non-sequential, structured melody.
+    int stride = juce::jmax(1, numSteps - numPulses);
+    // Ensure coprime with totalDegrees for maximum coverage
+    while (stride > 1 && totalDegrees % stride == 0)
+        stride++;
+    if (stride >= totalDegrees) stride = 1;
 
+    int pulseIdx = 0;
     notePattern.fill(0);
     velocityPattern.fill(0.0f);
     degreePattern.fill(0);
@@ -151,22 +159,16 @@ void T5ynthGenerativeSequencer::rebuildPattern()
     {
         if (eucPattern[static_cast<size_t>(i)])
         {
-            // Wrap degree within range
-            currentDegree = ((currentDegree % totalDegrees) + totalDegrees) % totalDegrees;
-
-            int midiNote = ScaleQuantizer::degreeToMidi(currentDegree, scaleRoot, scale, baseNote);
+            int degree = (pulseIdx * stride) % totalDegrees;
+            int midiNote = ScaleQuantizer::degreeToMidi(degree, scaleRoot, scale, baseNote);
             notePattern[static_cast<size_t>(i)] = midiNote;
-            degreePattern[static_cast<size_t>(i)] = currentDegree;
+            degreePattern[static_cast<size_t>(i)] = degree;
 
-            // Velocity: louder after longer gaps (accent on downbeat-like positions)
+            // Velocity: accent based on gap length
             float gapFrac = (gapCount > 0)
                 ? static_cast<float>(gaps[pulseIdx % gapCount]) / static_cast<float>(numSteps)
                 : 0.5f;
             velocityPattern[static_cast<size_t>(i)] = juce::jlimit(0.4f, 1.0f, 0.55f + gapFrac * 0.6f);
-
-            // Advance by the gap value (interval jump in scale degrees)
-            if (gapCount > 0)
-                currentDegree += gaps[pulseIdx % gapCount];
             pulseIdx++;
         }
     }
@@ -188,20 +190,68 @@ void T5ynthGenerativeSequencer::mutatePattern()
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     std::uniform_int_distribution<int> dirDist(0, 1);
 
-    for (int i = 0; i < numSteps; ++i)
+    // ── Rotation drift: circularly shift pattern arrays by 1 step ──
+    //    Does NOT rebuild — preserves accumulated Turing mutations.
+    if (dist(rng) < mutationRate * 0.5f && numSteps > 1)
     {
-        if (!eucPattern[static_cast<size_t>(i)]) continue;
+        // Rotate all arrays left by 1
+        auto shiftLeft = [&](auto& arr) {
+            auto first = arr[0];
+            for (int i = 0; i < numSteps - 1; ++i)
+                arr[static_cast<size_t>(i)] = arr[static_cast<size_t>(i + 1)];
+            arr[static_cast<size_t>(numSteps - 1)] = first;
+        };
+        shiftLeft(eucPattern);
+        shiftLeft(notePattern);
+        shiftLeft(velocityPattern);
+        shiftLeft(degreePattern);
+    }
 
-        if (dist(rng) < mutationRate)
+    // ── Pulse count drift: with P=mutation/3, shift pulse count ±1 ──
+    if (dist(rng) < mutationRate * 0.33f)
+    {
+        int dir = dirDist(rng) == 0 ? -1 : 1;
+        int newPulses = juce::jlimit(1, numSteps, numPulses + dir);
+        if (newPulses != numPulses)
         {
-            // Shift ±1 scale degree
-            int dir = dirDist(rng) == 0 ? -1 : 1;
-            int newDeg = degreePattern[static_cast<size_t>(i)] + dir;
-            // Wrap within range
-            newDeg = ((newDeg % totalDegrees) + totalDegrees) % totalDegrees;
-            degreePattern[static_cast<size_t>(i)] = newDeg;
-            notePattern[static_cast<size_t>(i)] =
-                ScaleQuantizer::degreeToMidi(newDeg, scaleRoot, scale, baseNote);
+            numPulses = newPulses;
+            rebuildPattern();  // recomputes euclidean + melody from new pulse count
+            return;            // rebuildPattern already calls publishPatternToGui
+        }
+    }
+
+    // ── Note mutation: Turing Machine — mutate N random pulses per cycle ──
+    //    N scales with evolve rate and pulse count: 1-4 notes per cycle.
+    //    Each mutated note shifts ±1-2 scale degrees.
+    {
+        int pulseIndices[MAX_STEPS];
+        int pulseCount = 0;
+        for (int i = 0; i < numSteps; ++i)
+            if (eucPattern[static_cast<size_t>(i)])
+                pulseIndices[pulseCount++] = i;
+
+        // How many notes to mutate this cycle (always at least attempt 1)
+        int numMutations = juce::jmax(1, juce::roundToInt(mutationRate * static_cast<float>(pulseCount) * 0.25f));
+
+        if (pulseCount > 0)
+        {
+            std::uniform_int_distribution<int> pickDist(0, pulseCount - 1);
+            std::uniform_int_distribution<int> jumpDist(1, 4);  // ±1 to ±4 degrees
+
+            for (int m = 0; m < numMutations; ++m)
+            {
+                if (dist(rng) > mutationRate) continue;
+
+                int idx = pulseIndices[pickDist(rng)];
+                int dir = dirDist(rng) == 0 ? -1 : 1;
+                int jump = jumpDist(rng);
+                int newDeg = degreePattern[static_cast<size_t>(idx)] + dir * jump;
+                // Wrap within range (not clamp — allows full exploration)
+                newDeg = ((newDeg % totalDegrees) + totalDegrees) % totalDegrees;
+                degreePattern[static_cast<size_t>(idx)] = newDeg;
+                notePattern[static_cast<size_t>(idx)] =
+                    ScaleQuantizer::degreeToMidi(newDeg, scaleRoot, scale, baseNote);
+            }
         }
     }
 

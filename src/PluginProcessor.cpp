@@ -378,17 +378,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"gen_seq_running", 1}, "Gen Seq Running", false));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"gen_steps", 1}, "Gen Steps", 2, 32, 8));
+        juce::ParameterID{"gen_steps", 1}, "Gen Steps", 2, 32, 21));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"gen_pulses", 1}, "Gen Pulses", 1, 32, 5));
+        juce::ParameterID{"gen_pulses", 1}, "Gen Pulses", 1, 32, 16));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{"gen_rotation", 1}, "Gen Rotation", 0, 31, 0));
+        juce::ParameterID{"gen_rotation", 1}, "Gen Rotation", 0, 31, 2));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"gen_mutation", 1}, "Gen Mutation",
-        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.15f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.80f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"gen_range", 1}, "Gen Range",
-        juce::StringArray{"1","2","3","4"}, 1)); // default index 1 = "2" octaves
+        juce::StringArray{"1","2","3","4"}, 2)); // default index 2 = "3" octaves
     // Scale (shared between gen seq and future features)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"scale_root", 1}, "Scale Root",
