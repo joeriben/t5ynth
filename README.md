@@ -1,22 +1,24 @@
 # T5ynth
 
+> **For the full formatted user guide, open [`resources/T5ynth_Guide.html`](resources/T5ynth_Guide.html) in your browser.**
+
 (note: this description has been written by the co-coding AI, Claude Opus 4.6)
 
 
 **A text-to-sound synthesizer that navigates the T5 embedding space of a diffusion audio model.**
 
-T5ynth is a JUCE-based synthesizer plugin (Standalone / VST3 / AU) that repurposes Stability AI's [Stable Audio Open](https://huggingface.co/stabilityai/stable-audio-open-1.0) model as an oscillator — not to generate finished music, but to produce raw sonic material for human-nonhuman artistic collaboration.
+T5ynth is a JUCE-based synthesizer plugin (Standalone / VST3 / AU) that deliberately repurposes Stability AI's [Stable Audio Open](https://huggingface.co/stabilityai/stable-audio-open-1.0) model as an oscillator — not to generate finished music, but to produce raw sonic material for human–nonhuman artistic collaboration. Where text-to-audio models are designed to substitute creative labor (type a description, get a result), T5ynth inverts this relationship: the AI produces material, the human creates. This is not a consumer tool — it is an instrument that requires musicianship.
 
-T5ynth is a personal side-project by Prof. Dr. Benjamin Jörissen, UNESCO Chair in Digital Culture and Arts Education (UCDCAE), Friedrich-Alexander-Universität Erlangen-Nürnberg, and part of the UCDCAE AI Lab Software Collection.
+T5ynth is a personal side-project by Prof. Dr. Benjamin Jörissen, UNESCO Chair in Digital Culture and Arts in Education (UCDCAE), Friedrich-Alexander-Universität Erlangen-Nürnberg, and part of the [UCDCAE AI Lab Software Collection](https://github.com/joeriben/ucdcae-ai-lab).
 
 T5ynth is inspired by two research projects:
 
-- AI for Arts Education (AI4ArtsEd, https://kubi-meta.de/ai4artsed), conducted together with the University of Cologne and the German Research Institute for Artificial Intelligence (DFKI) Kaiserslautern
-- ComeArts Across (https://comearts.uni-due.de/comenets/artsacross/)
+- [AI for Arts Education (AI4ArtsEd)](https://kubi-meta.de/ai4artsed), conducted together with the University of Cologne and the German Research Institute for Artificial Intelligence (DFKI) Kaiserslautern
+- [ComeArts Across](https://comearts.uni-due.de/comenets/artsacross/), a research project for the development of digital cultural teacher education
 
 (both funded by the Federal Ministry for Education, Family, Senior Citizens, Women and Youth (BMBFSFJ)).
 
-It is dedicated to my dear colleague at the DFKI, musician and AI researcher Dr. Stephan Baumann, without whom AI4ArtsEd would not have come into being.
+T5ynth is dedicated to my dear colleague at the DFKI, musician and AI researcher Dr. Stephan Baumann, without whom AI4ArtsEd would not have come into being.
 
 ---
 
@@ -57,28 +59,44 @@ The core of T5ynth is a new kind of oscillator that doesn't exist in any convent
 
 The key operation is not prompting — it is **vector manipulation in a learned semantic space**.
 
-Two text prompts (A and B) are each encoded by a T5 language model into 768-dimensional embedding vectors. These are not audio signals — they are points in a high-dimensional space where semantic relationships are encoded as geometric relationships. T5ynth operates on these vectors before any audio is generated:
+Two text prompts (A and B) are each encoded by a T5 language model into 768-dimensional embedding vectors. These are not audio signals — they are points in a high-dimensional space where semantic relationships are encoded as geometric relationships. (For an introduction to embeddings, see Jay Alammar's [Illustrated Word2Vec](https://jalammar.github.io/illustrated-word2vec/).) T5ynth operates on these vectors before any audio is generated:
 
-- **Interpolation and Extrapolation** — A continuous alpha parameter blends between embedding A and B. Crucially, this is not mixing two audio signals — it is moving through the semantic space between two concepts. And the parameter is not clamped to [0, 1]: extrapolation beyond either pole pushes into regions of the embedding space that neither prompt alone would reach, producing sounds that correspond to no text description.
+- **Interpolation and Extrapolation** — A continuous alpha parameter navigates between embedding A and B in embedding space, not in audio. This is not a crossfade or mix of two signals — it is movement through a semantic space. The midpoint is not "half A plus half B" in any audible sense; it is a new point in meaning-space that the model interprets independently. Extrapolation beyond either pole pushes into regions of the embedding space that no text prompt would naturally reach.
 - **Magnitude Control** — The length of the embedding vector can be scaled independently of its direction, controlling how strongly the semantic content influences the diffusion process. Low magnitudes drift toward the model's prior (generic, neutral sounds); high magnitudes push toward more extreme, sometimes unstable sonic territory.
-- **Noise Injection** — Gaussian noise can be added to the embedding vector, introducing controlled stochastic variation. This is not audio noise — it is semantic noise, perturbation in meaning-space, producing timbral variations that are semantically adjacent to the original.
-- **Semantic Axes** — 8 axes derived from pole prompt pairs (e.g., "tonal sound" vs. "noisy sound") that attempt to define musically meaningful directions in the 768d space. In practice, these axes interact unpredictably with different A/B prompt embeddings — the label "bright/dark" may produce the expected timbral shift for one prompt pair and something entirely unrelated for another. This is a highly explorative feature, not a reliable control surface.
-- **Dimension Explorer** — Direct access to all 768 individual T5 dimensions, sorted by activation magnitude. Individual dimensions can be offset before generation. What each dimension "does" sonically is largely opaque — the T5 embedding space was trained for language tasks, not audio, and its internal structure does not map to perceptual audio categories in any documented way. Manipulating dimensions is exploratory and erratic: small changes may do nothing, or they may radically alter the output. This is a research tool for probing the space, not a precision instrument.
+- **Noise Injection** — This is not audio noise — it is semantic noise: random perturbation in meaning-space, a dose of chaos applied to the embedding before the model ever generates a sound. Even small values introduce subtle variation between otherwise identical generations.
+- **Semantic Axes** — 8 axes derived from pole prompt pairs (e.g., "tonal" vs. "noisy") that define musically meaningful directions in the 768d space, validated via spectral analysis (Mel-cosine distance > 0.80 at 1s). Multiple axes are interrelated — the more you stack, the less predictable each becomes. PCA-based axes were tested but collapse at short durations and are not offered.
+- **Dimension Explorer** — Direct access to all 768 individual T5 dimensions, sorted by activation magnitude. Individual dimensions can be offset before generation. What each dimension "does" sonically is largely opaque — the T5 embedding space was trained for language tasks, not audio. This is a research tool for probing the space, not a precision instrument.
 
-The manipulated embedding then conditions a diffusion process (DiT transformer, 20 denoising steps, BrownianTree SDE sampler) followed by VAE decoding to produce 44.1kHz stereo audio.
+The manipulated embedding then conditions a diffusion process (DiT transformer, BrownianTree SDE sampler) followed by VAE decoding to produce 44.1kHz stereo audio.
+
+### Drift & Regenerate
+
+**Drift & Regenerate is what makes T5ynth more than a sample player or wavetable synth.**
+
+Without it, you generate a sound and then shape it with conventional synth tools — the source stays fixed. With Drift & Regenerate, the sound source itself continuously evolves.
+
+Three slow drift LFOs (0.001–2.0 Hz) can target generation-level parameters — Alpha and the semantic axes. While the synth is playing, multiple drift LFOs continuously and independently shift these parameters, tracing a complex, never-repeating path through the embedding space. When Auto or 1st Bar regen mode is active, T5ynth monitors how far the embedding has drifted and fires new inference requests in the background. The current sound keeps playing; when the new generation arrives, it is crossfaded into the playback buffer.
+
+The result is an asynchronous feedback loop between the modulation system and the T5 oscillator: a continuous stream of new generations, each from a slightly different position in embedding space. The oscillator is no longer a static waveform — it is a living, moving trajectory through a 768-dimensional sonic landscape.
+
+### Engine Modes
 
 Two playback modes turn the generated audio into something a synthesizer can work with:
 
-- **Sampler Mode** — Plays back the generated audio with loop points (one-shot, loop, ping-pong) and crossfade. The simpler option — useful for longer textures where the raw character of the generation matters.
+- **Sampler Mode** — Plays back the generated audio with loop points (one-shot, loop, ping-pong) and crossfade. Pitch follows MIDI via time-stretching. Useful for longer textures where the raw character of the generation matters.
 - **Wavetable Mode** — Extracts pitch-synchronous single-cycle frames from the audio and builds a scannable wavetable. This turns any generated sound into a pitched, playable oscillator that tracks MIDI notes — the more radical transformation, and where T5ynth starts to feel like a synthesizer rather than a sample player.
 
 ### Synthesizer
 
-The point of wrapping a radically unconventional oscillator in a conventional synthesizer is that musicians can actually use it. The T5 Oscillator produces unfamiliar material — the signal chain that follows is deliberately standard so that familiar tools (envelopes, filters, LFOs, sequencing) can be applied to shape it.
+The point of wrapping a radically unconventional oscillator in a conventional synthesizer is that musicians can actually use it. The T5 Oscillator produces unfamiliar material — the signal chain that follows is deliberately standard so that familiar tools can be applied to shape it.
 
-- **Signal chain:** ADSR amplitude envelope, 2 modulation envelopes, state-variable filter (LP/HP/BP, 6-24dB), 2 LFOs, 3 drift LFOs (slow parameter wandering), modulation routing
-- **Effects:** Delay with feedback/damping, convolution reverb (EMT 140 plate impulse responses by [Greg Hopkins](https://oramics.github.io/sampled/IR/EMT140-Plate/), CC BY), limiter
-- **Sequencer & Arpeggiator:** 16-step sequencer with per-step note/velocity/gate/glide, arpeggiator (up/down/updown/random)
+- **Envelopes:** 3 identical ADSR envelopes, each assignable to any modulation destination via target dropdown. There is no hard-wired amplitude envelope — to use one as a VCA, assign its target to DCA.
+- **Filter:** State-variable filter (TPT topology), LP/HP/BP, 6-24dB, with keyboard tracking and dry/wet mix
+- **LFOs:** 2 LFOs (Sine/Tri/Saw/Square, Free/Trigger mode), each with assignable target
+- **Effects:** Delay with feedback/damping, convolution reverb (EMT 140 plate impulse responses, thanks to [Greg Hopkins](https://oramics.github.io/sampled/IR/EMT140-Plate/), CC BY), algorithmic reverb, limiter
+- **Sequencer:** Step sequencer (2-32 steps) with per-step note/velocity/gate/glide, 10 built-in patterns, save/load for custom patterns
+- **Generative Sequencer:** Euclidean rhythm (Bjorklund) + Turing Machine melodic mutation + parameter drift. Self-evolving patterns with scale quantization.
+- **Arpeggiator:** Serial after sequencer (Up/Down/UpDown/Random, 1-4 octaves, musical rate divisions including triplets)
 - **Presets:** .t5p format stores parameters + generated audio + embeddings — loading a preset does not require regeneration
 - **Platforms:** macOS (MPS acceleration on Apple Silicon), Linux (CUDA), CPU fallback
 
@@ -110,8 +128,8 @@ The point of wrapping a radically unconventional oscillator in a conventional sy
                         │                              ▼              │
                         │  ┌────────────────────────────────────────┐ │
                         │  │ DiT (Diffusion Transformer)           │ │
-                        │  │ 20 denoising steps, CFG guidance      │ │
                         │  │ BrownianTree SDE sampler (torchsde)   │ │
+                        │  │ CFG guidance                          │ │
                         │  └───────────────────┬────────────────────┘ │
                         │                      ▼                      │
                         │  ┌────────────────────────────────────────┐ │
@@ -145,21 +163,21 @@ The point of wrapping a radically unconventional oscillator in a conventional sy
                         │         ▼                                   │
                         │  ┌─────────────────────────────────────┐   │
                         │  │ Per Voice:                          │   │
-                        │  │   Amp Envelope (ADSR + loop)       │   │
-                        │  │   2× Mod Envelopes → mod matrix    │   │
+                        │  │   3× Envelopes (assignable targets) │   │
                         │  │   Filter (SVF: LP/HP/BP, 6-24dB)   │   │
                         │  └────────────────┬────────────────────┘   │
                         │                   ▼                         │
                         │  ┌─────────────────────────────────────┐   │
                         │  │ Global:                             │   │
-                        │  │   2× LFO (sin/tri/saw/sq/S&H)     │   │
+                        │  │   2× LFO (sin/tri/saw/sq)          │   │
                         │  │   3× Drift LFO (slow modulation)   │   │
+                        │  │   Drift → Alpha/Axes → Auto-Regen  │   │
                         │  │   Delay (feedback + damping)        │   │
-                        │  │   Reverb (EMT 140 convolution)      │   │
+                        │  │   Reverb (EMT 140 convolution/algo) │   │
                         │  │   Limiter                           │   │
                         │  └────────────────┬────────────────────┘   │
                         │                   ▼                         │
-                        │  Sequencer (16-step) / Arpeggiator         │
+                        │  Sequencer (step/gen) → Arpeggiator        │
                         │                   │                         │
                         │                   ▼                         │
                         │              Stereo Out                     │
@@ -211,10 +229,13 @@ cmake --build build
 
 ### Model Download
 
-T5ynth requires the Stable Audio Open 1.0 model (~11GB). On first launch, use the Settings panel to either:
+T5ynth requires at least one diffusion model. Models are not bundled — they must be downloaded separately.
 
-1. **Auto-download:** Enter your [HuggingFace token](https://huggingface.co/settings/tokens) (requires accepting the [model license](https://huggingface.co/stabilityai/stable-audio-open-1.0)) and click Download
-2. **Manual:** Place the model files in `~/Library/T5ynth/models/stable-audio-open-1.0/` (macOS) or `~/.local/share/T5ynth/models/stable-audio-open-1.0/` (Linux)
+On first launch, use the **Settings** panel to either:
+
+1. **Stable Audio Open 1.0** (~11GB): Enter your [HuggingFace token](https://huggingface.co/settings/tokens) (requires accepting the [model license](https://huggingface.co/stabilityai/stable-audio-open-1.0)) and click Download
+2. **Stable Audio Small**: Downloads from GitHub Releases, no token needed
+3. **Manual:** Place model files in `~/Library/T5ynth/models/` (macOS) or `~/.local/share/T5ynth/models/` (Linux)
 
 ---
 
