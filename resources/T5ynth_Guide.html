@@ -240,23 +240,13 @@ without whom AI4ArtsEd would not have come into being.
 <h2 id="setup">Setup: Models &amp; Python Backend</h2>
 
 <p>
-T5ynth consists of two parts: a <strong>JUCE audio plugin</strong> (the synthesizer UI and DSP) and a <strong>Python backend</strong> (the inference engine that runs the diffusion model). Both must be set up before T5ynth can generate audio.
-</p>
-
-<h3>Python Environment</h3>
-<p>
-T5ynth needs a Python virtual environment with the required ML libraries (PyTorch, Diffusers, Transformers, etc.). From the repository root:
-</p>
-<div class="signal-chain">python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt</div>
-<p>
-T5ynth automatically finds the venv at <code>.venv/</code> relative to the application. No manual path configuration needed.
+T5ynth handles the Python backend transparently — you don't need to set up a Python environment yourself. The only thing you need to do is <strong>download at least one model</strong>.
 </p>
 
 <h3>Model Download</h3>
 <p>
-T5ynth requires at least one diffusion model. Models are <strong>not bundled</strong> — they must be downloaded separately (Stable Audio Open 1.0 is ~11 GB).
+T5ynth requires at least one diffusion model. Models are <strong>not bundled</strong> — they must be downloaded separately.
+We recommend starting with <strong>Stable Audio Small</strong> — it's a smaller download, requires no HuggingFace account, and generates faster (useful for getting to know the synth). You can always add Stable Audio Open 1.0 later for higher quality.
 </p>
 
 <h4>Via the Settings panel (recommended)</h4>
@@ -264,8 +254,8 @@ T5ynth requires at least one diffusion model. Models are <strong>not bundled</st
   <li>Launch T5ynth and click <strong>Settings</strong> (gear icon in the status bar)</li>
   <li>Select the model you want to install:
     <ul>
-      <li><strong>Stable Audio Open 1.0</strong> — requires a <a href="https://huggingface.co/settings/tokens">HuggingFace token</a> (free account). Enter the token, then click Download.</li>
-      <li><strong>Stable Audio Small</strong> — downloads from GitHub Releases, no token needed.</li>
+      <li><strong>Stable Audio Small</strong> (recommended to start) — downloads from GitHub Releases, no token needed.</li>
+      <li><strong>Stable Audio Open 1.0</strong> (~11 GB) — higher quality, but requires a <a href="https://huggingface.co/settings/tokens">HuggingFace token</a> (free account). Enter the token, then click Download.</li>
     </ul>
   </li>
   <li>Wait for the download to complete (progress bar shown). The model is stored in the application data directory.</li>
