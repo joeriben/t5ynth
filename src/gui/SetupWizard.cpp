@@ -251,12 +251,12 @@ void SettingsPage::startDownload()
     {
         auto& km = kKnownModels[idx];
         auto licenseUrl = juce::String(km.licenseUrl);
-        int result = juce::AlertWindow::showOkCancelBox(
+        bool accepted = juce::AlertWindow::showOkCancelBox(
             juce::MessageBoxIconType::InfoIcon,
             juce::String(km.displayName) + " — License",
             juce::String(km.licenseNotice) + "\n\nFull license: " + licenseUrl,
-            "Accept & Download", "Cancel", this, nullptr);
-        if (result == 0)
+            "Accept & Download", "Cancel", nullptr, nullptr);
+        if (!accepted)
             return;
     }
 
