@@ -92,6 +92,9 @@ void SynthVoice::configureForBlock(const BlockParams& p)
     ampEnv.setSustain(p.ampSustain);
     ampEnv.setRelease(p.ampRelease);
     ampEnv.setLooping(p.ampLoop);
+    ampEnv.setAttackCurve(static_cast<CurveShape>(p.ampAttackCurve));
+    ampEnv.setDecayCurve(static_cast<CurveShape>(p.ampDecayCurve));
+    ampEnv.setReleaseCurve(static_cast<CurveShape>(p.ampReleaseCurve));
     ampVelSens_ = p.ampVelSens;
 
     modEnv1.setAttack(p.mod1Attack);
@@ -99,6 +102,9 @@ void SynthVoice::configureForBlock(const BlockParams& p)
     modEnv1.setSustain(p.mod1Sustain);
     modEnv1.setRelease(p.mod1Release);
     modEnv1.setLooping(p.mod1Loop);
+    modEnv1.setAttackCurve(static_cast<CurveShape>(p.mod1AttackCurve));
+    modEnv1.setDecayCurve(static_cast<CurveShape>(p.mod1DecayCurve));
+    modEnv1.setReleaseCurve(static_cast<CurveShape>(p.mod1ReleaseCurve));
     mod1VelSens_ = p.mod1VelSens;
 
     modEnv2.setAttack(p.mod2Attack);
@@ -106,6 +112,9 @@ void SynthVoice::configureForBlock(const BlockParams& p)
     modEnv2.setSustain(p.mod2Sustain);
     modEnv2.setRelease(p.mod2Release);
     modEnv2.setLooping(p.mod2Loop);
+    modEnv2.setAttackCurve(static_cast<CurveShape>(p.mod2AttackCurve));
+    modEnv2.setDecayCurve(static_cast<CurveShape>(p.mod2DecayCurve));
+    modEnv2.setReleaseCurve(static_cast<CurveShape>(p.mod2ReleaseCurve));
     mod2VelSens_ = p.mod2VelSens;
 }
 

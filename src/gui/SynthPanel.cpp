@@ -15,6 +15,8 @@ static juce::String fmtHzF2(double v){ return juce::String(v, 2) + " Hz"; }
 void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultTarget,
                           const juce::String& aId, const juce::String& dId,
                           const juce::String& sId, const juce::String& rId,
+                          const juce::String& aCurveId, const juce::String& dCurveId,
+                          const juce::String& rCurveId,
                           const juce::String& amtId, const juce::String& velId,
                           const juce::String& loopId,
                           juce::AudioProcessorValueTreeState& apvts)
@@ -51,6 +53,33 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.amtA = std::make_unique<SA>(apvts, amtId, env.amtRow->getSlider());
     env.velA = std::make_unique<SA>(apvts, velId,  env.velRow->getSlider());
     env.loopA = std::make_unique<BA>(apvts, loopId, env.loopToggle);
+
+    // ── Curve shape cycling buttons ──
+    auto setupCurveBtn = [this](juce::TextButton& btn, juce::ComboBox& hidden,
+                                const juce::String& paramId,
+                                juce::AudioProcessorValueTreeState& vts,
+                                std::unique_ptr<CA>& attachment) {
+        hidden.addItemList({"Log", "Lin", "Exp"}, 1);
+        hidden.onChange = [&btn, &hidden] {
+            static const char* labels[] = {"Log", "Lin", "Exp"};
+            int idx = hidden.getSelectedId() - 1;
+            if (idx >= 0 && idx <= 2)
+                btn.setButtonText(labels[idx]);
+        };
+        btn.onClick = [&hidden] {
+            int next = (hidden.getSelectedId() % 3) + 1;
+            hidden.setSelectedId(next);
+        };
+        btn.setColour(juce::TextButton::textColourOffId, kEnvCol);
+        btn.setColour(juce::TextButton::buttonColourId, kSurface);
+        addAndMakeVisible(btn);
+        attachment = std::make_unique<CA>(vts, paramId, hidden);
+        // Sync button text with initial parameter value
+        hidden.onChange();
+    };
+    setupCurveBtn(env.aCurveBtn, env.aCurveHidden, aCurveId, apvts, env.aCurveA);
+    setupCurveBtn(env.dCurveBtn, env.dCurveHidden, dCurveId, apvts, env.dCurveA);
+    setupCurveBtn(env.rCurveBtn, env.rCurveHidden, rCurveId, apvts, env.rCurveA);
 
     // Trigger initial value display
     env.aRow->updateValue();
@@ -455,9 +484,15 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     kbdTrackRow->updateValue();
 
     // ── Envelopes ──
-    initEnv(ampEnv,  "ENV 1", 2, "amp_attack",  "amp_decay",  "amp_sustain",  "amp_release",  "amp_amount",  "amp_vel_sens",  "amp_loop",  apvts);
-    initEnv(mod1Env, "ENV 2", 1, "mod1_attack", "mod1_decay", "mod1_sustain", "mod1_release", "mod1_amount", "mod1_vel_sens", "mod1_loop", apvts);
-    initEnv(mod2Env, "ENV 3", 1, "mod2_attack", "mod2_decay", "mod2_sustain", "mod2_release", "mod2_amount", "mod2_vel_sens", "mod2_loop", apvts);
+    initEnv(ampEnv,  "ENV 1", 2, "amp_attack",  "amp_decay",  "amp_sustain",  "amp_release",
+            "amp_attack_curve", "amp_decay_curve", "amp_release_curve",
+            "amp_amount",  "amp_vel_sens",  "amp_loop",  apvts);
+    initEnv(mod1Env, "ENV 2", 1, "mod1_attack", "mod1_decay", "mod1_sustain", "mod1_release",
+            "mod1_attack_curve", "mod1_decay_curve", "mod1_release_curve",
+            "mod1_amount", "mod1_vel_sens", "mod1_loop", apvts);
+    initEnv(mod2Env, "ENV 3", 1, "mod2_attack", "mod2_decay", "mod2_sustain", "mod2_release",
+            "mod2_attack_curve", "mod2_decay_curve", "mod2_release_curve",
+            "mod2_amount", "mod2_vel_sens", "mod2_loop", apvts);
 
     // ── LFOs ──
     initLfo(lfo1, "LFO 1", "lfo1_rate", "lfo1_depth", "lfo1_wave", "lfo1_mode", apvts);
@@ -736,15 +771,20 @@ void SynthPanel::layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float f,
 
     // Always allocate space — inactive sections are dimmed, not hidden
     int colW = (area.getWidth() - 4) / 2;
+    int btnW = juce::jmax(24, juce::roundToInt(colW * 0.16f));
 
     auto adRow = area.removeFromTop(rowH);
-    env.aRow->setBounds(adRow.removeFromLeft(colW));
+    auto aArea = adRow.removeFromLeft(colW);
     adRow.removeFromLeft(4);
+    env.aCurveBtn.setBounds(aArea.removeFromRight(btnW));
+    env.aRow->setBounds(aArea);
+    env.dCurveBtn.setBounds(adRow.removeFromRight(btnW));
     env.dRow->setBounds(adRow);
 
     auto srRow = area.removeFromTop(rowH);
     env.sRow->setBounds(srRow.removeFromLeft(colW));
     srRow.removeFromLeft(4);
+    env.rCurveBtn.setBounds(srRow.removeFromRight(btnW));
     env.rRow->setBounds(srRow);
 
     auto amtRow = area.removeFromTop(rowH);

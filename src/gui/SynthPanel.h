@@ -91,6 +91,11 @@ private:
         std::unique_ptr<SliderRow> aRow, dRow, sRow, rRow, amtRow, velRow;
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> aA, dA, sA, rA, amtA, velA;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopA;
+
+        // Curve shape cycling buttons (Log/Lin/Exp)
+        juce::TextButton aCurveBtn { "Lin" }, dCurveBtn { "Lin" }, rCurveBtn { "Exp" };
+        juce::ComboBox aCurveHidden, dCurveHidden, rCurveHidden;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aCurveA, dCurveA, rCurveA;
     };
     EnvSection ampEnv, mod1Env, mod2Env;
 
@@ -142,6 +147,8 @@ private:
     void initEnv(EnvSection& env, const juce::String& name, int defaultTarget,
                  const juce::String& aId, const juce::String& dId,
                  const juce::String& sId, const juce::String& rId,
+                 const juce::String& aCurveId, const juce::String& dCurveId,
+                 const juce::String& rCurveId,
                  const juce::String& amtId, const juce::String& velId,
                  const juce::String& loopId,
                  juce::AudioProcessorValueTreeState& apvts);

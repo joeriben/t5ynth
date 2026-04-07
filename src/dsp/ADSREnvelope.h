@@ -2,16 +2,24 @@
 #include <cmath>
 #include <algorithm>
 
+/** Curve shapes for envelope stages. */
+enum class CurveShape : int { Log = 0, Lin = 1, Exp = 2 };
+
 /**
- * ADSR envelope — exact port of useModulation.ts DCA/callback envelope logic.
+ * ADSR envelope with per-stage curve shaping.
  *
- * DCA behavior (from reference):
- *   Attack:  linear ramp from current level to velocity × amount (soft retrigger)
- *   Decay:   linear ramp from peak to sustain × peak
+ * DCA behavior:
+ *   Attack:  ramp from current level to velocity × amount (soft retrigger)
+ *   Decay:   ramp from peak to sustain × peak
  *   Sustain: holds at sustain × peak
- *   Release: RC-discharge e^(-t/τ), τ = releaseMs/5, then hard-zero
+ *   Release: ramp to zero, then hard-zero at -80dB threshold
  *   Loop:    re-triggers Attack when sustain is reached
  *   Minimum ramp: 3ms for all stages
+ *
+ * Curve shapes (Log/Lin/Exp):
+ *   Exp — fast initial change, decelerates (concave)
+ *   Lin — constant rate (linear)
+ *   Log — slow initial change, accelerates (convex)
  */
 class ADSREnvelope
 {
@@ -22,8 +30,12 @@ public:
 
     void setAttack(float ms)      { attackMs = std::max(0.0f, ms); }
     void setDecay(float ms)       { decayMs = std::max(0.0f, ms); }
-    void setSustain(float level)   { sustainLevel = std::clamp(level, 0.0f, 1.0f); }
+    void setSustain(float level)   { sustainLevel = std::max(0.0f, std::min(1.0f, level)); }
     void setRelease(float ms)     { releaseMs = std::max(0.0f, ms); }
+
+    void setAttackCurve(CurveShape s)   { attackCurve = s; }
+    void setDecayCurve(CurveShape s)    { decayCurve = s; }
+    void setReleaseCurve(CurveShape s)  { releaseCurve = s; }
 
     void noteOn(float velocity = 1.0f);
     void noteOff();
@@ -48,24 +60,37 @@ private:
     float sustainLevel = 1.0f;
     float releaseMs    = 0.0f;
 
+    CurveShape attackCurve  = CurveShape::Lin;
+    CurveShape decayCurve   = CurveShape::Lin;
+    CurveShape releaseCurve = CurveShape::Exp;
+
     float currentLevel   = 0.0f;
     float targetVelocity = 1.0f;
 
-    // Attack/Decay: linear ramp targets and per-sample increment
-    float attackTarget   = 1.0f;
-    float attackIncr     = 0.0f;
-    float decayTarget    = 1.0f;
-    float decayIncr      = 0.0f;
+    // Attack: progress-based
+    float attackStartLevel   = 0.0f;
+    float attackTarget       = 1.0f;
+    int   attackSampleCount  = 0;
+    int   attackTotalSamples = 1;
 
-    // Release: RC-discharge state
-    float releaseStartLevel = 0.0f;
-    float releaseTau        = 0.01f;  // time constant in seconds (releaseMs/5)
-    int   releaseSampleCount = 0;
-    int   releaseTotalSamples = 0;
+    // Decay: progress-based
+    float decayStartLevel   = 1.0f;
+    float decayTarget       = 1.0f;
+    int   decaySampleCount  = 0;
+    int   decayTotalSamples = 1;
+
+    // Release: RC-discharge for Exp, progress-based for Lin/Log
+    float releaseStartLevel  = 0.0f;
+    float releaseTau         = 0.01f;  // time constant in seconds (releaseMs/5)
+    int   releaseSampleCount  = 0;
+    int   releaseTotalSamples = 1;
 
     double sr = 44100.0;
     bool bypassed = false;
     bool looping  = false;
 
     static constexpr float MIN_RAMP_SEC = 0.003f; // 3ms minimum ramp
+
+    /** Apply curve shaping to normalized progress t ∈ [0,1]. */
+    static float applyCurve(float t, CurveShape shape);
 };

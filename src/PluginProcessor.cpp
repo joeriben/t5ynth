@@ -267,6 +267,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"mod2_loop", 1}, "Mod2 Loop", false));
 
+    // ENV Curve shapes (0=Log, 1=Lin, 2=Exp)  —  A/D default Lin, R default Exp
+    juce::StringArray curveChoices {"Log", "Lin", "Exp"};
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"amp_attack_curve", 1},  "Amp Attack Curve",  curveChoices, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"amp_decay_curve", 1},   "Amp Decay Curve",   curveChoices, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"amp_release_curve", 1}, "Amp Release Curve", curveChoices, 2));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"mod1_attack_curve", 1},  "Mod1 Attack Curve",  curveChoices, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"mod1_decay_curve", 1},   "Mod1 Decay Curve",   curveChoices, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"mod1_release_curve", 1}, "Mod1 Release Curve", curveChoices, 2));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"mod2_attack_curve", 1},  "Mod2 Attack Curve",  curveChoices, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"mod2_decay_curve", 1},   "Mod2 Decay Curve",   curveChoices, 1));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"mod2_release_curve", 1}, "Mod2 Release Curve", curveChoices, 2));
+
     // ENV targets:
     // 0=None, 1=DCA, 2=Filter, 3=Scan, 4=Pitch, 5=DelayTime, 6=DelayFB, 7=DelayMix, 8=ReverbMix,
     // 9=LFO1Rate, 10=LFO1Depth, 11=LFO2Rate, 12=LFO2Depth
@@ -525,6 +546,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.ampAmount  = parameters.getRawParameterValue("amp_amount")->load();
     bp.ampVelSens = parameters.getRawParameterValue("amp_vel_sens")->load();
     bp.ampLoop    = parameters.getRawParameterValue("amp_loop")->load() > 0.5f;
+    bp.ampAttackCurve  = static_cast<int>(parameters.getRawParameterValue("amp_attack_curve")->load());
+    bp.ampDecayCurve   = static_cast<int>(parameters.getRawParameterValue("amp_decay_curve")->load());
+    bp.ampReleaseCurve = static_cast<int>(parameters.getRawParameterValue("amp_release_curve")->load());
 
     bp.mod1Attack  = parameters.getRawParameterValue("mod1_attack")->load();
     bp.mod1Decay   = parameters.getRawParameterValue("mod1_decay")->load();
@@ -534,6 +558,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.mod1VelSens = parameters.getRawParameterValue("mod1_vel_sens")->load();
     bp.mod1Target  = static_cast<int>(parameters.getRawParameterValue("mod1_target")->load());
     bp.mod1Loop    = parameters.getRawParameterValue("mod1_loop")->load() > 0.5f;
+    bp.mod1AttackCurve  = static_cast<int>(parameters.getRawParameterValue("mod1_attack_curve")->load());
+    bp.mod1DecayCurve   = static_cast<int>(parameters.getRawParameterValue("mod1_decay_curve")->load());
+    bp.mod1ReleaseCurve = static_cast<int>(parameters.getRawParameterValue("mod1_release_curve")->load());
 
     bp.mod2Attack  = parameters.getRawParameterValue("mod2_attack")->load();
     bp.mod2Decay   = parameters.getRawParameterValue("mod2_decay")->load();
@@ -543,6 +570,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.mod2VelSens = parameters.getRawParameterValue("mod2_vel_sens")->load();
     bp.mod2Target  = static_cast<int>(parameters.getRawParameterValue("mod2_target")->load());
     bp.mod2Loop    = parameters.getRawParameterValue("mod2_loop")->load() > 0.5f;
+    bp.mod2AttackCurve  = static_cast<int>(parameters.getRawParameterValue("mod2_attack_curve")->load());
+    bp.mod2DecayCurve   = static_cast<int>(parameters.getRawParameterValue("mod2_decay_curve")->load());
+    bp.mod2ReleaseCurve = static_cast<int>(parameters.getRawParameterValue("mod2_release_curve")->load());
 
     // LFOs (global)
     lfo1.setRate(parameters.getRawParameterValue("lfo1_rate")->load());
