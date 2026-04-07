@@ -15,7 +15,7 @@ Output:
 
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 # ── Hidden imports ──────────────────────────────────────────────────
 # PyInstaller's static analysis misses lazy imports and plugin-style loaders.
@@ -40,6 +40,23 @@ hidden += collect_submodules('stable_audio_tools')
 
 # safetensors: used by diffusers/transformers for .safetensors loading
 hidden += ['safetensors', 'safetensors.torch']
+
+# requests: needed by transformers for model metadata/downloads
+hidden += ['requests']
+
+# ── Package metadata ──────────────────────────────────────────────
+# transformers checks dependency versions via importlib.metadata at import time
+datas += copy_metadata('requests')
+datas += copy_metadata('transformers')
+datas += copy_metadata('torch')
+datas += copy_metadata('safetensors')
+datas += copy_metadata('huggingface_hub')
+datas += copy_metadata('filelock')
+datas += copy_metadata('pyyaml')
+datas += copy_metadata('regex')
+datas += copy_metadata('packaging')
+datas += copy_metadata('tqdm')
+datas += copy_metadata('numpy')
 
 # accelerate: used by diffusers for device placement
 hidden += collect_submodules('accelerate')
