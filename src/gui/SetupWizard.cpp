@@ -15,16 +15,40 @@ static bool hasModelMarker(const juce::File& dir)
 
 // Known downloadable models — extend this list to add new engines
 // ghRelease: if non-empty, download from GitHub Releases (no token needed)
+// licenseNotice: shown in confirmation dialog before download
 struct KnownModel {
     const char* id;
     const char* displayName;
     const char* hfRepo;       // HuggingFace repo (for models that need HF download)
     const char* ghRelease;    // GitHub Release tag URL base (nullptr = use HF)
+    const char* licenseUrl;   // URL to full license text
+    const char* licenseNotice;// Shown in confirmation dialog before download
 };
 static const KnownModel kKnownModels[] = {
-    { "stable-audio-open-1.0",   "Stable Audio 1.0",          "stabilityai/stable-audio-open-1.0", nullptr },
+    { "stable-audio-open-1.0",   "Stable Audio 1.0",          "stabilityai/stable-audio-open-1.0", nullptr,
+      "https://stability.ai/community-license-agreement",
+      "This model is licensed under the Stability AI Community License.\n\n"
+      "- Non-commercial use: free\n"
+      "- Commercial use under $1M annual revenue: free (register at stability.ai)\n"
+      "- Commercial use over $1M: enterprise license required\n\n"
+      "T5ynth does not provide the model weights. By downloading, you accept\n"
+      "the license terms and take responsibility for compliance." },
     { "stable-audio-open-small", "Stable Audio Small (fast)",  "stabilityai/stable-audio-open-small",
-      "https://github.com/joeriben/t5ynth/releases/download/models-v1" },
+      "https://github.com/joeriben/t5ynth/releases/download/models-v1",
+      "https://stability.ai/community-license-agreement",
+      "This model is licensed under the Stability AI Community License.\n\n"
+      "- Non-commercial use: free\n"
+      "- Commercial use under $1M annual revenue: free (register at stability.ai)\n"
+      "- Commercial use over $1M: enterprise license required\n\n"
+      "T5ynth does not provide the model weights. By downloading, you accept\n"
+      "the license terms and take responsibility for compliance." },
+    { "audioldm2",               "AudioLDM2 (experimental)",   "cvssp/audioldm2", nullptr,
+      "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "This model is licensed under CC BY-NC-SA 4.0.\n\n"
+      "- Non-commercial use only (no revenue threshold, no exceptions)\n"
+      "- Commercial use is NOT permitted under this license\n\n"
+      "T5ynth does not provide the model weights. By downloading, you accept\n"
+      "the license terms and take responsibility for compliance." },
 };
 static constexpr int kNumKnownModels = sizeof(kKnownModels) / sizeof(kKnownModels[0]);
 
@@ -221,6 +245,21 @@ void SettingsPage::browseForModel()
 // ── Download ────────────────────────────────────────────────────────────────
 void SettingsPage::startDownload()
 {
+    // Show license confirmation dialog before any download
+    int idx = modelChooser.getSelectedItemIndex();
+    if (idx >= 0 && idx < kNumKnownModels && kKnownModels[idx].licenseNotice != nullptr)
+    {
+        auto& km = kKnownModels[idx];
+        auto licenseUrl = juce::String(km.licenseUrl);
+        int result = juce::AlertWindow::showOkCancelBox(
+            juce::MessageBoxIconType::InfoIcon,
+            juce::String(km.displayName) + " — License",
+            juce::String(km.licenseNotice) + "\n\nFull license: " + licenseUrl,
+            "Accept & Download", "Cancel", this, nullptr);
+        if (result == 0)
+            return;
+    }
+
     auto ghRelease = selectedGhRelease();
 
     // GitHub Releases: no token needed

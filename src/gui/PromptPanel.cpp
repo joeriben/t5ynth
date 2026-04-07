@@ -199,10 +199,13 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
                 // Apply model-specific parameter defaults
                 auto& apvts = processorRef.getValueTreeState();
                 bool isSmall = model.containsIgnoreCase("small");
+                bool isAudioLDM2 = model.containsIgnoreCase("audioldm");
+                float defaultSteps = isSmall ? 8.0f : (isAudioLDM2 ? 50.0f : 20.0f);
+                float defaultCfg   = isSmall ? 1.0f : (isAudioLDM2 ? 3.5f : 7.0f);
                 apvts.getParameter("inf_steps")->setValueNotifyingHost(
-                    apvts.getParameter("inf_steps")->convertTo0to1(isSmall ? 8.0f : 20.0f));
+                    apvts.getParameter("inf_steps")->convertTo0to1(defaultSteps));
                 apvts.getParameter("gen_cfg")->setValueNotifyingHost(
-                    apvts.getParameter("gen_cfg")->convertTo0to1(isSmall ? 1.0f : 7.0f));
+                    apvts.getParameter("gen_cfg")->convertTo0to1(defaultCfg));
 
                 // Preload model in background so first generate is instant
                 if (onStatusChanged) onStatusChanged("Loading " + model + "...", true);
@@ -579,14 +582,19 @@ void PromptPanel::triggerGenerationWithOffsets(std::vector<std::pair<int, float>
 // Shared request builder
 // ──────────────────────────────────────────────────────────────────────────────
 PipeInference::Request PromptPanel::buildInferenceRequest(
-    float alphaOverride, std::map<juce::String, float> axesOverride)
+    float alphaOverride, std::map<juce::String, float> axesOverride,
+    float noiseOverride, float magnitudeOverride)
 {
     auto& apvts = processorRef.getValueTreeState();
     float alpha = std::isnan(alphaOverride)
                       ? apvts.getRawParameterValue("gen_alpha")->load()
                       : alphaOverride;
-    float magnitude = apvts.getRawParameterValue("gen_magnitude")->load();
-    float noiseSigma = apvts.getRawParameterValue("gen_noise")->load();
+    float magnitude = std::isnan(magnitudeOverride)
+                          ? apvts.getRawParameterValue("gen_magnitude")->load()
+                          : magnitudeOverride;
+    float noiseSigma = std::isnan(noiseOverride)
+                           ? apvts.getRawParameterValue("gen_noise")->load()
+                           : noiseOverride;
     float duration = apvts.getRawParameterValue("gen_duration")->load();
     float startPos = apvts.getRawParameterValue("gen_start")->load();
     int steps = static_cast<int>(apvts.getRawParameterValue("inf_steps")->load());
@@ -690,6 +698,8 @@ void PromptPanel::triggerGeneration()
 // ──────────────────────────────────────────────────────────────────────────────
 void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
                                             std::map<juce::String, float> effectiveAxes,
+                                            float effectiveNoise,
+                                            float effectiveMagnitude,
                                             bool holdForBar)
 {
     if (generating) return;
@@ -701,9 +711,11 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
     if (onStatusChanged) onStatusChanged("drift regen...", true);
 
     lastGenAlpha_ = effectiveAlpha;
+    lastGenNoise_ = effectiveNoise;
+    lastGenMagnitude_ = effectiveMagnitude;
     lastGenAxes_ = effectiveAxes;
 
-    auto req = buildInferenceRequest(effectiveAlpha, effectiveAxes);
+    auto req = buildInferenceRequest(effectiveAlpha, effectiveAxes, effectiveNoise, effectiveMagnitude);
     auto* processor = &processorRef;
     std::thread([this, processor, req, holdForBar]()
     {
@@ -788,6 +800,8 @@ void PromptPanel::pollDriftRegen()
     float dAxis1 = mv.driftAxis1.load(std::memory_order_relaxed);
     float dAxis2 = mv.driftAxis2.load(std::memory_order_relaxed);
     float dAxis3 = mv.driftAxis3.load(std::memory_order_relaxed);
+    float effNoise = mv.driftNoise.load(std::memory_order_relaxed);
+    float effMag   = mv.driftMagnitude.load(std::memory_order_relaxed);
 
     // Build effective axes: AxesPanel base values + per-slot drift offsets
     std::map<juce::String, float> effAxes;
@@ -804,6 +818,12 @@ void PromptPanel::pollDriftRegen()
     bool alphaChanged = !std::isnan(effAlpha) &&
         (std::isnan(lastGenAlpha_) || std::abs(effAlpha - lastGenAlpha_) > DRIFT_THRESHOLD);
 
+    bool noiseChanged = !std::isnan(effNoise) &&
+        (std::isnan(lastGenNoise_) || std::abs(effNoise - lastGenNoise_) > DRIFT_THRESHOLD);
+
+    bool magChanged = !std::isnan(effMag) &&
+        (std::isnan(lastGenMagnitude_) || std::abs(effMag - lastGenMagnitude_) > DRIFT_THRESHOLD);
+
     bool axesChanged = false;
     for (auto& [key, val] : effAxes)
     {
@@ -815,12 +835,16 @@ void PromptPanel::pollDriftRegen()
         }
     }
 
-    if (!alphaChanged && !axesChanged) return;
+    if (!alphaChanged && !axesChanged && !noiseChanged && !magChanged) return;
 
+    auto& apvts = processorRef.getValueTreeState();
     float genAlpha = std::isnan(effAlpha)
-        ? processorRef.getValueTreeState().getRawParameterValue("gen_alpha")->load()
-        : effAlpha;
+        ? apvts.getRawParameterValue("gen_alpha")->load() : effAlpha;
+    float genNoise = std::isnan(effNoise)
+        ? apvts.getRawParameterValue("gen_noise")->load() : effNoise;
+    float genMag = std::isnan(effMag)
+        ? apvts.getRawParameterValue("gen_magnitude")->load() : effMag;
 
     bool holdForBar = (regenMode == 2); // 1st Bar
-    triggerDriftRegeneration(genAlpha, effAxes, holdForBar);
+    triggerDriftRegeneration(genAlpha, effAxes, genNoise, genMag, holdForBar);
 }

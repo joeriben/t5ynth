@@ -55,8 +55,16 @@ log = logging.getLogger("pipe_inference")
 # ─── Model loading ──────────────────────────────────────────────────
 
 def _model_format(model_dir):
-    """Detect model format. Returns 'diffusers', 'native', or None."""
-    if (model_dir / "model_index.json").is_file():
+    """Detect model format. Returns 'diffusers', 'audioldm2', 'native', or None."""
+    model_index = model_dir / "model_index.json"
+    if model_index.is_file():
+        try:
+            with open(model_index) as f:
+                idx = json.load(f)
+            if "AudioLDM2" in idx.get("_class_name", ""):
+                return "audioldm2"
+        except (json.JSONDecodeError, OSError):
+            pass
         return "diffusers"
     if (model_dir / "model_config.json").is_file():
         return "native"
@@ -140,6 +148,8 @@ def load_pipeline(model_dir, device):
     """Load pipeline on a specific device. Dispatches by format."""
     model_name = model_dir.name
     fmt = _model_formats.get(model_name, "diffusers")
+    if fmt == "audioldm2":
+        return _load_audioldm2_pipeline(model_dir, device)
     if fmt == "native":
         return _load_native_pipeline(model_dir, device)
     return _load_diffusers_pipeline(model_dir, device)
@@ -207,6 +217,40 @@ class NativePipeline:
         return self._t5_conditioner.model if self._t5_conditioner else None
 
 
+class AudioLDM2Wrapper:
+    """Wrapper for AudioLDM2Pipeline with metadata for routing."""
+
+    def __init__(self, pipe, device):
+        self.pipe = pipe
+        self.device = device
+        self.sample_rate = 16000
+        self.target_sample_rate = 44100
+
+    @property
+    def tokenizer(self):
+        return self.pipe.tokenizer_2
+
+    @property
+    def text_encoder(self):
+        return self.pipe.text_encoder_2
+
+
+def _load_audioldm2_pipeline(model_dir, device):
+    """Load AudioLDM2Pipeline from diffusers format."""
+    from diffusers import AudioLDM2Pipeline
+
+    log.info(f"Loading AudioLDM2 pipeline from {model_dir} on {device}...")
+    pipe = AudioLDM2Pipeline.from_pretrained(str(model_dir), torch_dtype=torch.float32)
+    pipe = pipe.to(device)
+
+    if device in ("mps", "cpu"):
+        pipe.enable_attention_slicing()
+        log.info(f"Attention slicing enabled for AudioLDM2 on {device}")
+
+    log.info(f"AudioLDM2 pipeline loaded on {device}.")
+    return AudioLDM2Wrapper(pipe, device)
+
+
 def _load_native_pipeline(model_dir, device):
     """Load native stable-audio-tools model."""
     _mock_optional_deps()
@@ -251,6 +295,18 @@ def load_default_model(model_name, devices):
     if not loaded:
         raise RuntimeError(f"Could not load {model_name} on any device")
     return loaded
+
+
+# ─── Audio resampling ────────────────────────────────────────────────
+
+def _resample_audio(audio_np, from_sr, to_sr):
+    """Resample audio array [channels, samples] from from_sr to to_sr."""
+    if from_sr == to_sr:
+        return audio_np
+    from scipy.signal import resample_poly
+    gcd = math.gcd(to_sr, from_sr)
+    up, down = to_sr // gcd, from_sr // gcd
+    return resample_poly(audio_np, up, down, axis=-1).astype(np.float32)
 
 
 # ─── Latent cache ────────────────────────────────────────────────────
@@ -393,6 +449,134 @@ def _mean_pool(emb, mask):
     return pooled.squeeze(0).cpu().float().numpy()  # [768]
 
 
+def _generate_audioldm2(wrapper, request):
+    """Generate audio using AudioLDM2Pipeline.
+
+    AudioLDM2 uses dual text encoders (CLAP + T5) → projection → GPT2.
+    We manipulate the projected prompt_embeds (post-projection, pre-UNet).
+    Output is resampled from 16kHz to 44.1kHz for JUCE compatibility.
+    """
+    pipe = wrapper.pipe
+    prompt_a = request.get("prompt_a", "")
+    prompt_b = request.get("prompt_b", "")
+    alpha = request.get("alpha", 0.0)
+    magnitude = request.get("magnitude", 1.0)
+    noise_sigma = request.get("noise_sigma", 0.0)
+    duration = request.get("duration", 3.0)
+    steps = request.get("steps", 50)
+    cfg_scale = request.get("cfg_scale", 3.5)
+    seed = request.get("seed", -1)
+    dim_offsets = request.get("dimension_offsets")
+
+    if seed < 0:
+        import random
+        seed = random.randint(0, 2**31 - 1)
+
+    device = wrapper.device
+    generator = torch.Generator("cpu").manual_seed(seed)
+
+    with torch.no_grad():
+        pe_a, mask_a, gpe_a = pipe.encode_prompt(
+            prompt=prompt_a, device=device,
+            num_waveforms_per_prompt=1,
+            do_classifier_free_guidance=False,
+        )
+
+        emb_a_pooled = pe_a.squeeze(0).mean(dim=0).cpu().float().numpy()
+
+        if prompt_b:
+            pe_b, mask_b, gpe_b = pipe.encode_prompt(
+                prompt=prompt_b, device=device,
+                num_waveforms_per_prompt=1,
+                do_classifier_free_guidance=False,
+            )
+            emb_b_pooled = pe_b.squeeze(0).mean(dim=0).cpu().float().numpy()
+
+            manipulated_pe = (0.5 - 0.5 * alpha) * pe_a + (0.5 + 0.5 * alpha) * pe_b
+            manipulated_gpe = (0.5 - 0.5 * alpha) * gpe_a + (0.5 + 0.5 * alpha) * gpe_b
+            mask = mask_a
+
+            if alpha < -1.0 or alpha > 1.0:
+                for tensors in [(manipulated_pe, pe_a, pe_b), (manipulated_gpe, gpe_a, gpe_b)]:
+                    manip, ref_a, ref_b = tensors
+                    ref_norm = ref_a.norm() if alpha < 0.0 else ref_b.norm()
+                    res_norm = manip.norm()
+                    if res_norm > 1e-8:
+                        manip.mul_(ref_norm / res_norm)
+        else:
+            emb_dim = pe_a.shape[-1]
+            emb_b_pooled = np.zeros(emb_dim, dtype=np.float32)
+            manipulated_pe = pe_a.clone()
+            manipulated_gpe = gpe_a.clone()
+            mask = mask_a
+
+        if abs(magnitude - 1.0) > 1e-6:
+            manipulated_pe = manipulated_pe * magnitude
+
+        if noise_sigma > 0.0:
+            rng = np.random.Generator(np.random.PCG64(seed))
+            noise_np = rng.standard_normal(manipulated_pe.shape).astype(np.float32)
+            noise = torch.from_numpy(noise_np).to(manipulated_pe.device) * noise_sigma
+            manipulated_pe = manipulated_pe + noise
+
+        if dim_offsets:
+            for idx, val in dim_offsets:
+                if 0 <= idx < manipulated_pe.shape[-1]:
+                    manipulated_pe[:, :, idx] += val
+
+        sem_axes = request.get("semantic_axes")
+        if sem_axes:
+            def audioldm2_encode(text):
+                pe, m, _ = pipe.encode_prompt(
+                    prompt=text, device=device,
+                    num_waveforms_per_prompt=1,
+                    do_classifier_free_guidance=False,
+                )
+                return pe, m
+            manipulated_pe = _apply_semantic_axes(
+                manipulated_pe, sem_axes, audioldm2_encode, "audioldm2"
+            )
+
+        neg_pe = torch.zeros_like(manipulated_pe)
+        neg_gpe = torch.zeros_like(manipulated_gpe)
+        neg_mask = torch.ones_like(mask)
+
+    offsets_str = f", {len(dim_offsets)} offsets" if dim_offsets else ""
+    log.info(f"Generating (AudioLDM2) on {device}: '{prompt_a[:60]}' ({duration}s, {steps} steps, "
+             f"CFG={cfg_scale}, mag={magnitude}, noise={noise_sigma}, seed={seed}{offsets_str})")
+    t0 = time.time()
+
+    result = pipe(
+        prompt_embeds=manipulated_pe,
+        attention_mask=mask,
+        generated_prompt_embeds=manipulated_gpe,
+        negative_prompt_embeds=neg_pe,
+        negative_attention_mask=neg_mask,
+        negative_generated_prompt_embeds=neg_gpe,
+        audio_length_in_s=duration,
+        num_inference_steps=steps,
+        guidance_scale=cfg_scale,
+        generator=generator,
+        output_type="np",
+    )
+
+    elapsed = time.time() - t0
+
+    audio_np = result.audios[0]
+    if audio_np.ndim == 1:
+        audio_np = audio_np[np.newaxis, :]
+
+    audio_np = _resample_audio(audio_np, wrapper.sample_rate, wrapper.target_sample_rate)
+
+    if audio_np.shape[0] == 1:
+        audio_np = np.vstack([audio_np, audio_np])
+
+    log.info(f"Generated (AudioLDM2) in {elapsed:.1f}s, {audio_np.shape[1]} samples @ 44.1kHz")
+
+    emb_stats = (emb_a_pooled, emb_b_pooled)
+    return audio_np, wrapper.target_sample_rate, seed, elapsed, emb_stats
+
+
 def _generate_native(pipe, request):
     """Generate audio using native stable-audio-tools pipeline (e.g. small model).
 
@@ -523,6 +707,8 @@ def generate(pipe, request):
     If "cache_as" is set in the request, the pre-VAE latent is cached for
     fast interpolation via interpolate_and_decode().
     """
+    if isinstance(pipe, AudioLDM2Wrapper):
+        return _generate_audioldm2(pipe, request)
     if isinstance(pipe, NativePipeline):
         return _generate_native(pipe, request)
     prompt_a = request.get("prompt_a", "")
@@ -770,8 +956,12 @@ def main():
             emb_stats = None
 
             if mode == "interpolate":
+                if isinstance(pipe, AudioLDM2Wrapper):
+                    raise ValueError("Latent interpolation not yet supported for AudioLDM2")
                 audio, sr, seed, elapsed = interpolate_and_decode(pipe, request)
             elif mode == "decode_cached":
+                if isinstance(pipe, AudioLDM2Wrapper):
+                    raise ValueError("Latent cache decode not yet supported for AudioLDM2")
                 audio, sr, seed, elapsed = decode_cached(pipe, request)
             else:
                 audio, sr, seed, elapsed, emb_stats = generate(pipe, request)
