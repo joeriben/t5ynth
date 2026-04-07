@@ -235,7 +235,8 @@ On first launch, use the **Settings** panel to either:
 
 1. **Stable Audio Small** (recommended to start) — smaller, faster download, no account needed
 2. **Stable Audio Open 1.0** (~11GB) — higher quality; requires a free [HuggingFace token](https://huggingface.co/settings/tokens) (read-only)
-3. **Manual:** Place model files in `~/Library/T5ynth/models/` (macOS) or `~/.local/share/T5ynth/models/` (Linux)
+3. **AudioLDM2** (experimental) — alternative engine, no account needed. Licensed under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) (non-commercial only)
+4. **Manual:** Place model files in `~/Library/T5ynth/models/` (macOS) or `~/.local/share/T5ynth/models/` (Linux)
 
 ---
 
@@ -248,6 +249,7 @@ This means you are free to use, modify, and redistribute T5ynth, provided that d
 ### Third-Party Components
 
 - **Stable Audio Open 1.0** — [Stability AI Community License](https://stability.ai/community-license-agreement). The model is not included in this repository. Users download it separately and must accept its license. Powered by Stability AI.
+- **AudioLDM2** — [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). Non-commercial use only. Not included; users download separately.
 - **JUCE Framework** — AGPLv3 (vendored in `JUCE/`)
 - See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for full details.
 

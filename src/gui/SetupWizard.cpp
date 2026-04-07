@@ -23,6 +23,7 @@ struct KnownModel {
     const char* ghRelease;    // GitHub Release tag URL base (nullptr = use HF)
     const char* licenseUrl;   // URL to full license text
     const char* licenseNotice;// Shown in confirmation dialog before download
+    bool        needsToken;   // true = gated model, HF token required
 };
 static const KnownModel kKnownModels[] = {
     { "stable-audio-open-1.0",   "Stable Audio 1.0",          "stabilityai/stable-audio-open-1.0", nullptr,
@@ -32,7 +33,7 @@ static const KnownModel kKnownModels[] = {
       "- Commercial use under $1M annual revenue: free (register at stability.ai)\n"
       "- Commercial use over $1M: enterprise license required\n\n"
       "T5ynth does not provide the model weights. By downloading, you accept\n"
-      "the license terms and take responsibility for compliance." },
+      "the license terms and take responsibility for compliance.", true },
     { "stable-audio-open-small", "Stable Audio Small (fast)",  "stabilityai/stable-audio-open-small",
       "https://github.com/joeriben/t5ynth/releases/download/models-v1",
       "https://stability.ai/community-license-agreement",
@@ -41,14 +42,14 @@ static const KnownModel kKnownModels[] = {
       "- Commercial use under $1M annual revenue: free (register at stability.ai)\n"
       "- Commercial use over $1M: enterprise license required\n\n"
       "T5ynth does not provide the model weights. By downloading, you accept\n"
-      "the license terms and take responsibility for compliance." },
+      "the license terms and take responsibility for compliance.", false },
     { "audioldm2",               "AudioLDM2 (experimental)",   "cvssp/audioldm2", nullptr,
       "https://creativecommons.org/licenses/by-nc-sa/4.0/",
       "This model is licensed under CC BY-NC-SA 4.0.\n\n"
       "- Non-commercial use only (no revenue threshold, no exceptions)\n"
       "- Commercial use is NOT permitted under this license\n\n"
       "T5ynth does not provide the model weights. By downloading, you accept\n"
-      "the license terms and take responsibility for compliance." },
+      "the license terms and take responsibility for compliance.", false },
 };
 static constexpr int kNumKnownModels = sizeof(kKnownModels) / sizeof(kKnownModels[0]);
 
@@ -88,6 +89,14 @@ juce::String SettingsPage::selectedGhRelease()
     if (idx >= 0 && idx < kNumKnownModels && kKnownModels[idx].ghRelease != nullptr)
         return kKnownModels[idx].ghRelease;
     return {};
+}
+
+bool SettingsPage::selectedNeedsToken()
+{
+    int idx = modelChooser.getSelectedItemIndex();
+    if (idx >= 0 && idx < kNumKnownModels)
+        return kKnownModels[idx].needsToken;
+    return true; // default: require token for unknown models
 }
 
 juce::File SettingsPage::getSettingsFile() const
@@ -262,8 +271,8 @@ void SettingsPage::startDownload()
 
     auto ghRelease = selectedGhRelease();
 
-    // GitHub Releases: no token needed
-    if (ghRelease.isEmpty()) {
+    // Token only required for gated HF models
+    if (ghRelease.isEmpty() && selectedNeedsToken()) {
         auto token = tokenEditor.getText().trim();
         if (token.isEmpty()) {
             downloadStatusLabel.setText("Enter your HuggingFace token first.", juce::dontSendNotification);
@@ -297,8 +306,9 @@ void SettingsPage::startDownload()
     std::thread([this, hfToken, hfRepo, modelId]() {
         juce::URL apiUrl("https://huggingface.co/api/models/" + hfRepo + "/tree/main?recursive=true");
         auto opts = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-                        .withExtraHeaders("Authorization: Bearer " + hfToken)
                         .withConnectionTimeoutMs(15000);
+        if (hfToken.isNotEmpty())
+            opts = opts.withExtraHeaders("Authorization: Bearer " + hfToken);
         auto stream = apiUrl.createInputStream(opts);
         if (!stream) {
             juce::MessageManager::callAsync([this]() {
@@ -513,8 +523,9 @@ void SettingsPage::downloadAllFilesInThread()
             // Download via createInputStream — follows HF's LFS redirects
             juce::URL fileUrl("https://huggingface.co/" + hfRepo + "/resolve/main/" + fileName);
             auto opts = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-                            .withExtraHeaders("Authorization: Bearer " + token)
                             .withConnectionTimeoutMs(30000);
+            if (token.isNotEmpty())
+                opts = opts.withExtraHeaders("Authorization: Bearer " + token);
             auto stream = fileUrl.createInputStream(opts);
 
             if (!stream)
@@ -708,7 +719,7 @@ void SettingsPage::updateStatus()
                 "Click 'Download' to get this model (no token needed).\n"
                 "  Downloads to: " + targetDir.getFullPathName() + "\n\n"
                 "Or use 'Browse...' to select an existing model directory.", false);
-        } else {
+        } else if (selectedNeedsToken()) {
             instructionsLabel.setText(
                 "DOWNLOAD:\n"
                 "  1. Go to huggingface.co/" + hfRepo + " and accept the license\n"
@@ -716,6 +727,15 @@ void SettingsPage::updateStatus()
                 "     Name: T5ynth, Type: Read (read-only is sufficient)\n"
                 "  3. Paste the token above and click 'Download'\n"
                 "  Downloads to: " + targetDir.getFullPathName() + "\n\n"
+                "MANUAL:\n"
+                "  huggingface-cli download " + hfRepo + " \\\n"
+                "    --local-dir \"" + targetDir.getFullPathName() + "\"\n"
+                "  Then click 'Auto-Scan'.", false);
+        } else {
+            instructionsLabel.setText(
+                "Click 'Download' to get this model (no token needed).\n"
+                "  Downloads to: " + targetDir.getFullPathName() + "\n\n"
+                "Or use 'Browse...' to select an existing model directory.\n\n"
                 "MANUAL:\n"
                 "  huggingface-cli download " + hfRepo + " \\\n"
                 "    --local-dir \"" + targetDir.getFullPathName() + "\"\n"

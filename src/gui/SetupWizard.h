@@ -47,6 +47,7 @@ private:
     juce::String selectedModelId();
     juce::String selectedHfRepo();
     juce::String selectedGhRelease();
+    bool selectedNeedsToken();
 
     juce::File modelPath;
 
