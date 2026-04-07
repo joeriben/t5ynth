@@ -41,6 +41,8 @@ juce_add_plugin(T5ynth
     PRODUCT_NAME "T5ynth"
     BUNDLE_ID "org.ai4artsed.t5ynth"
     DESCRIPTION "Text-to-Sound Synthesizer — T5 Embedding Space Navigation"
+    ICON_BIG "${CMAKE_SOURCE_DIR}/resources/logos/t5ynth_icon.png"
+    ICON_SMALL "${CMAKE_SOURCE_DIR}/resources/logos/t5ynth_icon.png"
     COPY_PLUGIN_AFTER_BUILD FALSE
     BLUETOOTH_PERMISSION_ENABLED TRUE
     BLUETOOTH_PERMISSION_TEXT "T5ynth uses Bluetooth to connect to MIDI controllers."
