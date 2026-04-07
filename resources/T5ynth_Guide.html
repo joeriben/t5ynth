@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T5ynth — User Guide</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --bg2: #16213e;
+    --bg3: #0f3460;
+    --text: #e0e0e0;
+    --text-dim: #a0a0b0;
+    --accent: #e94560;
+    --accent2: #ff9800;
+    --accent3: #4fc3f7;
+    --green: #66bb6a;
+    --border: #2a2a4a;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  h1 {
+    font-size: 2.4rem;
+    color: var(--accent);
+    margin-bottom: 0.3rem;
+    letter-spacing: -0.5px;
+  }
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 1.05rem;
+    margin-bottom: 2.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.5rem;
+  }
+  h2 {
+    font-size: 1.6rem;
+    color: var(--accent);
+    margin: 2.5rem 0 0.3rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--accent);
+  }
+  h3 {
+    font-size: 1.2rem;
+    color: var(--accent3);
+    margin: 1.8rem 0 0.5rem;
+  }
+  h4 {
+    font-size: 1.05rem;
+    color: var(--accent2);
+    margin: 1.3rem 0 0.4rem;
+  }
+  p { margin: 0.5rem 0; }
+  ul, ol { margin: 0.4rem 0 0.8rem 1.5rem; }
+  li { margin: 0.25rem 0; }
+  strong { color: #fff; }
+  em { color: var(--accent2); font-style: normal; }
+
+  details {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0.8rem 0;
+    padding: 0;
+  }
+  details[open] { padding-bottom: 0.8rem; }
+  summary {
+    padding: 0.7rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--accent3);
+    user-select: none;
+  }
+  summary:hover { color: #fff; }
+  details > *:not(summary) { padding: 0 1rem; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0;
+    font-size: 0.92rem;
+  }
+  th {
+    background: var(--bg3);
+    color: var(--accent3);
+    text-align: left;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border);
+    font-weight: 600;
+  }
+  td {
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+  code {
+    background: var(--code-bg);
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+    color: var(--green);
+  }
+  .signal-chain {
+    background: var(--code-bg);
+    padding: 1rem 1.2rem;
+    border-radius: 6px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.88rem;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.5;
+    color: var(--text-dim);
+    margin: 0.8rem 0;
+  }
+  .tip {
+    background: rgba(233, 69, 96, 0.1);
+    border-left: 3px solid var(--accent);
+    padding: 0.6rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .note {
+    background: rgba(79, 195, 247, 0.1);
+    border-left: 3px solid var(--accent3);
+    padding: 0.6rem 1rem;
+    margin: 0.8rem 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .toc { margin: 1.5rem 0 2rem; }
+  .toc a {
+    color: var(--accent3);
+    text-decoration: none;
+  }
+  .toc a:hover { text-decoration: underline; color: #fff; }
+  .toc ul { list-style: none; margin-left: 0; }
+  .toc li { margin: 0.2rem 0; }
+  .toc li::before { content: "› "; color: var(--accent); }
+  .toc .sub { margin-left: 1.2rem; }
+  .part-label {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.15rem 0.6rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+  }
+  a { color: var(--accent3); }
+  .pole-label {
+    display: inline-block;
+    background: var(--bg3);
+    padding: 0.1rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+    margin: 0 0.1rem;
+  }
+  .arrow { color: var(--accent2); }
+</style>
+</head>
+<body>
+
+<h1>T5ynth</h1>
+<p class="subtitle">
+  A text-to-audio synthesizer that navigates the T5 embedding space of a diffusion audio model.<br>
+  This guide covers how to use T5ynth and the ideas behind it.
+</p>
+
+<!-- ═══════════════════════════════════════════ PREAMBLE -->
+<div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:1.2rem 1.5rem; margin-bottom:2rem;">
+<p>
+T5ynth is a JUCE-based synthesizer plugin (Standalone / VST3 / AU) that <strong>deliberately repurposes</strong> Stability AI's
+<a href="https://huggingface.co/stabilityai/stable-audio-open-1.0">Stable Audio Open</a> model
+as an oscillator — not to generate finished music, but to produce raw sonic material for
+human–nonhuman artistic collaboration. Where text-to-audio models are designed to substitute creative labor (type a description, get a result), T5ynth inverts this relationship: the AI produces material, the human creates. This is not a consumer tool — it is an instrument that requires musicianship.
+</p>
+<p style="margin-top:0.6rem;">
+T5ynth is a personal side-project by Prof. Dr. Benjamin Jörissen,
+UNESCO Chair in Digital Culture and Arts in Education (UCDCAE),
+Friedrich-Alexander-Universität Erlangen-Nürnberg, and part of the
+<a href="https://github.com/joeriben/ucdcae-ai-lab">UCDCAE AI Lab Software Collection</a>.
+</p>
+<p style="margin-top:0.6rem;">
+T5ynth is inspired by two research projects:
+</p>
+<ul style="margin:0.3rem 0 0.6rem 1.5rem;">
+  <li><a href="https://kubi-meta.de/ai4artsed">AI for Arts Education (AI4ArtsEd)</a>, conducted together with the University of Cologne and the German Research Institute for Artificial Intelligence (DFKI) Kaiserslautern</li>
+  <li><a href="https://comearts.uni-due.de/comenets/artsacross/">ComeArts Across</a>, a research project for the development of digital cultural teacher education</li>
+</ul>
+<p>
+Both funded by the Federal Ministry for Education, Family, Senior Citizens, Women and Youth (BMBFSFJ).
+</p>
+<p style="margin-top:0.8rem; color:var(--accent2); font-style:italic;">
+T5ynth is dedicated to my dear colleague at the DFKI, musician and AI researcher Dr. Stephan Baumann,
+without whom AI4ArtsEd would not have come into being.
+</p>
+</div>
+
+<!-- ═══════════════════════════════════════════ TOC -->
+<nav class="toc">
+  <strong style="color:var(--accent)">Contents</strong>
+  <ul>
+    <li class="sub"><a href="#setup">Setup: Models &amp; Python Backend</a></li>
+    <li><strong>Part I — How to Use T5ynth</strong></li>
+    <li class="sub"><a href="#gen">1. The Generation Section (Oscillator)</a></li>
+    <li class="sub"><a href="#axes">2. Semantic Axes</a></li>
+    <li class="sub"><a href="#dimex">3. Dimension Explorer</a></li>
+    <li class="sub"><a href="#engine">4. Engine Modes: Sampler &amp; Wavetable</a></li>
+    <li class="sub"><a href="#synth">5. Classic Synth Elements</a></li>
+    <li class="sub"><a href="#drift">6. Drift &amp; Regenerate</a></li>
+    <li class="sub"><a href="#fx">7. Effects</a></li>
+    <li class="sub"><a href="#seq">8. Step Sequencer</a></li>
+    <li class="sub"><a href="#genseq">9. Generative Sequencer</a></li>
+    <li class="sub"><a href="#arp">10. Arpeggiator</a></li>
+    <li class="sub"><a href="#presets">11. Presets</a></li>
+    <li class="sub"><a href="#sweetspots">12. Strategies for Finding Sweet Spots</a></li>
+    <li><strong>Part II — Background</strong></li>
+    <li class="sub"><a href="#bg-axes">13. How Semantic Axes Work</a></li>
+    <li class="sub"><a href="#bg-dimex">14. The DimExplorer In Depth</a></li>
+    <li class="sub"><a href="#bg-genseq">15. Principles of the Generative Sequencer</a></li>
+    <li class="sub"><a href="#bg-pipeline">16. The Inference Pipeline</a></li>
+  </ul>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SETUP -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="setup">Setup: Models &amp; Python Backend</h2>
+
+<p>
+T5ynth consists of two parts: a <strong>JUCE audio plugin</strong> (the synthesizer UI and DSP) and a <strong>Python backend</strong> (the inference engine that runs the diffusion model). Both must be set up before T5ynth can generate audio.
+</p>
+
+<h3>Python Environment</h3>
+<p>
+T5ynth needs a Python virtual environment with the required ML libraries (PyTorch, Diffusers, Transformers, etc.). From the repository root:
+</p>
+<div class="signal-chain">python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt</div>
+<p>
+T5ynth automatically finds the venv at <code>.venv/</code> relative to the application. No manual path configuration needed.
+</p>
+
+<h3>Model Download</h3>
+<p>
+T5ynth requires at least one diffusion model. Models are <strong>not bundled</strong> — they must be downloaded separately (Stable Audio Open 1.0 is ~11 GB).
+</p>
+
+<h4>Via the Settings panel (recommended)</h4>
+<ol>
+  <li>Launch T5ynth and click <strong>Settings</strong> (gear icon in the status bar)</li>
+  <li>Select the model you want to install:
+    <ul>
+      <li><strong>Stable Audio Open 1.0</strong> — requires a <a href="https://huggingface.co/settings/tokens">HuggingFace token</a> (free account). Enter the token, then click Download.</li>
+      <li><strong>Stable Audio Small</strong> — downloads from GitHub Releases, no token needed.</li>
+    </ul>
+  </li>
+  <li>Wait for the download to complete (progress bar shown). The model is stored in the application data directory.</li>
+</ol>
+
+<h4>Manual download</h4>
+<p>
+Alternatively, download models via the HuggingFace CLI or browser and place them in the models directory:
+</p>
+<table>
+  <tr><th>Platform</th><th>Models Directory</th></tr>
+  <tr><td>macOS</td><td><code>~/Library/T5ynth/models/</code></td></tr>
+  <tr><td>Linux</td><td><code>~/.local/share/T5ynth/models/</code></td></tr>
+</table>
+<p>
+Each model lives in its own subdirectory (e.g., <code>stable-audio-open-1.0/</code>). T5ynth auto-detects models by looking for <code>model_index.json</code> (Diffusers format) or <code>model_config.json</code> (native format).
+</p>
+
+<h3>Device Selection</h3>
+<p>
+T5ynth auto-detects the best available compute device:
+</p>
+<ul>
+  <li><strong>Apple Silicon Mac</strong> → MPS (Metal Performance Shaders), ~3× faster than CPU</li>
+  <li><strong>NVIDIA GPU (Linux)</strong> → CUDA</li>
+  <li><strong>No GPU</strong> → CPU fallback (works, but slow)</li>
+</ul>
+<p>
+You can override the device in the generation section. The device toggle switches between GPU and CPU.
+</p>
+
+<h3>First Generation</h3>
+<p>
+On first launch, the status bar shows backend connection status. Once you see <strong>"Ready"</strong>, type a prompt and click <strong>Generate</strong>. The first generation takes longer because the model is loaded into GPU memory on demand. Subsequent generations are faster.
+</p>
+
+<div class="tip">
+  If the status bar shows an error, check: (1) Is the Python venv set up? (2) Is at least one model downloaded? (3) Is there enough disk space and RAM/VRAM? Stable Audio Open 1.0 needs ~4 GB VRAM.
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- PART I -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="part-label">Part I</div>
+<h2 id="gen">1. The Generation Section (Oscillator)</h2>
+
+<p>
+T5ynth does not have a traditional oscillator. Instead, it <strong>repurposes a text-to-audio AI model as a sound source</strong> — not to generate finished music on command, but to produce raw sonic material that you shape as a musician. The diffusion model (Stable Audio) becomes an oscillator whose output is steered by navigating a 768-dimensional embedding space. This is a deliberate inversion: the AI is not the creator, you are. The model provides material; you make music from it.
+</p>
+
+<h3>Prompts A &amp; B</h3>
+<p>
+You have two text input fields. Each prompt is encoded into a <strong>768-dimensional embedding vector</strong> by a T5 language model. To understand what that means: an embedding is a way of representing the <em>meaning</em> of a text as a point in a high-dimensional space. Words and phrases that are semantically related end up close together; unrelated concepts end up far apart. Every dimension captures some aspect of meaning — not a single human-readable feature, but a learned statistical pattern. (For an excellent visual introduction, see Jay Alammar's <a href="https://jalammar.github.io/illustrated-word2vec/">Illustrated Word2Vec</a>.)
+</p>
+<p>
+These embedding vectors — not the text itself — are what steers the diffusion model. T5ynth operates on them as geometric objects: moving, blending, scaling, and perturbing them before any audio is generated.
+</p>
+<ul>
+  <li><strong>Single prompt</strong> — enter text in Prompt A only. The model generates audio matching that description.</li>
+  <li><strong>Two prompts</strong> — enter text in both A and B. The <em>Alpha</em> slider navigates between them in embedding space.</li>
+</ul>
+
+<div class="tip">
+  Prompts should describe <strong>sound qualities</strong>, not musical genres. "A warm resonant drone with metallic harmonics" works better than "ambient techno." The model has no reliable concept of genre.
+</div>
+
+<h3>Generation Controls</h3>
+<table>
+  <tr><th>Control</th><th>Range</th><th>What It Does</th></tr>
+  <tr>
+    <td><strong>Alpha</strong></td>
+    <td>-2.0 … +2.0</td>
+    <td>Navigates between Prompt A (−1) and Prompt B (+1) <strong>in embedding space, not in audio</strong>. This is not a crossfade or mix of two audio signals — it is movement through a semantic space. The midpoint (0) is not "half A plus half B" in any audible sense; it is a new point in meaning-space that the model interprets independently. For example, if Prompt A is <em>"bowed cello, sustained"</em> and Prompt B is <em>"crackling fire"</em>, the midpoint will not sound like cello mixed with fire — it might produce something like a warm, textured, resonant hum that resembles neither source directly. Values beyond ±1 <em>extrapolate</em> — pushing past either pole into regions of the embedding space that no text prompt would naturally reach. The slider uses a quadratic curve for fine control near the center.</td>
+  </tr>
+  <tr>
+    <td><strong>Magnitude</strong></td>
+    <td>0.001 … 5.0</td>
+    <td>Scales the embedding vector's length. At 1.0 the prompt influence is normal. Lower values drift toward the model's "average" sound; higher values push the model harder (can get unstable above ~2.0).</td>
+  </tr>
+  <tr>
+    <td><strong>Noise</strong></td>
+    <td>0.0 … 1.0</td>
+    <td>This is not audio noise — it is semantic noise: random perturbation in meaning-space, a dose of chaos applied to the embedding before the model ever generates a sound. Even small values (0.05–0.15) introduce subtle variation between otherwise identical generations. Higher values scramble the prompt — useful for exploration, less for precision.</td>
+  </tr>
+  <tr>
+    <td><strong>Duration</strong></td>
+    <td>0.1 … 47 s</td>
+    <td>Length of generated audio. Short values (0.5–3s) work well for loops and wavetable sources. Longer values create evolving textures.</td>
+  </tr>
+  <tr>
+    <td><strong>Steps</strong></td>
+    <td>1 … 100</td>
+    <td>Diffusion denoising iterations. More steps = higher quality but slower. The useful range depends on the model: <strong>Stable Audio Open 1.0</strong> benefits from 20–100 steps (20 is a good default, higher values refine detail). <strong>Stable Audio Small</strong> converges quickly — above 8 steps there is no positive effect.</td>
+  </tr>
+  <tr>
+    <td><strong>CFG Scale</strong></td>
+    <td>1.0 … 15.0</td>
+    <td>Classifier-Free Guidance — how strictly the model follows your prompt. Model-dependent: <strong>Stable Audio Open 1.0</strong> works well at 5–8 (default 7). <strong>Stable Audio Small</strong> should stay at 1 — higher values produce artifacts rather than better adherence. In general: low values are loose and dreamy, high values are literal but can sound harsh.</td>
+  </tr>
+  <tr>
+    <td><strong>Start Position</strong></td>
+    <td>0.0 … 1.0</td>
+    <td>Inpainting offset within the diffusion timeline. 0.0 gives you the attack/onset of a sound. ~0.5–0.7 gives you the sustained body, skipping transients — if there were any in the generated sample.</td>
+  </tr>
+  <tr>
+    <td><strong>Seed</strong></td>
+    <td>-1 … 999 999 999</td>
+    <td>Controls random state. Same seed + same settings = identical output (cross-platform). Use the <strong>Random</strong> button to automatically pick a new seed on each generation.</td>
+  </tr>
+  <tr>
+    <td><strong>HF Boost</strong></td>
+    <td>on / off</td>
+    <td>Compensates for high-frequency rolloff inherent to the VAE decoder. Whether you prefer the brighter boosted or the darker raw sound is a matter of taste.</td>
+  </tr>
+  <tr>
+    <td><strong>Auto</strong></td>
+    <td>on / off</td>
+    <td>Automatic re-generation after every parameter change in the oscillator section. <em>(Planned feature — not yet implemented.)</em></td>
+  </tr>
+</table>
+
+<div class="note">
+  <strong>This is not a static oscillator.</strong> The generation parameters above — Alpha, Axes, Magnitude, Noise — can all be modulated by the <a href="#drift">Drift &amp; Regenerate</a> system. With Drift active, these values shift continuously, and T5ynth can automatically re-generate audio as they move. The T5 oscillator becomes a living sound source that evolves over time, not a one-shot sample generator. See <a href="#drift">section 6</a> for details.
+</div>
+
+<h3>Model &amp; Device</h3>
+<p>
+Three model slots are available: Stable Audio Open 1.0, Stable Audio Small, and AudioLDM2 <em>(planned)</em>. The device toggle switches between GPU (MPS on Mac, CUDA on Linux) and CPU. GPU is typically 3× faster on Apple Silicon.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="axes">2. Semantic Axes</h2>
+
+<p>
+Below the prompt area, three dropdown slots let you apply <strong>semantic axes</strong> — continuous sliders between two conceptual poles. Each axis nudges the embedding in a specific direction within the 768-dimensional T5 space.
+</p>
+
+<table>
+  <tr><th>Axis</th><th>Left Pole (−1)</th><th>Right Pole (+1)</th></tr>
+  <tr><td>noise / music</td><td><span class="pole-label">noise</span></td><td><span class="pole-label">music</span></td></tr>
+  <tr><td>electronic / acoustic</td><td><span class="pole-label">electronic</span></td><td><span class="pole-label">acoustic</span></td></tr>
+  <tr><td>composed / improvised</td><td><span class="pole-label">composed</span></td><td><span class="pole-label">improvised</span></td></tr>
+  <tr><td>raw / refined</td><td><span class="pole-label">raw</span></td><td><span class="pole-label">refined</span></td></tr>
+  <tr><td>ensemble / solo</td><td><span class="pole-label">ensemble</span></td><td><span class="pole-label">solo</span></td></tr>
+  <tr><td>secular / sacred</td><td><span class="pole-label">secular</span></td><td><span class="pole-label">sacred</span></td></tr>
+  <tr><td>noisy / tonal</td><td><span class="pole-label">noisy</span></td><td><span class="pole-label">tonal</span></td></tr>
+  <tr><td>sustained / rhythmic</td><td><span class="pole-label">sustained</span></td><td><span class="pole-label">rhythmic</span></td></tr>
+</table>
+
+<p>
+Each slider runs from −1.0 to +1.0. Multiple axes are interrelated — the more you stack, the less predictable each individual axis becomes.
+</p>
+
+<div class="note">
+  These 8 axes were experimentally validated via spectral analysis (Mel-cosine distance, 1s vs 10s duration, on RTX 6000). The top semantic axes scored Mel distance > 0.80 at 1s — meaning they produce clearly audible differences even in very short samples. PCA-based axes were tested but collapse at short durations (Mel < 0.19) and are not offered. The labels are approximate — they describe tendencies, not guarantees.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="dimex">3. Dimension Explorer</h2>
+
+<p>
+The Dimension Explorer gives you direct access to all <strong>768 individual dimensions</strong> of the T5 embedding space. While prompts and semantic axes offer human-readable ways to navigate this space, the DimExplorer lets you see and manipulate the raw numbers.
+</p>
+
+<h4>What You See</h4>
+<p>
+After generating audio, T5ynth receives the 768-dimensional embedding vectors for your prompts. The DimExplorer displays these as a row of vertical bars — one per dimension, sorted by magnitude (the most significant dimensions appear on the left).
+</p>
+<ul>
+  <li><strong>With two prompts:</strong> Each bar shows the <em>difference</em> between Prompt A and Prompt B for that dimension. <span style="color:var(--green)">Green</span> bars point toward A, <span style="color:var(--accent2)">orange</span> bars toward B. The leftmost bars are the dimensions where your two prompts differ most — the dimensions that define the sonic difference between A and B.</li>
+  <li><strong>With one prompt:</strong> Bars show the absolute activation values of the embedding.</li>
+</ul>
+
+<h4>What You Can Do</h4>
+<p>
+Drag any bar vertically to apply a per-dimension <strong>offset</strong>. Edited bars turn <span style="color:var(--accent3)">blue</span>. Click <strong>"Apply + Generate"</strong> to send these offsets to the inference engine, where they are added directly to the embedding before diffusion runs.
+</p>
+
+<h4>What This Means</h4>
+<p>
+This is the most granular level of control T5ynth offers. It bypasses language entirely — you are directly sculpting the 768-dimensional vector that guides the diffusion model. What each dimension "does" sonically is largely opaque: the T5 embedding space was trained for language tasks, not audio, and its internal structure does not map to perceptual audio categories in any documented way. Small changes may do nothing, or they may radically alter the output. This is a research tool for probing the space, not a precision instrument.
+</p>
+
+<div class="note">
+  A compact mini-view of the DimExplorer is always visible below the Axes panel. Click it to open the full interactive overlay. The overlay provides <strong>Undo</strong>, <strong>Redo</strong>, and <strong>Reset All</strong> controls for your edits.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="engine">4. Engine Modes: Sampler &amp; Wavetable</h2>
+
+<p>T5ynth can play back generated audio in two modes:</p>
+
+<h4>Sampler Mode</h4>
+<p>
+Plays the generated audio buffer directly. Pitch follows MIDI via time-stretching (Signalsmith Stretch). This mode preserves the full character of the generation.
+</p>
+<ul>
+  <li><strong>Loop Mode</strong> — One-shot, Loop, or Ping-Pong</li>
+  <li><strong>Crossfade</strong> — 0–500 ms equal-power crossfade at the loop boundary</li>
+  <li><strong>Loop Optimize</strong> — Cross-correlation algorithm that finds the smoothest loop point (Low or High precision)</li>
+  <li><strong>Normalize</strong> — Peak-normalizes the play region</li>
+</ul>
+
+<h4>Wavetable Mode</h4>
+<p>
+Extracts pitch-synchronous frames from the audio to build a scannable wavetable. The <em>Scan</em> slider morphs between frames, and pitch follows MIDI directly (band-limited harmonic synthesis).
+</p>
+<ul>
+  <li><strong>Scan</strong> (0.0–1.0) — Selects the current frame position in the wavetable. Can be modulated by LFOs, envelopes, or drift.</li>
+</ul>
+
+<h4>Voice Count</h4>
+<p>
+Applies to both modes: Mono, 4, 6, 8, 12, or 16 voices. Gain auto-scales (equal power: each voice at 1/√N). Oldest notes are stolen when the limit is reached.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="synth">5. Classic Synth Elements</h2>
+
+<h3>Filter</h3>
+<p>
+State-variable filter (TPT topology) with four types and four slopes:
+</p>
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Type</strong></td><td>Off / LP / HP / BP</td><td></td></tr>
+  <tr><td><strong>Slope</strong></td><td>6 / 12 / 18 / 24 dB/oct</td><td></td></tr>
+  <tr><td><strong>Cutoff</strong></td><td>20 Hz – 20 kHz</td><td>Exponential scaling. Primary modulation target.</td></tr>
+  <tr><td><strong>Resonance</strong></td><td>0.0 – 1.0</td><td>Maps to Q 0.5–18</td></tr>
+  <tr><td><strong>Mix</strong></td><td>0.0 – 1.0</td><td>Equal-power dry/wet crossfade</td></tr>
+  <tr><td><strong>Kbd Track</strong></td><td>0.0 – 1.0</td><td>Cutoff offset per MIDI semitone</td></tr>
+</table>
+
+<h3>Envelopes (Env 1, Env 2, Env 3)</h3>
+<p>
+Three identical ADSR envelopes, each with a <strong>Target dropdown</strong> to route it to any modulation destination (see <a href="#synth">Classic Synth Elements</a>). There is no hard-wired "amplitude envelope" — to use an envelope as a VCA, assign its target to <em>DCA</em>.
+</p>
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Attack</strong></td><td>0 – 5000 ms</td><td></td></tr>
+  <tr><td><strong>Decay</strong></td><td>0 – 5000 ms</td><td></td></tr>
+  <tr><td><strong>Sustain</strong></td><td>0.0 – 1.0</td><td></td></tr>
+  <tr><td><strong>Release</strong></td><td>0 – 10 000 ms</td><td></td></tr>
+  <tr><td><strong>Amount</strong></td><td>0.0 – 1.0</td><td>Output scaling</td></tr>
+  <tr><td><strong>Vel Sens</strong></td><td>0.0 – 1.0</td><td>0 = fixed level, 1 = full velocity response. Aftertouch sensitivity <em>(planned)</em>.</td></tr>
+  <tr><td><strong>Loop</strong></td><td>on / off</td><td>Re-triggers attack when sustain is reached</td></tr>
+  <tr><td><strong>Target</strong></td><td>Dropdown</td><td>DCA, Filter, Scan, Pitch, Delay, Reverb, LFO rates/depths — see <a href="#synth">Classic Synth Elements</a></td></tr>
+</table>
+
+<h3>LFOs (LFO 1 &amp; LFO 2)</h3>
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Rate</strong></td><td>0.01 – 30 Hz</td><td></td></tr>
+  <tr><td><strong>Depth</strong></td><td>0.0 – 1.0</td><td></td></tr>
+  <tr><td><strong>Waveform</strong></td><td>Sine / Tri / Saw / Square</td><td></td></tr>
+  <tr><td><strong>Mode</strong></td><td>Free / Trigger</td><td>Free runs continuously; Trigger resets on note-on</td></tr>
+  <tr><td><strong>Target</strong></td><td>Dropdown</td><td>See <a href="#mod">Modulation Routing</a></td></tr>
+</table>
+
+<div class="note">
+  All modulation sources use a <strong>dropdown-per-source</strong> routing system — each envelope, LFO, and drift LFO has a Target dropdown to select its destination. Modulated sliders show a <em>ghost indicator</em> (orange circle) reflecting the current modulated value.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="drift">6. Drift &amp; Regenerate</h2>
+
+<div style="background:linear-gradient(135deg, rgba(233,69,96,0.15), rgba(255,152,0,0.15)); border:2px solid var(--accent); border-radius:8px; padding:1.2rem 1.5rem; margin-bottom:1.2rem;">
+<p style="font-size:1.1rem; margin:0;">
+<strong style="color:var(--accent); font-size:1.15rem;">Drift &amp; Regenerate is what makes T5ynth more than a sample player or wavetable synth.</strong><br>
+Without it, you generate a sound and then shape it with conventional synth tools — the source stays fixed. With Drift &amp; Regenerate, the sound source itself continuously evolves. T5ynth becomes an instrument that transforms in real time, autonomously navigating the embedding space while you play. The oscillator is no longer a static waveform — it is a living, moving trajectory through a 768-dimensional sonic landscape.
+</p>
+</div>
+
+<h4>The Asynchronous Feedback Loop</h4>
+<p>
+Diffusion inference is never real-time — a single generation takes seconds, not milliseconds. But T5ynth creates an <strong>asynchronous feedback loop</strong> between the modulation system and the T5 oscillator that keeps you in the flow:
+</p>
+<p>
+While the synth is playing, multiple drift LFOs continuously and independently shift the Alpha slider and the semantic axes. Each LFO moves at its own rate and depth — Alpha might slowly sweep from Prompt A toward B over 30 seconds, while Axis 1 (e.g., tonal/noisy) oscillates on a different cycle, and Axis 2 (e.g., sustained/rhythmic) drifts at yet another pace. These modulations run simultaneously and asynchronously, tracing a complex, never-repeating path through the embedding space.
+</p>
+<p>
+When Auto or 1st Bar regen mode is active, T5ynth monitors how far the modulated embedding has drifted from the last generated state. Once the drift exceeds a threshold, it fires a new inference request in the background. The current sound keeps playing uninterrupted. When the new generation arrives — typically a few seconds later — it is crossfaded into the playback buffer, smoothly replacing the old sound with the new one.
+</p>
+<p>
+The result is a <strong>continuous stream of new generations</strong>, each one produced from a slightly different position in the embedding space between and around the two prompts. The sound never loops back to exactly where it was. Every few seconds, a new variation emerges — not randomly, but along the trajectories defined by your drift LFO settings. You hear a sound that perpetually transforms: sometimes closer to Prompt A, sometimes to B, sometimes in between, colored by whichever semantic axes are drifting, at whatever pace you have set.
+</p>
+<p>
+Meanwhile, the conventional synth chain (filter, envelopes, LFOs, effects, sequencer) continues to process the output in real time. You are simultaneously shaping the sound <em>and</em> the process that creates the sound.
+</p>
+<p>
+The Drift section provides three slow LFOs (0.001–2.0 Hz) designed for organic, evolving textures. Unlike the main LFOs, drift can target <strong>generation-level parameters</strong> — Alpha and the three semantic axes. This is what makes drift unique: it doesn't just modulate how the sound is played back, it modulates <em>what sound is generated</em>.
+</p>
+
+<h4>Drift LFOs (3×)</h4>
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Drift Enable</strong></td><td>on / off</td><td>Master on/off for all three drift LFOs</td></tr>
+  <tr><td><strong>Rate</strong></td><td>0.001 – 2.0 Hz</td><td>Very slow by design — think minutes, not seconds</td></tr>
+  <tr><td><strong>Depth</strong></td><td>0.0 – 1.0</td><td>How far the LFO pushes the target parameter</td></tr>
+  <tr><td><strong>Waveform</strong></td><td>Sine / Tri / Saw / Square</td><td></td></tr>
+  <tr><td><strong>Target</strong></td><td>Dropdown</td><td>Alpha, Axis 1/2/3, WT Scan, Filter, Pitch, Delay, Reverb, Env amounts</td></tr>
+</table>
+
+<p>
+When a drift LFO targets Alpha or a semantic axis, the modulated value appears as a <em>ghost indicator</em> (orange circle) on the affected slider, so you can see how far drift has pushed the parameter from its base value.
+</p>
+
+<h4>Regenerate</h4>
+<p>
+Drift modulation of generation parameters only changes the <em>embedding</em> — to actually hear the change, the audio must be re-generated. The <strong>Regen Mode</strong> controls when this happens:
+</p>
+<table>
+  <tr><th>Mode</th><th>Behavior</th></tr>
+  <tr><td><strong>Manual</strong></td><td>You click Generate yourself. Drift still modulates the embedding, but nothing re-generates until you trigger it.</td></tr>
+  <tr><td><strong>Auto</strong></td><td>Automatically re-generates when drift pushes Alpha or Axes far enough from the last generated state.</td></tr>
+  <tr><td><strong>1st Bar</strong></td><td>Like Auto, but defers re-generation to the next bar boundary — keeps the new generation in rhythmic sync.</td></tr>
+</table>
+
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Crossfade</strong></td><td>0 – 2000 ms</td><td>Equal-power fade when a new generation loads mid-playback, to mask the transition</td></tr>
+</table>
+
+<div class="tip">
+  <strong>Energy awareness:</strong> Each re-generation runs the full diffusion inference pipeline on the GPU (or CPU). Auto-regen with fast drift rates can trigger many generations per minute. This consumes significant compute and energy. For responsible use, keep drift rates low and consider whether Manual mode is sufficient for your purpose.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="fx">7. Effects</h2>
+
+<h3>Delay</h3>
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Type</strong></td><td>Off / Stereo</td><td>Stereo dual-tap delay</td></tr>
+  <tr><td><strong>Time</strong></td><td>1 – 2000 ms</td><td>Logarithmic scaling. Can be modulated.</td></tr>
+  <tr><td><strong>Feedback</strong></td><td>0.0 – 0.95</td><td>Capped to prevent runaway</td></tr>
+  <tr><td><strong>Damping</strong></td><td>0.0 – 1.0</td><td>LP filter in feedback path. 0 = bright (20 kHz), 1 = dark (500 Hz)</td></tr>
+  <tr><td><strong>Mix</strong></td><td>0.0 – 1.0</td><td>Send amount (dry is preserved)</td></tr>
+</table>
+
+<h3>Reverb</h3>
+<table>
+  <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>Type</strong></td><td>Off / Dark / Medium / Bright / Algo</td><td>Dark/Medium/Bright use convolution with EMT 140 plate impulse responses (thanks to <a href="https://oramics.github.io/sampled/IR/EMT140-Plate/">Greg Hopkins</a>, CC BY). Algo is an algorithmic reverb (Schroeder/Moorer topology).</td></tr>
+  <tr><td><strong>Mix</strong></td><td>0.0 – 1.0</td><td>Send amount</td></tr>
+  <tr><td><strong>Room Size</strong></td><td>0.0 – 1.0</td><td>Algo mode only</td></tr>
+  <tr><td><strong>Damping</strong></td><td>0.0 – 1.0</td><td>Algo mode only</td></tr>
+  <tr><td><strong>Width</strong></td><td>0.0 – 1.0</td><td>Algo mode only. 0 = mono, 1 = full stereo</td></tr>
+</table>
+
+<p>
+The signal chain runs: <strong>Delay → Reverb → Limiter → Master Volume</strong>
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="seq">8. Step Sequencer</h2>
+
+<p>
+A traditional step sequencer with 2–32 steps. Each step has:
+</p>
+<ul>
+  <li><strong>Note</strong> — MIDI note 0–127 (draggable vertical slider)</li>
+  <li><strong>Velocity</strong> — 0.0–1.0 (bar at bottom)</li>
+  <li><strong>Enable</strong> — toggle the step on/off</li>
+  <li><strong>Bind (Glide)</strong> — suppresses note-off, creating legato ties</li>
+</ul>
+
+<h4>Global Controls</h4>
+<table>
+  <tr><th>Control</th><th>Range</th><th>Notes</th></tr>
+  <tr><td><strong>BPM</strong></td><td>20 – 300</td><td></td></tr>
+  <tr><td><strong>Division</strong></td><td>1/1, 1/2, 1/4, 1/8, 1/16</td><td>Step duration relative to a quarter note</td></tr>
+  <tr><td><strong>Gate</strong></td><td>0.1 – 1.0</td><td>Fraction of step duration that the note sustains</td></tr>
+  <tr><td><strong>Glide Time</strong></td><td>10 – 500 ms</td><td>Portamento between bound steps</td></tr>
+  <tr><td><strong>Octave Shift</strong></td><td>-2 … +2</td><td>Transposes all steps</td></tr>
+  <tr><td><strong>Presets</strong></td><td>10 built-in patterns</td><td>Octave Bounce, Wide Leap, Off-Beat Minor, Glide Groove, Sparse Stab, Rising Arc, Scatter, Chromatic, Bass Walk, Gated Pulse</td></tr>
+  <tr><td><strong>Save / Load</strong></td><td>S / L buttons</td><td>Save and load custom step patterns</td></tr>
+</table>
+
+<div class="note">
+  When you activate the <a href="#genseq">Generative Sequencer</a> (GEN) and then deactivate it again, the last generated pattern is transferred into the step sequencer. Any previous manual pattern is overwritten. This is by design — it lets you capture an interesting generative moment and refine it manually. Save your manual patterns before switching to GEN if you want to keep them.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="genseq">9. Generative Sequencer</h2>
+
+<p>
+Press the <strong>GEN</strong> button to switch from the manual step sequencer to the generative mode. This is a <strong>self-evolving pattern engine</strong> that combines Euclidean rhythms with Turing Machine–style melodic mutation.
+</p>
+
+<table>
+  <tr><th>Control</th><th>Range</th><th>What It Does</th></tr>
+  <tr><td><strong>Steps</strong></td><td>2 – 32</td><td>Total timeline slots for the Euclidean pattern</td></tr>
+  <tr><td><strong>Pulses</strong></td><td>1 – 32</td><td>Number of active beats distributed across the steps</td></tr>
+  <tr><td><strong>Rotation</strong></td><td>0 – 31</td><td>Circular shift of the pattern</td></tr>
+  <tr><td><strong>Mutation</strong></td><td>0.0 – 1.0</td><td>How aggressively the melody evolves each cycle. 0 = frozen. 0.8 = highly fluid.</td></tr>
+  <tr><td><strong>Range</strong></td><td>1 – 4 octaves</td><td>Pitch range for melodic generation</td></tr>
+  <tr><td><strong>Scale Root</strong></td><td>C – B</td><td>Tonic note</td></tr>
+  <tr><td><strong>Scale Type</strong></td><td>Off / Major / Minor / Pentatonic / Dorian / Harmonic / Whole-tone</td><td>Quantizes notes to scale degrees</td></tr>
+</table>
+
+<h4>Fix Toggles (Lock Icons)</h4>
+<p>
+Each Euclidean parameter (Steps, Pulses, Rotation, Mutation) has a lock toggle. When unlocked, that parameter itself drifts over time — the pattern length, density, rotation, and mutation rate all evolve. Lock what you want stable, unlock what you want to breathe.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="arp">10. Arpeggiator</h2>
+
+<p>
+The arpeggiator sits <strong>after</strong> both the step sequencer and the generative sequencer — the chain is always: Sequencer → Arp → Synth Engine. It processes whatever note input it receives, whether from manual steps, GEN mode, or live MIDI. With the generative sequencer, this means an already evolving pattern gets further expanded by the arpeggiator — the combination can produce complex, self-developing textures.
+</p>
+
+<table>
+  <tr><th>Control</th><th>Options</th><th>Notes</th></tr>
+  <tr><td><strong>Mode</strong></td><td>Off / Up / Down / UpDown / Random</td><td></td></tr>
+  <tr><td><strong>Rate</strong></td><td>1/4, 1/8, 1/16, 1/32, 1/4T, 1/8T, 1/16T</td><td>Musical divisions, including triplets</td></tr>
+  <tr><td><strong>Octaves</strong></td><td>1 – 4</td><td>How many octaves to span</td></tr>
+</table>
+
+<p>
+The arp uses a fixed <strong>major triad</strong> chord shape (root, major 3rd, perfect 5th = intervals 0, 4, 7 semitones) and spreads it across the selected octave range. In UpDown mode, endpoints are not doubled to avoid rhythmic stutter.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="presets">11. Presets</h2>
+
+<p>
+T5ynth uses <code>.t5p</code> preset files — a binary container that stores:
+</p>
+<ul>
+  <li>All parameter values (100+ parameters)</li>
+  <li>Prompt text (A and B)</li>
+  <li>The generated audio itself (PCM, so the preset sounds right without re-generating)</li>
+  <li>Embedding vectors (768 floats each, for DimExplorer context)</li>
+  <li>Seed, device, model selection</li>
+</ul>
+<p>
+Use the <strong>Import</strong> / <strong>Export</strong> buttons in the preset panel to load and save.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="sweetspots">12. Strategies for Finding Sweet Spots</h2>
+
+<div class="tip">
+  <strong>T5ynth is not a sweet-spot synth.</strong> Unlike subtractive synths where most parameter combinations produce usable sound, T5ynth's generation process is exploratory and unpredictable. Many combinations produce nothing interesting. That's by design — the instrument rewards patient exploration, not preset-surfing.
+</div>
+
+<h4>1. Start with the source</h4>
+<p>
+Get a generation you like <em>before</em> touching synth parameters. A great filter envelope cannot save a bad generation. Experiment with prompts, seeds, and short durations (1–3s) to quickly iterate.
+</p>
+
+<h4>2. Use low step counts for speed</h4>
+<p>
+While exploring, keep Steps low to iterate quickly. With <strong>Stable Audio Small</strong>, 8 steps is already the ceiling — more steps add nothing. With <strong>Stable Audio Open 1.0</strong>, start at 20 and only go higher once you've found a direction worth refining.
+</p>
+
+<h4>3. Exploit the seed</h4>
+<p>
+Same prompt + different seed = very different audio. If a prompt feels right but the result doesn't, change the seed before changing the words. Generate 5–10 seeds before concluding a prompt doesn't work.
+</p>
+
+<h4>4. Alpha for morphing, not mixing</h4>
+<p>
+Alpha is not a volume crossfade. It interpolates in embedding space — the midpoint (0.0) is often <em>not</em> a blend of A and B but something new. Use Alpha to discover unexpected sounds between your two prompts. Push it past ±1.0 to extrapolate.
+</p>
+
+<h4>5. One axis at a time</h4>
+<p>
+Semantic axes are most effective used individually. Stacking three axes at extreme values dilutes each one. Start with one axis and find its useful range before adding a second.
+</p>
+
+<h4>6. Wavetable mode for pitched material</h4>
+<p>
+If you need stable pitch tracking (melodic lines, chords), switch to Wavetable mode. Sampler mode preserves the original character but pitch-stretching can introduce artifacts at extreme intervals.
+</p>
+
+<h4>7. Short loops + Scan modulation</h4>
+<p>
+Generate 1–2s of audio, switch to Wavetable, and modulate Scan with a slow LFO or Env1. This creates evolving timbres from a single generation — the classic wavetable synthesis approach, but with AI-generated waves.
+</p>
+
+<h4>8. Drift for evolution, not randomness</h4>
+<p>
+Set Drift LFO rates very low (0.01–0.05 Hz) and depths moderate (0.2–0.5). Target Alpha or an Axis. Enable Auto-regen. This activates the <a href="#drift">asynchronous feedback loop</a> — the synth slowly transforms itself, producing a continuous stream of new generations. Far more interesting than random Noise injection.
+</p>
+
+<h4>9. Gen Seq + Arp as a discovery engine</h4>
+<p>
+Turn on the generative sequencer with moderate mutation (0.3–0.5), pick a scale, and let it run. Add the arpeggiator in Up mode at 1/16. The combination reveals how your sound behaves across pitch ranges and rhythmic contexts — a rapid audition tool.
+</p>
+
+<h4>10. Save early, save often</h4>
+<p>
+Presets include the generated audio, so you never lose a good generation. Export a preset the moment you find something promising. You can always refine the synth parameters later — but the generation itself is hard to reproduce without the exact seed and settings.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- PART II -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="part-label" style="margin-top:3rem">Part II</div>
+<h2 id="bg-axes">13. How Semantic Axes Work</h2>
+
+<p>
+T5ynth's semantic axes are directions in the 768-dimensional embedding space of the T5 text encoder. Here's how they are constructed:
+</p>
+
+<h4>Step 1: Define Poles</h4>
+<p>
+Each axis is defined by two single-word prompts representing opposing concepts — for example, <code>"noise"</code> and <code>"music"</code>. These are not arbitrary labels; they were selected through systematic testing of which word-pairs produce the most audibly distinct results.
+</p>
+
+<h4>Step 2: Encode Poles + Neutral</h4>
+<p>
+Three embeddings are computed via the T5 encoder:
+</p>
+<ul>
+  <li><code>emb_pole_a</code> — encoding of the negative pole (e.g., "noise")</li>
+  <li><code>emb_pole_b</code> — encoding of the positive pole (e.g., "music")</li>
+  <li><code>emb_neutral</code> — encoding of an empty prompt ("")</li>
+</ul>
+
+<h4>Step 3: Compute Direction</h4>
+<p>
+The axis direction is the difference between a pole and the neutral point:
+</p>
+<ul>
+  <li>Positive values: <code>direction = emb_pole_b − emb_neutral</code></li>
+  <li>Negative values: <code>direction = emb_pole_a − emb_neutral</code></li>
+</ul>
+<p>
+This direction vector is then scaled by the slider value and added to the current manipulated embedding.
+</p>
+
+<h4>Step 4: Validation</h4>
+<p>
+Not all conceptual oppositions produce audible differences. The 8 axes included in T5ynth were validated by generating audio at each pole and measuring <strong>Mel-spectrogram cosine distance</strong>. Only axes with a distance above 0.70 at 1-second duration survived. PCA-based axes (derived from variance in the embedding space rather than semantic opposition) were tested but found to collapse at short durations — they produce near-identical audio regardless of slider position.
+</p>
+
+<div class="note">
+  In the code, axis direction vectors are summed onto the embedding. But because the diffusion model processes the resulting embedding non-linearly, the audible effect is not simply additive — multiple axes are interrelated and can interfere with each other unpredictably. There is no orthogonalization, and axes may partially overlap in embedding space.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="bg-dimex">14. The DimExplorer In Depth</h2>
+
+<p>
+The DimExplorer (see <a href="#dimex">section 3</a> for basic usage) operates on the <strong>mean-pooled</strong> T5 encoder output — the 768-dimensional vector obtained by averaging across the token sequence dimension, weighted by the attention mask. This is the same representation the diffusion model uses for conditioning.
+</p>
+
+<h4>Why Sorted by Magnitude?</h4>
+<p>
+Sorting the 768 bars by <code>|emb_A[i] − emb_B[i]|</code> is not just a display convenience — it surfaces the dimensions along which your two prompts are most semantically distinct. These high-magnitude dimensions are where the T5 encoder "disagrees" most about A and B. Editing these dimensions has the highest probability of producing an audible change; the low-magnitude bars on the right are dimensions where A and B are nearly identical and where edits tend to have little effect.
+</p>
+
+<h4>What Does a Dimension Represent?</h4>
+<p>
+Individual T5 dimensions do not correspond to human-interpretable audio features. The T5 model was trained on language tasks (not audio), and its internal structure encodes statistical patterns in text — not timbral qualities, pitch, or rhythm. The Stable Audio model learned to <em>map</em> these text patterns to sound, but the mapping is opaque and non-linear. A single dimension might contribute to brightness in one prompt context and to rhythmic density in another. This is why the DimExplorer is a research tool: it rewards experimentation, not prediction.
+</p>
+
+<h4>Technical Details</h4>
+<ul>
+  <li>Offsets are applied as <code>manipulated[:, :, idx] += offset_value</code> — broadcast across all tokens in the sequence</li>
+  <li>Only non-zero offsets are transmitted to the inference engine (sparse representation)</li>
+  <li>Offsets persist across generations until explicitly reset</li>
+  <li>The edit history (undo/redo) stores complete offset state snapshots</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="bg-genseq">15. Principles of the Generative Sequencer</h2>
+
+<p>
+The generative sequencer combines three layers of musical algorithm:
+</p>
+
+<h3>Layer 1: Euclidean Rhythm</h3>
+<p>
+The rhythmic backbone uses <strong>Bjorklund's algorithm</strong> (Toussaint, 2005) to distribute <em>N</em> pulses across <em>M</em> steps as evenly as possible. This is the same mathematical principle behind many traditional rhythmic patterns worldwide — it produces patterns that feel natural because they maximize spacing regularity.
+</p>
+<p>
+Example: 5 pulses in 8 steps → <code>[x . x . x . x x]</code> — a pattern equivalent to Cuban tresillo.
+</p>
+<p>
+The <em>Rotation</em> parameter shifts this pattern circularly, changing which beat feels like "one."
+</p>
+
+<h3>Layer 2: Stride-Based Melody</h3>
+<p>
+Pulses are assigned pitches using a <strong>stride permutation</strong> through the selected scale. The stride value (<code>max(1, steps − pulses)</code>) determines how many scale degrees to skip between successive notes, chosen to be coprime with the total number of degrees so the melody visits as many pitches as possible before repeating.
+</p>
+<p>
+The traversal follows a <strong>triangle wave</strong> (ascending then descending), creating bidirectional melodic motion rather than monotonic climbing. This produces melodies that feel more natural and song-like.
+</p>
+<p>
+Velocity is derived from the rhythmic gaps — notes after longer rests receive higher velocity, creating natural accents at the start of rhythmic phrases.
+</p>
+
+<h3>Layer 3: Turing Machine Mutation</h3>
+<p>
+Each time the pattern completes a cycle, <em>Mutation</em> determines how many notes change. At mutation rate 0.8 with 16 pulses, roughly 8 notes shift by 1–4 scale degrees. The result: the pattern stays recognizable but continuously evolves — like a melodic idea being rethought in real time.
+</p>
+<p>
+The mutation rate itself <strong>breathes</strong> sinusoidally over a 16-cycle window, oscillating between 50% and 100% of its set value. This creates alternating periods of stability and flux without any user input.
+</p>
+
+<h3>Parameter Drift</h3>
+<p>
+When the Fix toggles are unlocked, the Euclidean parameters themselves drift over 8-cycle windows:
+</p>
+<ul>
+  <li><strong>Rotation</strong> shifts circularly (timing determined by a secondary Euclidean distribution)</li>
+  <li><strong>Pulses</strong> increase or decrease over time, changing pattern density</li>
+  <li><strong>Steps</strong> expand or contract while preserving the pulse-to-step ratio</li>
+</ul>
+<p>
+All drift is bounded and reversible — parameters oscillate rather than running away. The combination of melodic mutation, mutation breathing, and parameter drift produces patterns that can evolve for minutes without becoming monotonous or losing coherence.
+</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2 id="bg-pipeline">16. The Inference Pipeline</h2>
+
+<p>
+Understanding the inference pipeline helps explain why certain controls interact the way they do.
+</p>
+
+<div class="signal-chain">JUCE (GUI)                         Python (Inference)
+    │                                     │
+    ├─ Prompt A text ──────────────────── T5 Tokenizer + Encoder ─── emb_a [1, seq, 768]
+    ├─ Prompt B text ──────────────────── T5 Tokenizer + Encoder ─── emb_b [1, seq, 768]
+    │                                     │
+    ├─ Alpha ─────────────────────────── Interpolate(emb_a, emb_b, alpha)
+    │                                     │
+    ├─ Dimension Offsets ─────────────── Add per-dim offsets to embedding
+    │                                     │
+    ├─ Semantic Axes ─────────────────── Add scaled axis directions
+    │                                     │
+    ├─ Magnitude ─────────────────────── Scale embedding vector length
+    ├─ Noise ─────────────────────────── Add Gaussian noise (PCG64 RNG)
+    │                                     │
+    ├─ Steps, CFG, Duration, Seed ────── Diffusion sampling (BrownianTree)
+    │                                     │
+    │                                  VAE Decoder → audio [ch, samples] @ 44.1 kHz
+    │                                     │
+    │                                  HF Boost + Rumble Filter
+    │                                     │
+    │◄──── Pipe (binary) ────────────── PCM float32 + embeddings [768] × 2
+    │
+ Load into Engine (Sampler or Wavetable)
+    │
+ Per-Voice DSP: Envelope → Filter → Modulation
+    │
+ Master FX: Delay → Reverb → Limiter → Output</div>
+
+<p>
+Key observations from this flow:
+</p>
+<ul>
+  <li>Prompts, Alpha, Axes, Magnitude, Noise, and DimExplorer offsets all operate <strong>before</strong> diffusion — they shape the embedding that guides generation.</li>
+  <li>Filter, envelopes, LFOs, effects operate <strong>after</strong> generation — they are traditional synth processing on the generated audio.</li>
+  <li>Drift LFOs bridge both worlds — they can modulate pre-generation parameters (Alpha, Axes) <em>and</em> post-generation parameters (Filter, Scan).</li>
+  <li>The Python inference subprocess stays alive between generations — no startup overhead.</li>
+  <li>Determinism is guaranteed across platforms (same seed + settings = identical audio on Mac, Linux, GPU, or CPU) via a patched numpy PCG64 random number generator.</li>
+</ul>
+
+<hr style="margin-top:3rem; border:none; border-top:1px solid var(--border)">
+<p style="text-align:center; color:var(--text-dim); margin-top:1.5rem; font-size:0.85rem;">
+  T5ynth — GPLv3 — <a href="https://github.com/joeriben/t5ynth">github.com/joeriben/t5ynth</a>
+</p>
+
+</body>
+</html>
