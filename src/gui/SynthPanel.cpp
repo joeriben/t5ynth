@@ -54,28 +54,22 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.velA = std::make_unique<SA>(apvts, velId,  env.velRow->getSlider());
     env.loopA = std::make_unique<BA>(apvts, loopId, env.loopToggle);
 
-    // ── Curve shape cycling buttons ──
-    auto setupCurveBtn = [this](juce::TextButton& btn, juce::ComboBox& hidden,
+    // ── Curve shape cycling buttons (square icons) ──
+    auto setupCurveBtn = [this](CurveButton& btn, juce::ComboBox& hidden,
                                 const juce::String& paramId,
                                 juce::AudioProcessorValueTreeState& vts,
                                 std::unique_ptr<CA>& attachment) {
         hidden.addItemList({"Log", "Lin", "Exp"}, 1);
         hidden.onChange = [&btn, &hidden] {
-            static const char* labels[] = {"Log", "Lin", "Exp"};
-            int idx = hidden.getSelectedId() - 1;
-            if (idx >= 0 && idx <= 2)
-                btn.setButtonText(labels[idx]);
+            btn.setCurveShape(hidden.getSelectedId() - 1);
         };
         btn.onClick = [&hidden] {
             int next = (hidden.getSelectedId() % 3) + 1;
             hidden.setSelectedId(next);
         };
-        btn.setColour(juce::TextButton::textColourOffId, kEnvCol);
-        btn.setColour(juce::TextButton::buttonColourId, kSurface);
         addAndMakeVisible(btn);
         attachment = std::make_unique<CA>(vts, paramId, hidden);
-        // Sync button text with initial parameter value
-        hidden.onChange();
+        hidden.onChange(); // sync icon with initial parameter value
     };
     setupCurveBtn(env.aCurveBtn, env.aCurveHidden, aCurveId, apvts, env.aCurveA);
     setupCurveBtn(env.dCurveBtn, env.dCurveHidden, dCurveId, apvts, env.dCurveA);
@@ -771,21 +765,26 @@ void SynthPanel::layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float f,
 
     // Always allocate space — inactive sections are dimmed, not hidden
     int colW = (area.getWidth() - 4) / 2;
-    int btnW = juce::jmax(24, juce::roundToInt(colW * 0.16f));
+    int btnSize = rowH - 2;  // square, slightly smaller than row height
+    // Match SliderRow's internal label width so button sits at its right edge,
+    // just before the slider track starts — never overlapping the slider.
+    int rowLabelW = juce::jlimit(30, 55, juce::roundToInt(static_cast<float>(colW) * 0.18f));
+    int btnX = rowLabelW - btnSize;  // flush with right edge of label area
 
     auto adRow = area.removeFromTop(rowH);
     auto aArea = adRow.removeFromLeft(colW);
     adRow.removeFromLeft(4);
-    env.aCurveBtn.setBounds(aArea.removeFromRight(btnW));
     env.aRow->setBounds(aArea);
-    env.dCurveBtn.setBounds(adRow.removeFromRight(btnW));
+    env.aCurveBtn.setBounds(aArea.getX() + btnX, aArea.getY() + 1, btnSize, btnSize);
     env.dRow->setBounds(adRow);
+    env.dCurveBtn.setBounds(adRow.getX() + btnX, adRow.getY() + 1, btnSize, btnSize);
 
     auto srRow = area.removeFromTop(rowH);
-    env.sRow->setBounds(srRow.removeFromLeft(colW));
+    auto sArea = srRow.removeFromLeft(colW);
     srRow.removeFromLeft(4);
-    env.rCurveBtn.setBounds(srRow.removeFromRight(btnW));
+    env.sRow->setBounds(sArea);
     env.rRow->setBounds(srRow);
+    env.rCurveBtn.setBounds(srRow.getX() + btnX, srRow.getY() + 1, btnSize, btnSize);
 
     auto amtRow = area.removeFromTop(rowH);
     env.amtRow->setBounds(amtRow.removeFromLeft(colW));

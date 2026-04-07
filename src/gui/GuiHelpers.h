@@ -169,8 +169,8 @@ private:
 };
 
 /**
- * Square button that draws a curve icon (Log/Lin/Exp) and cycles on click.
- * Bordered so it's recognisable as an interactive control.
+ * Square button that displays a cached SVG curve icon (Log/Lin/Exp) and cycles on click.
+ * Uses pre-parsed juce::Drawable — no per-frame path construction.
  */
 class CurveButton : public juce::Component
 {
@@ -187,43 +187,43 @@ public:
     void paint(juce::Graphics& g) override
     {
         auto b = getLocalBounds().toFloat();
-
-        // Background + border
         g.setColour(kSurface);
         g.fillRect(b);
         g.setColour(kBorder);
         g.drawRect(b, 1.0f);
 
-        // Draw curve from bottom-left to top-right
-        float pad = 3.0f;
-        float x0 = b.getX() + pad;
-        float y0 = b.getBottom() - pad;
-        float w  = b.getWidth()  - pad * 2.0f;
-        float h  = b.getHeight() - pad * 2.0f;
-
-        juce::Path path;
-        path.startNewSubPath(x0, y0);
-
-        constexpr int steps = 20;
-        for (int i = 1; i <= steps; ++i)
-        {
-            float t = static_cast<float>(i) / static_cast<float>(steps);
-            float shaped;
-            switch (curveShape)
-            {
-                case 0:  shaped = t * t * t; break;                                       // Log (convex)
-                case 2:  { float inv = 1.0f - t; shaped = 1.0f - inv * inv * inv; } break; // Exp (concave)
-                default: shaped = t; break;                                                 // Lin
-            }
-            path.lineTo(x0 + t * w, y0 - shaped * h);
-        }
-
-        g.setColour(kEnvCol);
-        g.strokePath(path, juce::PathStrokeType(1.5f));
+        auto& icon = getIcon(curveShape);
+        if (icon)
+            icon->drawWithin(g, b.reduced(1.0f),
+                             juce::RectanglePlacement::centred, 1.0f);
     }
 
 private:
     int curveShape = 1; // 0=Log, 1=Lin, 2=Exp
+
+    static std::unique_ptr<juce::Drawable>& getIcon(int shape)
+    {
+        static std::unique_ptr<juce::Drawable> icons[3];
+        static bool inited = false;
+        if (!inited)
+        {
+            // Amber (#FF6F00) curve paths in a 16×16 viewBox
+            static const char* svgs[3] = {
+                // Log (convex — slow start, fast end)
+                R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 C9 14 13 10 14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
+                // Lin (straight diagonal)
+                R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 L14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
+                // Exp (concave — fast start, slow end)
+                R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 C2 5 5 2 14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
+            };
+            for (int i = 0; i < 3; ++i)
+                if (auto xml = juce::parseXML(svgs[i]))
+                    icons[i] = juce::Drawable::createFromSVG(*xml);
+            inited = true;
+        }
+        return icons[juce::jlimit(0, 2, shape)];
+    }
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CurveButton)
 };
 

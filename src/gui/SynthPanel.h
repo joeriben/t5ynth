@@ -92,8 +92,8 @@ private:
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> aA, dA, sA, rA, amtA, velA;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopA;
 
-        // Curve shape cycling buttons (Log/Lin/Exp)
-        juce::TextButton aCurveBtn { "Lin" }, dCurveBtn { "Lin" }, rCurveBtn { "Exp" };
+        // Curve shape cycling buttons (Log/Lin/Exp) — square icons
+        CurveButton aCurveBtn, dCurveBtn, rCurveBtn;
         juce::ComboBox aCurveHidden, dCurveHidden, rCurveHidden;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aCurveA, dCurveA, rCurveA;
     };
