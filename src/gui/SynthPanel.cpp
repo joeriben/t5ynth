@@ -59,12 +59,12 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
                                 const juce::String& paramId,
                                 juce::AudioProcessorValueTreeState& vts,
                                 std::unique_ptr<CA>& attachment) {
-        hidden.addItemList({"Log", "Lin", "Exp"}, 1);
+        hidden.addItemList({"Log", "SLog", "Lin", "SExp", "Exp"}, 1);
         hidden.onChange = [&btn, &hidden] {
             btn.setCurveShape(hidden.getSelectedId() - 1);
         };
         btn.onClick = [&hidden] {
-            int next = (hidden.getSelectedId() % 3) + 1;
+            int next = (hidden.getSelectedId() % 5) + 1;
             hidden.setSelectedId(next);
         };
         addAndMakeVisible(btn);

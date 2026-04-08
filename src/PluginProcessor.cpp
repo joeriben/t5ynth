@@ -267,26 +267,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"mod2_loop", 1}, "Mod2 Loop", false));
 
-    // ENV Curve shapes (0=Log, 1=Lin, 2=Exp)  —  A/D default Lin, R default Exp
-    juce::StringArray curveChoices {"Log", "Lin", "Exp"};
+    // ENV Curve shapes (0=Log, 1=SLog, 2=Lin, 3=SExp, 4=Exp)  —  A/D default Lin(2), R default Exp(4)
+    juce::StringArray curveChoices {"Log", "SLog", "Lin", "SExp", "Exp"};
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"amp_attack_curve", 1},  "Amp Attack Curve",  curveChoices, 1));
+        juce::ParameterID{"amp_attack_curve", 2},  "Amp Attack Curve",  curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"amp_decay_curve", 1},   "Amp Decay Curve",   curveChoices, 1));
+        juce::ParameterID{"amp_decay_curve", 2},   "Amp Decay Curve",   curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"amp_release_curve", 1}, "Amp Release Curve", curveChoices, 2));
+        juce::ParameterID{"amp_release_curve", 2}, "Amp Release Curve", curveChoices, 4));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"mod1_attack_curve", 1},  "Mod1 Attack Curve",  curveChoices, 1));
+        juce::ParameterID{"mod1_attack_curve", 2},  "Mod1 Attack Curve",  curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"mod1_decay_curve", 1},   "Mod1 Decay Curve",   curveChoices, 1));
+        juce::ParameterID{"mod1_decay_curve", 2},   "Mod1 Decay Curve",   curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"mod1_release_curve", 1}, "Mod1 Release Curve", curveChoices, 2));
+        juce::ParameterID{"mod1_release_curve", 2}, "Mod1 Release Curve", curveChoices, 4));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"mod2_attack_curve", 1},  "Mod2 Attack Curve",  curveChoices, 1));
+        juce::ParameterID{"mod2_attack_curve", 2},  "Mod2 Attack Curve",  curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"mod2_decay_curve", 1},   "Mod2 Decay Curve",   curveChoices, 1));
+        juce::ParameterID{"mod2_decay_curve", 2},   "Mod2 Decay Curve",   curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"mod2_release_curve", 1}, "Mod2 Release Curve", curveChoices, 2));
+        juce::ParameterID{"mod2_release_curve", 2}, "Mod2 Release Curve", curveChoices, 4));
 
     // ENV targets:
     // 0=None, 1=DCA, 2=Filter, 3=Scan, 4=Pitch, 5=DelayTime, 6=DelayFB, 7=DelayMix, 8=ReverbMix,
@@ -1578,13 +1578,14 @@ static int lfoTargetFromString(const juce::String& s) {
     if (s == "delay_feedback") return 4;
     if (s == "delay_mix") return 5;
     if (s == "reverb_mix") return 6;
-    if (s == "lfo1_rate" || s == "lfo2_rate") return 7;
-    if (s == "lfo1_depth" || s == "lfo2_depth") return 8;
+    if (s == "lfo1_rate" || s == "lfo2_rate" || s == "lfo_rate") return 7;
+    if (s == "lfo1_depth" || s == "lfo2_depth" || s == "lfo_depth") return 8;
+    if (s == "env3_amt") return 10;
     return 9; // none
 }
 static juce::String lfoTargetToString(int i) {
-    const char* names[] = {"dcf_cutoff","wt_scan","pitch","delay_time","delay_feedback","delay_mix","reverb_mix","lfo_rate","lfo_depth","none"};
-    return (i >= 0 && i <= 9) ? names[i] : "none";
+    const char* names[] = {"dcf_cutoff","wt_scan","pitch","delay_time","delay_feedback","delay_mix","reverb_mix","lfo_rate","lfo_depth","none","env3_amt"};
+    return (i >= 0 && i <= 10) ? names[i] : "none";
 }
 
 static int lfoWaveFromString(const juce::String& s) {
@@ -1641,6 +1642,19 @@ static juce::String driftWaveToString(int i) {
     if (i == 2) return "sawtooth";
     if (i == 3) return "square";
     return "sine";
+}
+
+// Envelope curve shapes: 0=Log, 1=SoftLog, 2=Lin, 3=SoftExp, 4=Exp
+static juce::String curveShapeToString(int i) {
+    const char* names[] = {"log", "softlog", "lin", "softexp", "exp"};
+    return (i >= 0 && i <= 4) ? names[i] : "lin";
+}
+static int curveShapeFromString(const juce::String& s) {
+    if (s == "log") return 0;
+    if (s == "softlog") return 1;
+    if (s == "softexp") return 3;
+    if (s == "exp") return 4;
+    return 2; // lin (default, also backward-compat for old presets without curves)
 }
 
 // Helper to safely set a parameter value
@@ -1720,6 +1734,8 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     synth->setProperty("cfg", get("gen_cfg"));
     synth->setProperty("seed", static_cast<int>(get("gen_seed")));
     synth->setProperty("device", lastDevice);
+    synth->setProperty("model", lastModel);
+    synth->setProperty("hfBoost", get("gen_hf_boost") > 0.5f);
     root->setProperty("synth", synth.get());
 
     // Engine
@@ -1731,6 +1747,12 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     engine->setProperty("loopEndFrac", static_cast<double>(masterSampler.getLoopEnd()));
     engine->setProperty("startPosFrac", static_cast<double>(masterSampler.getStartPos()));
     engine->setProperty("crossfadeMs", get("crossfade_ms"));
+    engine->setProperty("normalize", get("normalize") > 0.5f);
+    {
+        int loopOpt = static_cast<int>(get("loop_optimize"));
+        const char* optNames[] = {"off", "low", "high"};
+        engine->setProperty("loopOptimize", optNames[juce::jlimit(0, 2, loopOpt)]);
+    }
     root->setProperty("engine", engine.get());
 
     // Modulation: 3 envelopes
@@ -1746,11 +1768,15 @@ juce::String T5ynthProcessor::exportJsonPreset() const
         env->setProperty("sustain", get(envPrefixes[i] + "sustain"));
         env->setProperty("releaseMs", get(envPrefixes[i] + "release"));
         env->setProperty("amount", get(envPrefixes[i] + "amount"));
+        env->setProperty("velSens", get(envPrefixes[i] + "vel_sens"));
         if (i == 0)
             env->setProperty("target", "dca"); // amp env is always DCA
         else
             env->setProperty("target", envTargetToString(static_cast<int>(get(envTargetIds[i]))));
         env->setProperty("loop", get(envPrefixes[i] + "loop") > 0.5f);
+        env->setProperty("attackCurve", curveShapeToString(static_cast<int>(get(envPrefixes[i] + "attack_curve"))));
+        env->setProperty("decayCurve", curveShapeToString(static_cast<int>(get(envPrefixes[i] + "decay_curve"))));
+        env->setProperty("releaseCurve", curveShapeToString(static_cast<int>(get(envPrefixes[i] + "release_curve"))));
         envArr.add(env.get());
     }
     modObj->setProperty("envs", envArr);
@@ -1784,6 +1810,8 @@ juce::String T5ynthProcessor::exportJsonPreset() const
         driftArr.add(d.get());
     }
     root->setProperty("driftLfos", driftArr);
+    root->setProperty("driftEnabled", get("drift_enabled") > 0.5f);
+    root->setProperty("driftCrossfade", get("drift_crossfade"));
     // Regen mode: 0=Manual, 1=Auto, 2=max1beat, 3=max4beats, 4=max16beats
     int regenMode = static_cast<int>(get("drift_regen"));
     const char* regenNames[] = {"manual", "auto", "max_1beat", "max_4beats", "max_16beats"};
@@ -1812,6 +1840,12 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     const char* revNames[] = {"off", "dark", "medium", "bright", "algo"};
     fx->setProperty("reverbType", revNames[juce::jlimit(0, 4, revType)]);
     fx->setProperty("reverbMix", get("reverb_mix"));
+    fx->setProperty("algoRoom", get("algo_room"));
+    fx->setProperty("algoDamping", get("algo_damping"));
+    fx->setProperty("algoWidth", get("algo_width"));
+    // Limiter
+    fx->setProperty("limiterThreshold", get("limiter_thresh"));
+    fx->setProperty("limiterRelease", get("limiter_release"));
     root->setProperty("effects", fx.get());
 
     // Filter — store NORMALIZED cutoff (0-1), not Hz
@@ -1846,6 +1880,13 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     }
     seq->setProperty("steps", stepArr);
     seq->setProperty("octaveShift", static_cast<int>(get("seq_octave")) - 2);
+    {
+        static const char* divNames[] = {"1/1", "1/2", "1/4", "1/8", "1/16"};
+        int divIdx = static_cast<int>(get("seq_division"));
+        seq->setProperty("division", divIdx >= 0 && divIdx < 5 ? divNames[divIdx] : "1/16");
+    }
+    seq->setProperty("glideTime", get("seq_glide_time"));
+    seq->setProperty("gate", get("seq_gate"));
     // Scale
     static const char* scaleRootNames[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
     int srIdx = static_cast<int>(get("scale_root"));
@@ -1904,6 +1945,8 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         setParam(parameters, "inf_steps", static_cast<float>(static_cast<int>(synth->getProperty("steps"))));
         setParam(parameters, "gen_cfg", static_cast<float>(synth->getProperty("cfg")));
         setParam(parameters, "gen_seed", static_cast<float>(static_cast<int>(synth->getProperty("seed"))));
+        if (synth->hasProperty("hfBoost"))
+            setParam(parameters, "gen_hf_boost", static_cast<bool>(synth->getProperty("hfBoost")) ? 1.0f : 0.0f);
     }
 
     // ── Engine ──
@@ -1925,6 +1968,16 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             masterSampler.setStartPos(masterSampler.getLoopStart()); // backward compat
         masterSampler.setUserPointsAdjusted(false); // preset owns the points now
         setParam(parameters, "crossfade_ms", static_cast<float>(engine->getProperty("crossfadeMs")));
+        if (engine->hasProperty("normalize"))
+            setParam(parameters, "normalize", static_cast<bool>(engine->getProperty("normalize")) ? 1.0f : 0.0f);
+        if (engine->hasProperty("loopOptimize"))
+        {
+            juce::String lo = engine->getProperty("loopOptimize").toString();
+            int loIdx = 0;
+            if (lo == "low") loIdx = 1;
+            else if (lo == "high") loIdx = 2;
+            setParam(parameters, "loop_optimize", static_cast<float>(loIdx));
+        }
     }
 
     // ── Modulation ──
@@ -1945,6 +1998,17 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
                 setParam(parameters, envPrefixes[i] + "release", static_cast<float>(env->getProperty("releaseMs")));
                 setParam(parameters, envPrefixes[i] + "amount", static_cast<float>(env->getProperty("amount")));
                 setParam(parameters, envPrefixes[i] + "loop", env->getProperty("loop") ? 1.0f : 0.0f);
+                if (env->hasProperty("velSens"))
+                    setParam(parameters, envPrefixes[i] + "vel_sens", static_cast<float>(env->getProperty("velSens")));
+                if (env->hasProperty("attackCurve"))
+                    setParam(parameters, envPrefixes[i] + "attack_curve",
+                             static_cast<float>(curveShapeFromString(env->getProperty("attackCurve").toString())));
+                if (env->hasProperty("decayCurve"))
+                    setParam(parameters, envPrefixes[i] + "decay_curve",
+                             static_cast<float>(curveShapeFromString(env->getProperty("decayCurve").toString())));
+                if (env->hasProperty("releaseCurve"))
+                    setParam(parameters, envPrefixes[i] + "release_curve",
+                             static_cast<float>(curveShapeFromString(env->getProperty("releaseCurve").toString())));
                 if (i > 0)
                     setParam(parameters, envTargetIds[i], static_cast<float>(envTargetFromString(env->getProperty("target").toString())));
             }
@@ -1982,6 +2046,10 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             setParam(parameters, pre + "target", static_cast<float>(driftTargetFromString(d->getProperty("target").toString())));
         }
     }
+    if (root->hasProperty("driftEnabled"))
+        setParam(parameters, "drift_enabled", static_cast<bool>(root->getProperty("driftEnabled")) ? 1.0f : 0.0f);
+    if (root->hasProperty("driftCrossfade"))
+        setParam(parameters, "drift_crossfade", static_cast<float>(root->getProperty("driftCrossfade")));
     // Regen mode
     if (root->hasProperty("regenMode"))
     {
@@ -2061,6 +2129,16 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             }
         }
         setParam(parameters, "reverb_mix", static_cast<float>(fx->getProperty("reverbMix")));
+        if (fx->hasProperty("algoRoom"))
+            setParam(parameters, "algo_room", static_cast<float>(fx->getProperty("algoRoom")));
+        if (fx->hasProperty("algoDamping"))
+            setParam(parameters, "algo_damping", static_cast<float>(fx->getProperty("algoDamping")));
+        if (fx->hasProperty("algoWidth"))
+            setParam(parameters, "algo_width", static_cast<float>(fx->getProperty("algoWidth")));
+        if (fx->hasProperty("limiterThreshold"))
+            setParam(parameters, "limiter_thresh", static_cast<float>(fx->getProperty("limiterThreshold")));
+        if (fx->hasProperty("limiterRelease"))
+            setParam(parameters, "limiter_release", static_cast<float>(fx->getProperty("limiterRelease")));
     }
 
     // ── Filter — CRITICAL: cutoff is normalized 0-1, convert to Hz ──
@@ -2118,6 +2196,21 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             int oct = static_cast<int>(seq->getProperty("octaveShift"));
             setParam(parameters, "seq_octave", static_cast<float>(oct + 2));
         }
+        if (seq->hasProperty("division"))
+        {
+            juce::String divStr = seq->getProperty("division").toString();
+            int divIdx = 4; // default 1/16
+            if (divStr == "1/1") divIdx = 0;
+            else if (divStr == "1/2") divIdx = 1;
+            else if (divStr == "1/4") divIdx = 2;
+            else if (divStr == "1/8") divIdx = 3;
+            else if (divStr == "1/16") divIdx = 4;
+            setParam(parameters, "seq_division", static_cast<float>(divIdx));
+        }
+        if (seq->hasProperty("glideTime"))
+            setParam(parameters, "seq_glide_time", static_cast<float>(seq->getProperty("glideTime")));
+        if (seq->hasProperty("gate"))
+            setParam(parameters, "seq_gate", static_cast<float>(seq->getProperty("gate")));
         // Scale (backward-compatible: old euc_* keys mapped to gen_* params)
         if (seq->hasProperty("eucPulses"))
             setParam(parameters, "gen_pulses", static_cast<float>(static_cast<int>(seq->getProperty("eucPulses"))));

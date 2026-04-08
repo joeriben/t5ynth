@@ -7,10 +7,17 @@ float ADSREnvelope::applyCurve(float t, CurveShape shape)
         case CurveShape::Exp:
         {
             float inv = 1.0f - t;
-            return 1.0f - inv * inv * inv;   // concave — fast start
+            return 1.0f - inv * inv * inv;   // concave — fast start (cubic)
+        }
+        case CurveShape::SoftExp:
+        {
+            float inv = 1.0f - t;
+            return 1.0f - inv * inv;         // concave — mild fast start (quadratic)
         }
         case CurveShape::Log:
-            return t * t * t;                 // convex — slow start
+            return t * t * t;                 // convex — slow start (cubic)
+        case CurveShape::SoftLog:
+            return t * t;                     // convex — mild slow start (quadratic)
         default:
             return t;                         // linear
     }
@@ -146,15 +153,17 @@ float ADSREnvelope::processSample()
         {
             releaseSampleCount++;
 
-            if (releaseCurve == CurveShape::Exp)
+            if (releaseCurve == CurveShape::Exp || releaseCurve == CurveShape::SoftExp)
             {
-                // Original RC-discharge: e^(-t/τ), τ = releaseMs/5
+                // RC-discharge: e^(-t/τ)
+                // Exp: τ = releaseMs/5 (steep), SoftExp: τ = releaseMs/3 (gentler)
+                float tau = (releaseCurve == CurveShape::Exp) ? releaseTau : releaseTau * (5.0f / 3.0f);
                 float t = static_cast<float>(releaseSampleCount) / static_cast<float>(sr);
-                currentLevel = releaseStartLevel * std::exp(-t / releaseTau);
+                currentLevel = releaseStartLevel * std::exp(-t / tau);
             }
             else
             {
-                // Progress-based curve (Lin or Log)
+                // Progress-based curve (Lin, SoftLog, or Log)
                 float t = std::min(1.0f, static_cast<float>(releaseSampleCount)
                                        / static_cast<float>(releaseTotalSamples));
                 float shaped = applyCurve(t, releaseCurve);

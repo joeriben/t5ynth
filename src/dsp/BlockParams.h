@@ -46,7 +46,7 @@ struct BlockParams
     float ampAttack = 0.0f, ampDecay = 0.0f, ampSustain = 1.0f, ampRelease = 0.0f;
     float ampAmount = 1.0f;
     float ampVelSens = 1.0f;  // 0=fixed, 1=full velocity
-    int   ampAttackCurve = 1, ampDecayCurve = 1, ampReleaseCurve = 2; // 0=Log,1=Lin,2=Exp
+    int   ampAttackCurve = 2, ampDecayCurve = 2, ampReleaseCurve = 4; // 0=Log,1=SLog,2=Lin,3=SExp,4=Exp
     bool  ampLoop = false;
 
     // Mod envelope 1
@@ -54,7 +54,7 @@ struct BlockParams
     float mod1Amount = 0.0f;
     float mod1VelSens = 1.0f;
     int   mod1Target = 0; // 0 = None
-    int   mod1AttackCurve = 1, mod1DecayCurve = 1, mod1ReleaseCurve = 2;
+    int   mod1AttackCurve = 2, mod1DecayCurve = 2, mod1ReleaseCurve = 4;
     bool  mod1Loop = false;
 
     // Mod envelope 2
@@ -62,7 +62,7 @@ struct BlockParams
     float mod2Amount = 0.0f;
     float mod2VelSens = 1.0f;
     int   mod2Target = 0; // 0 = None
-    int   mod2AttackCurve = 1, mod2DecayCurve = 1, mod2ReleaseCurve = 2;
+    int   mod2AttackCurve = 2, mod2DecayCurve = 2, mod2ReleaseCurve = 4;
     bool  mod2Loop = false;
 
     // LFOs (global rates/depths for cross-mod, targets for routing)

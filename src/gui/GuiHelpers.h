@@ -194,7 +194,8 @@ private:
 };
 
 /**
- * Square button that displays a cached SVG curve icon (Log/Lin/Exp) and cycles on click.
+ * Square button that displays a cached SVG curve icon and cycles on click.
+ * 5 shapes: Log, SLog, Lin, SExp, Exp.
  * Uses pre-parsed juce::Drawable — no per-frame path construction.
  */
 class CurveButton : public juce::Component
@@ -224,29 +225,35 @@ public:
     }
 
 private:
-    int curveShape = 1; // 0=Log, 1=Lin, 2=Exp
+    int curveShape = 2; // 0=Log, 1=SLog, 2=Lin, 3=SExp, 4=Exp
+
+    static constexpr int kNumShapes = 5;
 
     static std::unique_ptr<juce::Drawable>& getIcon(int shape)
     {
-        static std::unique_ptr<juce::Drawable> icons[3];
+        static std::unique_ptr<juce::Drawable> icons[kNumShapes];
         static bool inited = false;
         if (!inited)
         {
             // Amber (#FF6F00) curve paths in a 16×16 viewBox
-            static const char* svgs[3] = {
-                // Log (convex — slow start, fast end)
+            static const char* svgs[kNumShapes] = {
+                // Log (convex — slow start, cubic)
                 R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 C9 14 13 10 14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
+                // SLog (mild convex — slow start, quadratic)
+                R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 C6 14 11 7 14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
                 // Lin (straight diagonal)
                 R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 L14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
-                // Exp (concave — fast start, slow end)
+                // SExp (mild concave — mild fast start, quadratic)
+                R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 C2 9 7 2 14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
+                // Exp (concave — fast start, cubic)
                 R"(<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 14 C2 5 5 2 14 2" stroke="#FF6F00" fill="none" stroke-width="1.5" stroke-linecap="round"/></svg>)",
             };
-            for (int i = 0; i < 3; ++i)
+            for (int i = 0; i < kNumShapes; ++i)
                 if (auto xml = juce::parseXML(svgs[i]))
                     icons[i] = juce::Drawable::createFromSVG(*xml);
             inited = true;
         }
-        return icons[juce::jlimit(0, 2, shape)];
+        return icons[juce::jlimit(0, kNumShapes - 1, shape)];
     }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(CurveButton)

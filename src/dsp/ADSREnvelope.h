@@ -3,7 +3,7 @@
 #include <algorithm>
 
 /** Curve shapes for envelope stages. */
-enum class CurveShape : int { Log = 0, Lin = 1, Exp = 2 };
+enum class CurveShape : int { Log = 0, SoftLog = 1, Lin = 2, SoftExp = 3, Exp = 4 };
 
 /**
  * ADSR envelope with per-stage curve shaping.
@@ -17,9 +17,11 @@ enum class CurveShape : int { Log = 0, Lin = 1, Exp = 2 };
  *   Minimum ramp: 3ms for all stages
  *
  * Curve shapes (Log/Lin/Exp):
- *   Exp — fast initial change, decelerates (concave)
- *   Lin — constant rate (linear)
- *   Log — slow initial change, accelerates (convex)
+ *   Exp  — fast initial change, decelerates (concave, cubic)
+ *   SExp — mild fast start (concave, quadratic)
+ *   Lin  — constant rate (linear)
+ *   SLog — mild slow start (convex, quadratic)
+ *   Log  — slow initial change, accelerates (convex, cubic)
  */
 class ADSREnvelope
 {
@@ -60,9 +62,9 @@ private:
     float sustainLevel = 1.0f;
     float releaseMs    = 0.0f;
 
-    CurveShape attackCurve  = CurveShape::Lin;
-    CurveShape decayCurve   = CurveShape::Lin;
-    CurveShape releaseCurve = CurveShape::Exp;
+    CurveShape attackCurve  = CurveShape::Lin;     // index 2
+    CurveShape decayCurve   = CurveShape::Lin;     // index 2
+    CurveShape releaseCurve = CurveShape::Exp;     // index 4
 
     float currentLevel   = 0.0f;
     float targetVelocity = 1.0f;
