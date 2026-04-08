@@ -20,9 +20,11 @@ public:
     void resized() override;
 
     juce::File scanForModel();
+    bool hasAnyInstalledModel();
     void setModelPath(const juce::File& dir);
     juce::File getModelPath() const { return modelPath; }
     void setBackendConnected(bool connected);
+    void setBackendFailed(const juce::String& reason);
 
     std::function<void()> onClose;
 
@@ -59,6 +61,7 @@ private:
     juce::TextEditor instructionsLabel;
     juce::Label downloadStatusLabel;
     bool backendConnected = false;
+    juce::String backendFailReason;
 
     juce::Label tokenLabel;
     juce::TextEditor tokenEditor;

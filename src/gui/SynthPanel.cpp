@@ -747,6 +747,8 @@ void SynthPanel::updateVisibility()
     loopOptimizeBtn.setVisible(isSampler);
     normalizeToggle.setVisible(isSampler);
     hfBoostBtn.setVisible(isSampler);
+    for (int i = 0; i < kNumOctBtns; ++i)
+        octBtns[i].setVisible(isSampler);
 
     // Wavetable-only controls
     scanRow->setVisible(isWavetable);
@@ -1158,7 +1160,7 @@ void SynthPanel::resized()
         scanRow->setBounds(-1000, -1000, 10, 10);
         scanHint.setVisible(false);
 
-        area.removeFromTop(gap * 3);
+        area.removeFromTop(gap);
 
         // [32|64|128|256] [Smooth] [N frames] | [White|Pink|Brown] Lvl[===]
         auto wtRow = area.removeFromTop(rowH);

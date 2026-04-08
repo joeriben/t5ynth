@@ -282,8 +282,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          PRERELEASE=""
+          case "${{ github.ref_name }}" in
+            *-rc*|*-alpha*|*-beta*) PRERELEASE="--prerelease" ;;
+          esac
           gh release create "${{ github.ref_name }}" \
             release/*.tar.xz \
             --title "T5ynth ${{ github.ref_name }}" \
             --notes-file release_notes.md \
-            --prerelease
+            $PRERELEASE

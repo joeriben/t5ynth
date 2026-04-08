@@ -35,7 +35,7 @@ static const KnownModel kKnownModels[] = {
       "T5ynth does not provide the model weights. By downloading, you accept\n"
       "the license terms and take responsibility for compliance.", true },
     { "stable-audio-open-small", "Stable Audio Open Small",    "stabilityai/stable-audio-open-small",
-      "https://github.com/joeriben/t5ynth/releases/download/models-v1",
+      nullptr,
       "https://stability.ai/community-license-agreement",
       "This model is licensed under the Stability AI Community License.\n\n"
       "- Non-commercial use: free\n"
@@ -122,7 +122,7 @@ SettingsPage::SettingsPage()
     for (int i = 0; i < kNumKnownModels; ++i)
         modelChooser.addItem(kKnownModels[i].displayName, i + 1);
     modelChooser.setSelectedId(1, juce::dontSendNotification);
-    modelChooser.onChange = [this] { updateStatus(); };
+    modelChooser.onChange = [this] { updateStatus(); resized(); };
     addAndMakeVisible(modelChooser);
 
     modelStatusLabel.setColour(juce::Label::textColourId, juce::Colours::white);
@@ -131,8 +131,8 @@ SettingsPage::SettingsPage()
     modelPathLabel.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(modelPathLabel);
 
-    backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
-    backendStatusLabel.setText("Backend: Not connected", juce::dontSendNotification);
+    backendStatusLabel.setColour(juce::Label::textColourId, kDim);
+    backendStatusLabel.setText("Backend: Starting...", juce::dontSendNotification);
     addAndMakeVisible(backendStatusLabel);
 
     instructionsLabel.setMultiLine(true);
@@ -154,8 +154,15 @@ SettingsPage::SettingsPage()
     scanButton.setColour(juce::TextButton::textColourOffId, kAccent);
     scanButton.onClick = [this] {
         auto found = scanForModel();
-        if (found.exists()) setModelPath(found);
-        updateStatus();
+        if (found.exists()) {
+            setModelPath(found);
+            downloadStatusLabel.setText("Model found.", juce::dontSendNotification);
+            downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
+        } else {
+            updateStatus();
+            downloadStatusLabel.setText("No model found in standard locations.", juce::dontSendNotification);
+            downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
+        }
     };
     addAndMakeVisible(scanButton);
 
@@ -163,6 +170,17 @@ SettingsPage::SettingsPage()
     browseButton.setColour(juce::TextButton::textColourOffId, kAccent);
     browseButton.onClick = [this] { browseForModel(); };
     addAndMakeVisible(browseButton);
+
+    tokenLabel.setText("HuggingFace Token:", juce::dontSendNotification);
+    tokenLabel.setColour(juce::Label::textColourId, kDim);
+    addAndMakeVisible(tokenLabel);
+
+    tokenEditor.setColour(juce::TextEditor::backgroundColourId, kSurface);
+    tokenEditor.setColour(juce::TextEditor::textColourId, juce::Colours::white);
+    tokenEditor.setColour(juce::TextEditor::outlineColourId, kBorder);
+    tokenEditor.setTextToShowWhenEmpty("hf_...", kDim);
+    tokenEditor.setPasswordCharacter(0x2022);  // bullet character
+    addAndMakeVisible(tokenEditor);
 
     downloadButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2d6a4f));
     downloadButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -179,16 +197,14 @@ SettingsPage::SettingsPage()
 }
 
 // ── Scan ────────────────────────────────────────────────────────────────────
-juce::File SettingsPage::scanForModel()
+static juce::File scanForModelById(const juce::String& id, const juce::String& hfRepo)
 {
-    auto id = selectedModelId();
-    auto hfRepo = selectedHfRepo();
     // HF cache uses "--" as separator: "models--stabilityai--stable-audio-open-1.0"
     auto hfCacheDir = "models--" + hfRepo.replace("/", "--");
 
     auto home = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
     std::vector<juce::File> candidates = {
-        getAppSupportModelDir(id),
+        SettingsPage::getAppSupportModelDir(id),
         home.getChildFile("t5ynth/models/" + id),
         home.getChildFile(".cache/huggingface/hub/" + hfCacheDir),
     };
@@ -202,6 +218,19 @@ juce::File SettingsPage::scanForModel()
                 if (hasModelMarker(snapshot)) return snapshot;
     }
     return {};
+}
+
+juce::File SettingsPage::scanForModel()
+{
+    return scanForModelById(selectedModelId(), selectedHfRepo());
+}
+
+bool SettingsPage::hasAnyInstalledModel()
+{
+    for (int i = 0; i < kNumKnownModels; ++i)
+        if (scanForModelById(kKnownModels[i].id, kKnownModels[i].hfRepo).exists())
+            return true;
+    return false;
 }
 
 void SettingsPage::setModelPath(const juce::File& dir)
@@ -688,10 +717,21 @@ void SettingsPage::saveSettings()
 void SettingsPage::setBackendConnected(bool connected)
 {
     backendConnected = connected;
+    if (connected) backendFailReason = {};
     backendStatusLabel.setText(connected ? "Backend: Connected" : "Backend: Not connected",
                               juce::dontSendNotification);
     backendStatusLabel.setColour(juce::Label::textColourId,
         connected ? juce::Colour(0xff4ade80) : juce::Colour(0xffef4444));
+    updateStatus();
+}
+
+void SettingsPage::setBackendFailed(const juce::String& reason)
+{
+    backendConnected = false;
+    backendFailReason = reason;
+    backendStatusLabel.setText("Backend: " + reason, juce::dontSendNotification);
+    backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
+    updateStatus();
 }
 
 void SettingsPage::updateStatus()
@@ -711,9 +751,16 @@ void SettingsPage::updateStatus()
         modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
         modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
         modelPathLabel.setText(modelPath.getFullPathName(), juce::dontSendNotification);
-        instructionsLabel.setText(
-            backendConnected ? "Ready to generate audio."
-                             : "Model ready. Restart to load.", false);
+        if (backendConnected) {
+            instructionsLabel.setText("Ready to generate audio.", false);
+        } else if (backendFailReason.isNotEmpty()) {
+            instructionsLabel.setText(
+                "Model files found, but the Python backend is not available.\n\n"
+                "Make sure the backend is included in the app bundle\n"
+                "and all Python dependencies are installed.", false);
+        } else {
+            instructionsLabel.setText("Model files found. Starting backend...", false);
+        }
     } else {
         modelStatusLabel.setText(id + ": Not installed", juce::dontSendNotification);
         modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
@@ -787,6 +834,19 @@ void SettingsPage::resized()
     btnRow.removeFromLeft(6);
     browseButton.setBounds(btnRow.removeFromLeft(btnW));
     area.removeFromTop(gap * 2);
+
+    // Token row (only for gated models)
+    bool needsToken = selectedNeedsToken();
+    tokenLabel.setVisible(needsToken);
+    tokenEditor.setVisible(needsToken);
+    if (needsToken)
+    {
+        auto tokenRow = area.removeFromTop(rowH);
+        tokenLabel.setFont(juce::FontOptions(11.0f));
+        tokenLabel.setBounds(tokenRow.removeFromLeft(120));
+        tokenEditor.setBounds(tokenRow);
+        area.removeFromTop(gap);
+    }
 
     // Download button
     auto dlRow = area.removeFromTop(26);

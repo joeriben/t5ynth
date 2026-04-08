@@ -174,8 +174,8 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     // Load native inference models
     tryLoadInferenceModels();
 
-    // Auto-open settings if no model found on first launch
-    if (!settingsPage.getModelPath().exists())
+    // Auto-open settings if no model found for any engine
+    if (!settingsPage.hasAnyInstalledModel())
         showSettings();
 }
 
@@ -314,6 +314,7 @@ void MainPanel::tryLoadInferenceModels()
                 else
                 {
                     statusBar.setStatusText("Python backend failed to start");
+                    settingsPage.setBackendFailed("Failed to start");
                 }
             });
         }).detach();
@@ -321,6 +322,7 @@ void MainPanel::tryLoadInferenceModels()
     else
     {
         statusBar.setStatusText("Backend not found — check installation");
+        settingsPage.setBackendFailed("Not found");
     }
 }
 
@@ -627,55 +629,103 @@ void MainPanel::exportWav()
 // About
 // ═══════════════════════════════════════════════════════════════════
 
+// Strip inline markdown: **bold**, [text](url), `code`
+static juce::String stripInline(juce::String s)
+{
+    s = s.replace("**", "");
+
+    while (s.contains("["))
+    {
+        int lb = s.indexOf("[");
+        int rb = s.indexOf(lb, "]");
+        int lp = (rb >= 0) ? s.indexOf(rb, "(") : -1;
+        int rp = (lp >= 0) ? s.indexOf(lp, ")") : -1;
+        if (lb >= 0 && rb > lb && lp == rb + 1 && rp > lp)
+            s = s.substring(0, lb) + s.substring(lb + 1, rb) + s.substring(rp + 1);
+        else
+            break;
+    }
+
+    s = s.replace("`", "");
+    return s;
+}
+
 juce::String MainPanel::markdownToPlainText(const juce::String& md)
 {
     juce::String result;
     bool inCodeBlock = false;
     auto lines = juce::StringArray::fromLines(md);
+    const juce::String star50(juce::String::repeatedString("*", 50));
+    const juce::String dash50(juce::String::repeatedString("-", 50));
 
     for (int i = 0; i < lines.size(); ++i)
     {
         auto line = lines[i];
 
-        // Skip code blocks entirely (ASCII diagrams don't display well)
         if (line.trimStart().startsWith("```"))
         {
             inCodeBlock = !inCodeBlock;
             continue;
         }
-        if (inCodeBlock) continue;
+        if (inCodeBlock) { result += "    " + line + "\n"; continue; }
 
         auto trimmed = line.trim();
 
-        // Headings → uppercase with separator
-        if (trimmed.startsWith("### "))     { result += "\n" + trimmed.substring(4).toUpperCase() + "\n"; continue; }
-        if (trimmed.startsWith("## "))      { result += "\n" + trimmed.substring(3).toUpperCase() + "\n"; continue; }
-        if (trimmed.startsWith("# "))       { result += "\n" + trimmed.substring(2).toUpperCase() + "\n"; continue; }
-
-        // Horizontal rule
-        if (trimmed == "---") { result += "\n"; continue; }
-
-        // Blockquote
-        if (trimmed.startsWith("> ")) { result += trimmed.substring(2) + "\n"; continue; }
-
-        // Strip **bold** markers
-        auto clean = trimmed.replace("**", "");
-
-        // Strip [text](url) → text
-        while (clean.contains("["))
+        // H1: big decorated heading
+        if (trimmed.startsWith("# ") && !trimmed.startsWith("##"))
         {
-            int lb = clean.indexOf("[");
-            int rb = clean.indexOf(lb, "]");
-            int lp = clean.indexOf(rb, "(");
-            int rp = clean.indexOf(lp, ")");
-            if (lb >= 0 && rb > lb && lp == rb + 1 && rp > lp)
-                clean = clean.substring(0, lb) + clean.substring(lb + 1, rb) + clean.substring(rp + 1);
-            else
-                break;
+            auto heading = stripInline(trimmed.substring(2));
+            result += "\n" + star50 + "\n  "
+                    + heading.toUpperCase()
+                    + "\n" + star50 + "\n\n";
+            continue;
+        }
+        // H2: medium decorated heading
+        if (trimmed.startsWith("## ") && !trimmed.startsWith("###"))
+        {
+            auto heading = stripInline(trimmed.substring(3));
+            result += "\n" + dash50 + "\n  "
+                    + heading.toUpperCase()
+                    + "\n" + dash50 + "\n\n";
+            continue;
+        }
+        // H3: simple heading
+        if (trimmed.startsWith("### "))
+        {
+            auto heading = stripInline(trimmed.substring(4));
+            result += "\n  " + heading.toUpperCase() + "\n\n";
+            continue;
         }
 
-        // Strip inline `code` markers
-        clean = clean.replace("`", "");
+        // Horizontal rule
+        if (trimmed == "---" || trimmed == "***" || trimmed == "___")
+        {
+            result += "\n" + dash50 + "\n\n";
+            continue;
+        }
+
+        // Blockquote
+        if (trimmed.startsWith("> "))
+        {
+            result += "  | " + stripInline(trimmed.substring(2)) + "\n";
+            continue;
+        }
+
+        // Table rows
+        if (trimmed.startsWith("|"))
+        {
+            if (trimmed.containsOnly("|-: ")) continue;
+            auto cleaned = trimmed.trimCharactersAtStart("|").trimCharactersAtEnd("|");
+            cleaned = cleaned.replace("|", "   ");
+            result += "  " + stripInline(cleaned) + "\n";
+            continue;
+        }
+
+        auto clean = stripInline(trimmed);
+
+        // Bullet points
+        if (clean.startsWith("- "))
+            clean = "  * " + clean.substring(2);
 
         result += clean + "\n";
     }
@@ -688,27 +738,58 @@ void MainPanel::showAbout()
     aboutScrim.setVisible(true);
     aboutScrim.toFront(false);
 
-    // Load README
+    // Find project root (contains README.md)
     auto exe = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
-    juce::File readmeFile;
+    juce::File projectRoot;
     auto search = exe.getParentDirectory();
     for (int i = 0; i < 8; ++i)
     {
         if (search.getChildFile("README.md").existsAsFile())
         {
-            readmeFile = search.getChildFile("README.md");
+            projectRoot = search;
             break;
         }
         search = search.getParentDirectory();
     }
 
     juce::String md;
-    if (readmeFile.existsAsFile())
-        md = readmeFile.loadFileAsString();
-    else
-        md = "# T5ynth\n\nREADME not found.\n";
+    if (projectRoot.exists())
+    {
+        auto readme = projectRoot.getChildFile("README.md");
+        if (readme.existsAsFile())
+        {
+            // Filter out developer-only sections (Building, etc.)
+            auto lines = juce::StringArray::fromLines(readme.loadFileAsString());
+            bool skip = false;
+            for (auto& line : lines)
+            {
+                auto trimmed = line.trim();
+                // Start skipping at "## Building"
+                if (trimmed.startsWithIgnoreCase("## Building"))
+                    skip = true;
+                // Stop skipping at "## License" (user-relevant again)
+                if (skip && trimmed.startsWithIgnoreCase("## License"))
+                    skip = false;
+                if (!skip)
+                    md += line + "\n";
+            }
+        }
 
-    aboutText.setFont(juce::FontOptions(15.0f));
+        auto license = projectRoot.getChildFile("LICENSE.txt");
+        if (license.existsAsFile())
+            md += "\n\n---\n\n# License\n\n" + license.loadFileAsString();
+
+        auto thirdParty = projectRoot.getChildFile("THIRD_PARTY_LICENSES.txt");
+        if (thirdParty.existsAsFile())
+            md += "\n\n---\n\n" + thirdParty.loadFileAsString();
+    }
+    else
+    {
+        md = "# T5ynth\n\nDocumentation files not found.\n";
+    }
+
+    aboutText.setFont(juce::FontOptions(19.5f)
+        .withName(juce::Font::getDefaultMonospacedFontName()));
     aboutText.setText(markdownToPlainText(md));
     aboutText.setCaretPosition(0);
 
