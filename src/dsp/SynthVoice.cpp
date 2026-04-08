@@ -346,7 +346,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             // Mix noise oscillator (goes through VCA + filter with the main signal)
             if (p.noiseLevel > 0.001f)
             {
-                noise.setColorCutoff(p.noiseColor);
+                noise.setType(static_cast<NoiseType>(p.noiseType));
                 sample += noise.processSample() * p.noiseLevel;
             }
 

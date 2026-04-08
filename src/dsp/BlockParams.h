@@ -90,7 +90,7 @@ struct BlockParams
 
     // Noise oscillator
     float noiseLevel = 0.0f;      // 0-1 mix level
-    float noiseColor = 20000.0f;  // LP filter cutoff Hz for noise spectral shape
+    int   noiseType = 0;          // 0=White, 1=Pink, 2=Brown
 
     // Engine
     bool engineIsWavetable = false;

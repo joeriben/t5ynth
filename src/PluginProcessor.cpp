@@ -434,13 +434,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"gen_hf_boost", 1}, "HF Boost", true));
 
-    // Noise oscillator: level + spectral color (LP cutoff)
+    // Noise oscillator: level + type
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"noise_level", 1}, "Noise Level",
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{"noise_color", 1}, "Noise Color",
-        juce::NormalisableRange<float>(20.0f, 20000.0f, 0.1f, 0.25f), 20000.0f));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"noise_type", 1}, "Noise Type",
+        juce::StringArray{"White", "Pink", "Brown"}, 0));
 
     // Wavetable frame count: 0=32, 1=64, 2=128, 3=256
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -603,7 +603,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // Noise oscillator
     bp.noiseLevel = parameters.getRawParameterValue("noise_level")->load();
-    bp.noiseColor = parameters.getRawParameterValue("noise_color")->load();
+    bp.noiseType = static_cast<int>(parameters.getRawParameterValue("noise_type")->load());
 
     // Wavetable smooth
     bp.wtSmooth = parameters.getRawParameterValue("wt_smooth")->load() > 0.5f;
@@ -1428,29 +1428,6 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     voiceManager.distributeSamplerBuffer(masterSampler);
     voiceManager.distributeWavetableFrames(masterOsc);
 
-    // Auto-derive noise color from sample brightness
-    {
-        const float* audioData = feedBuffer.getReadPointer(0);
-        const int audioLen = feedBuffer.getNumSamples();
-        const int analysisLen = std::min(8192, audioLen);
-        float hiEnergy = 0.0f, totalEnergy = 0.0f;
-        float hpState = 0.0f;
-        const float hpCoeff = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 2000.0f / static_cast<float>(sr));
-        for (int i = 0; i < analysisLen; ++i)
-        {
-            float s = audioData[i];
-            totalEnergy += s * s;
-            hpState += hpCoeff * (s - hpState);
-            float hp = s - hpState;
-            hiEnergy += hp * hp;
-        }
-        float brightness = (totalEnergy > 0.001f) ? (hiEnergy / totalEnergy) : 0.5f;
-        float autoCutoff = 500.0f * std::pow(36.0f, brightness);
-        autoCutoff = juce::jlimit(200.0f, 18000.0f, autoCutoff);
-        if (auto* p = parameters.getParameter("noise_color"))
-            p->setValueNotifyingHost(p->convertTo0to1(autoCutoff));
-    }
-
     // Snapshot channel 0 for waveform display
     if (feedBuffer.getNumChannels() > 0 && feedBuffer.getNumSamples() > 0)
     {
@@ -1816,7 +1793,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     juce::DynamicObject::Ptr wt = new juce::DynamicObject();
     wt->setProperty("scan", get("osc_scan"));
     wt->setProperty("noiseLevel", get("noise_level"));
-    wt->setProperty("noiseColor", get("noise_color"));
+    wt->setProperty("noiseType", get("noise_type"));
     wt->setProperty("frames", get("wt_frames"));
     wt->setProperty("smooth", get("wt_smooth") > 0.5f);
     root->setProperty("wavetable", wt.get());
@@ -2030,8 +2007,8 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             setParam(parameters, "osc_scan", static_cast<float>(wt->getProperty("scan")));
         if (wt->hasProperty("noiseLevel"))
             setParam(parameters, "noise_level", static_cast<float>(wt->getProperty("noiseLevel")));
-        if (wt->hasProperty("noiseColor"))
-            setParam(parameters, "noise_color", static_cast<float>(wt->getProperty("noiseColor")));
+        if (wt->hasProperty("noiseType"))
+            setParam(parameters, "noise_type", static_cast<float>(wt->getProperty("noiseType")));
         if (wt->hasProperty("frames"))
             setParam(parameters, "wt_frames", static_cast<float>(wt->getProperty("frames")));
         if (wt->hasProperty("smooth"))

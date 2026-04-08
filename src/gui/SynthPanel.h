@@ -48,20 +48,26 @@ private:
     juce::ComboBox loopModeHidden;
     std::unique_ptr<SliderRow> crossfadeRow;
     juce::TextButton loopOptimizeBtn { "Opt: Off" };
-    juce::TextButton normalizeToggle { "Normalize" };
+    juce::TextButton normalizeToggle { "Norm" };
 
     // ── Scan ──
     std::unique_ptr<SliderRow> scanRow;
     juce::Label scanHint;
 
     // ── Wavetable controls row ──
-    std::unique_ptr<SliderRow> noiseLevelRow, noiseColorRow; // kept for APVTS (hidden)
     static constexpr int kNumFrameBtns = 4;
     juce::TextButton frameBtns[kNumFrameBtns];
     juce::ComboBox framesHidden;
     juce::Rectangle<int> framesSwitchBounds;
     juce::TextButton smoothToggle { "Smooth" };
     juce::Label frameCountLabel;
+
+    // ── Noise (shared: both Sampler + Wavetable) ──
+    static constexpr int kNumNoiseBtns = 3;
+    juce::TextButton noiseBtns[kNumNoiseBtns];
+    juce::ComboBox noiseTypeHidden;
+    juce::Rectangle<int> noiseSwitchBounds;
+    std::unique_ptr<SliderRow> noiseLevelRow;
 
     // ── Section headers ──
     juce::Label engineHeader, filterHeader, modHeader, driftHeader;
@@ -134,7 +140,8 @@ private:
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
 
     std::unique_ptr<CA> engineModeA, loopModeA, voiceCountA;
-    std::unique_ptr<SA> scanA, noiseLevelA, noiseColorA, cutoffA, resoA, filterMixA, kbdTrackA, crossfadeA;
+    std::unique_ptr<SA> scanA, noiseLevelA, cutoffA, resoA, filterMixA, kbdTrackA, crossfadeA;
+    std::unique_ptr<CA> noiseTypeA;
     std::unique_ptr<CA> wtFramesA;
     std::unique_ptr<BA> wtSmoothA;
     std::unique_ptr<CA> filterTypeA, filterSlopeA;

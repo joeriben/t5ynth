@@ -286,7 +286,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     loopModeA = std::make_unique<CA>(apvts, "loop_mode", loopModeHidden);
 
     // Crossfade
-    crossfadeRow = std::make_unique<SliderRow>("Crossfade", fmtMs);
+    crossfadeRow = std::make_unique<SliderRow>("Xfade", fmtMs);
     addAndMakeVisible(*crossfadeRow);
     crossfadeA = std::make_unique<SA>(apvts, "crossfade_ms", crossfadeRow->getSlider());
     crossfadeRow->updateValue();
@@ -346,13 +346,39 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     scanA = std::make_unique<SA>(apvts, "osc_scan", scanRow->getSlider());
     scanRow->updateValue();
 
-    // ── Wavetable controls row: frame count switchbox + actual count label ──
-    // Noise sliders: APVTS-connected but hidden (no UI for now)
-    noiseLevelRow = std::make_unique<SliderRow>("Noise", fmtF2);
-    noiseLevelA = std::make_unique<SA>(apvts, "noise_level", noiseLevelRow->getSlider());
-    noiseColorRow = std::make_unique<SliderRow>("Color", fmtHz);
-    noiseColorA = std::make_unique<SA>(apvts, "noise_color", noiseColorRow->getSlider());
+    // ── Noise type switchbox: W | P | B  (shared: both modes) ──
+    {
+        const juce::StringArray noiseLabels { "White", "Pink", "Brown" };
+        noiseTypeHidden.addItemList(noiseLabels, 1);
+        noiseTypeHidden.onChange = [this] {
+            int id = noiseTypeHidden.getSelectedId();
+            auto textCol = kDimmer;
+            for (int i = 0; i < kNumNoiseBtns; ++i)
+            {
+                bool sel = (i + 1 == id);
+                noiseBtns[i].setToggleState(sel, juce::dontSendNotification);
+                noiseBtns[i].setColour(juce::TextButton::buttonColourId,
+                                        sel ? kAccent : juce::Colours::transparentBlack);
+                noiseBtns[i].setColour(juce::TextButton::textColourOffId,
+                                        sel ? juce::Colour(0xff0e1018) : textCol);
+            }
+        };
+        for (int i = 0; i < kNumNoiseBtns; ++i)
+        {
+            noiseBtns[i].setButtonText(noiseLabels[i]);
+            noiseBtns[i].setClickingTogglesState(false);
+            noiseBtns[i].onClick = [this, i] { noiseTypeHidden.setSelectedId(i + 1); };
+            addAndMakeVisible(noiseBtns[i]);
+        }
+        noiseTypeA = std::make_unique<CA>(apvts, "noise_type", noiseTypeHidden);
+    }
 
+    noiseLevelRow = std::make_unique<SliderRow>("Lvl", fmtF2);
+    addAndMakeVisible(*noiseLevelRow);
+    noiseLevelA = std::make_unique<SA>(apvts, "noise_level", noiseLevelRow->getSlider());
+    noiseLevelRow->updateValue();
+
+    // ── Wavetable controls: frame count switchbox ──
     // Frame count switchbox: 32 | 64 | 128 | 256
     {
         const juce::StringArray frameLabels { "32", "64", "128", "256" };
@@ -885,12 +911,11 @@ void SynthPanel::paint(juce::Graphics& g)
         paintSwitchBoxBorder(g, engineSwitchBounds);
         paintSwitchBoxBorder(g, voiceSwitchBounds);
         if (oneshotBtn.isVisible())
-        {
             paintSwitchBoxBorder(g, loopSwitchBounds);
-            paintSwitchBoxBorder(g, optSwitchBounds);
-        }
         if (frameBtns[0].isVisible())
             paintSwitchBoxBorder(g, framesSwitchBounds);
+        if (noiseBtns[0].isVisible())
+            paintSwitchBoxBorder(g, noiseSwitchBounds);
     }
 
     // Card: Filter section
@@ -1085,32 +1110,35 @@ void SynthPanel::resized()
 
         area.removeFromTop(gap * 3);
 
-        // Wavetable controls row: [32|64|128|256]  [N frames]
+        // [32|64|128|256] [Smooth] [N frames] | [White|Pink|Brown] Lvl[===]
         auto wtRow = area.removeFromTop(rowH);
+        int colW = (wtRow.getWidth() - 4) / 2;
 
-        // Left: frame count switchbox
+        // ── Left column: frame switchbox + smooth + frame count ──
+        auto leftCol = wtRow.removeFromLeft(colW);
         int cellW = juce::roundToInt(f * 3.2f);
         for (int i = 0; i < kNumFrameBtns; ++i)
-            frameBtns[i].setBounds(wtRow.removeFromLeft(cellW));
+            frameBtns[i].setBounds(leftCol.removeFromLeft(cellW));
         framesSwitchBounds = frameBtns[0].getBounds().getUnion(frameBtns[kNumFrameBtns - 1].getBounds());
+        leftCol.removeFromLeft(juce::roundToInt(f * 0.5f));
 
-        wtRow.removeFromLeft(juce::roundToInt(f * 0.5f));
-
-        // Smooth toggle
         int smoothW = juce::roundToInt(f * 5.0f);
-        smoothToggle.setBounds(wtRow.removeFromLeft(smoothW));
+        smoothToggle.setBounds(leftCol.removeFromLeft(smoothW));
+        leftCol.removeFromLeft(juce::roundToInt(f * 0.5f));
 
-        wtRow.removeFromLeft(juce::roundToInt(f * 0.5f));
+        frameCountLabel.setBounds(leftCol);
 
-        // Right: actual frame count label
-        frameCountLabel.setBounds(wtRow);
+        wtRow.removeFromLeft(4); // column gap
 
-        // Hide noise sliders (APVTS still connected)
-        noiseLevelRow->setBounds(-1000, -1000, 10, 10);
-        noiseColorRow->setBounds(-1000, -1000, 10, 10);
+        // ── Right column: [White|Pink|Brown] Lvl[===] ──
+        int nCellW = juce::roundToInt(f * 4.0f);
+        for (int i = 0; i < kNumNoiseBtns; ++i)
+            noiseBtns[i].setBounds(wtRow.removeFromLeft(nCellW));
+        noiseSwitchBounds = noiseBtns[0].getBounds().getUnion(noiseBtns[kNumNoiseBtns - 1].getBounds());
+        noiseLevelRow->setBounds(wtRow);
 
         area.removeFromTop(gap);
-        engineCardBottom = noiseLevelRow->getBottom();
+        engineCardBottom = frameBtns[0].getBottom();
     }
     else
     {
@@ -1121,35 +1149,46 @@ void SynthPanel::resized()
         waveformDisplay.setBounds(area.removeFromTop(waveH + handleLineH));
         area.removeFromTop(gap);  // spacing to controls
 
-        // [▶][↻][⇄] Crossfade [slider]    [Normalize][Auto-opt]
+        // [→][↻][⇄] [Opt] Xfade[========] [Norm] | [White|Pink|Brown] Lvl[===]
         auto loopRow = area.removeFromTop(rowH);
         int colW = (loopRow.getWidth() - 4) / 2;
 
-        // Left half: loop icons + crossfade (loop-related, grouped together)
-        auto leftHalf = loopRow.removeFromLeft(colW);
+        // ── Left column: loop icons + Opt + Xfade + Norm ──
+        auto leftCol = loopRow.removeFromLeft(colW);
         int iconW = juce::roundToInt(f * 2.8f);
-        oneshotBtn.setBounds(leftHalf.removeFromLeft(iconW));
-        loopModeBtn.setBounds(leftHalf.removeFromLeft(iconW));
-        pingpongBtn.setBounds(leftHalf.removeFromLeft(iconW));
+        oneshotBtn.setBounds(leftCol.removeFromLeft(iconW));
+        loopModeBtn.setBounds(leftCol.removeFromLeft(iconW));
+        pingpongBtn.setBounds(leftCol.removeFromLeft(iconW));
         loopSwitchBounds = oneshotBtn.getBounds().getUnion(pingpongBtn.getBounds());
-        leftHalf.removeFromLeft(juce::roundToInt(f * 0.3f));
-        crossfadeRow->setBounds(leftHalf);  // short slider, ends at column midpoint
+        leftCol.removeFromLeft(juce::roundToInt(f * 0.3f));
 
-        loopRow.removeFromLeft(4);  // column gap
+        int optW = juce::roundToInt(f * 4.5f);
+        loopOptimizeBtn.setBounds(leftCol.removeFromLeft(optW));
+        leftCol.removeFromLeft(2);
 
-        // Right half: Normalize + Auto-opt
-        int optW = juce::roundToInt(f * 5.0f);
-        normalizeToggle.setBounds(loopRow.removeFromLeft(optW));
-        loopRow.removeFromLeft(2);
-        loopOptimizeBtn.setBounds(loopRow.removeFromLeft(optW));
-        optSwitchBounds = normalizeToggle.getBounds().getUnion(loopOptimizeBtn.getBounds());
+        // Norm at the right end of left column (gap to noise switchbox)
+        leftCol.removeFromRight(juce::roundToInt(f * 1.5f));
+        int normW = juce::roundToInt(f * 4.0f);
+        auto normBounds = leftCol.removeFromRight(normW);
+        normalizeToggle.setBounds(normBounds);
+        leftCol.removeFromRight(2);
+
+        // Xfade gets remaining space
+        crossfadeRow->setBounds(leftCol);
+
+        loopRow.removeFromLeft(4); // column gap
+
+        // ── Right column: [White|Pink|Brown] Lvl[===] ──
+        int nCellW = juce::roundToInt(f * 4.0f);
+        for (int i = 0; i < kNumNoiseBtns; ++i)
+            noiseBtns[i].setBounds(loopRow.removeFromLeft(nCellW));
+        noiseSwitchBounds = noiseBtns[0].getBounds().getUnion(noiseBtns[kNumNoiseBtns - 1].getBounds());
+        noiseLevelRow->setBounds(loopRow);
 
         area.removeFromTop(gap);
         engineCardBottom = oneshotBtn.getBottom();
 
-        // Hide wavetable controls in sampler mode
-        noiseLevelRow->setBounds(-1000, -1000, 10, 10);
-        noiseColorRow->setBounds(-1000, -1000, 10, 10);
+        // Hide wavetable-only controls in sampler mode
         frameCountLabel.setBounds(-1000, -1000, 10, 10);
     }
     area.removeFromTop(gap * 2);
