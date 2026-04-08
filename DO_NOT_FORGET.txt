@@ -1,4 +1,10 @@
-macOS: After downloading, open Terminal and run this command:
+macOS: After downloading, open Terminal and run this command.
+
+  How to open Terminal:
+    - Press Cmd+Space (Spotlight), type "Terminal", press Enter
+    - Or: Finder → Applications → Utilities → Terminal
+
+  Then paste this command and press Enter:
 
     xattr -cr /Applications/T5ynth.app
 
