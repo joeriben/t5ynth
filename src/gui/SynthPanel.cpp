@@ -545,7 +545,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     lfo2TargetA = std::make_unique<CA>(apvts, "lfo2_target", lfo2.targetBox);
 
     updateVisibility();
-    startTimerHz(10);
+    startTimerHz(30);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -608,7 +608,7 @@ void SynthPanel::timerCallback()
         frameCountLabel.setText(juce::String(nf) + " frames", juce::dontSendNotification);
     }
 
-    // Update ghost indicators from modulated values (skip when audio is idle)
+    // Update ghost targets from modulated values (skip when audio is idle)
     if (!processorRef.audioIdle.load(std::memory_order_relaxed))
     {
         auto& mv = processorRef.modulatedValues;
@@ -620,6 +620,14 @@ void SynthPanel::timerCallback()
         if (waveformDisplay.isVisible())
             waveformDisplay.setScanPosition(mv.scanPosition.load(std::memory_order_relaxed));
     }
+
+    // Advance ghost smoothing (runs every frame at 30 Hz)
+    cutoffRow->tickGhost();
+    if (lfo1.rateRow)  lfo1.rateRow->tickGhost();
+    if (lfo1.depthRow) lfo1.depthRow->tickGhost();
+    if (lfo2.rateRow)  lfo2.rateRow->tickGhost();
+    if (lfo2.depthRow) lfo2.depthRow->tickGhost();
+    waveformDisplay.tickScan();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

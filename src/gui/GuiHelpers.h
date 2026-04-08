@@ -110,29 +110,38 @@ public:
             value.setText(valueFormatter(slider.getValue()), juce::dontSendNotification);
     }
 
-    /** Set a ghost marker showing the modulated value. NaN = no ghost. */
-    void setGhostValue(float v)
-    {
-        // NaN != NaN is always true, so handle NaN explicitly to avoid constant repaints
-        bool bothNaN = std::isnan(ghostValue) && std::isnan(v);
-        if (!bothNaN && ghostValue != v) { ghostValue = v; repaint(); }
-    }
+    /** Set ghost target value. NaN = no ghost. Smoothing happens in tickGhost(). */
+    void setGhostValue(float v) { ghostTarget = v; }
     void clearGhost() { setGhostValue(std::numeric_limits<float>::quiet_NaN()); }
+
+    /** Advance ghost smoothing one frame. Call from a 30 Hz timer.
+     *  Returns true if a repaint was triggered. */
+    bool tickGhost()
+    {
+        if (std::isnan(ghostTarget))
+        {
+            if (!std::isnan(ghostSmoothed)) { ghostSmoothed = NaN_; repaint(); return true; }
+            return false;
+        }
+
+        // Snap on first valid value, then one-pole smooth
+        if (std::isnan(ghostSmoothed))
+            ghostSmoothed = ghostTarget;
+        else
+            ghostSmoothed += (ghostTarget - ghostSmoothed) * kGhostSmooth;
+
+        // Only repaint when pixel position actually changes
+        float px = ghostToPixelX(ghostSmoothed);
+        if (std::abs(px - lastGhostPx) > 0.5f) { lastGhostPx = px; repaint(); return true; }
+        return false;
+    }
 
     void paint(juce::Graphics& g) override
     {
-        if (std::isnan(ghostValue)) return;
+        if (std::isnan(ghostSmoothed)) return;
 
-        // Map ghostValue to slider pixel position using the slider's NormalisableRange
-        // (respects skew factor for exponential parameters like filter cutoff)
         auto sb = slider.getBounds();
-        double norm = slider.valueToProportionOfLength(static_cast<double>(ghostValue));
-        norm = juce::jlimit(0.0, 1.0, norm);
-
-        int thumbW = slider.getLookAndFeel().getSliderThumbRadius(slider) * 2;
-        int trackX = sb.getX() + thumbW / 2;
-        int trackW = sb.getWidth() - thumbW;
-        float gx = static_cast<float>(trackX) + static_cast<float>(trackW) * static_cast<float>(norm);
+        float gx = ghostToPixelX(ghostSmoothed);
         float gy = static_cast<float>(sb.getCentreY());
         float r = static_cast<float>(sb.getHeight()) * 0.28f;
 
@@ -163,7 +172,23 @@ private:
     juce::Slider slider;
     std::function<juce::String(double)> valueFormatter;
     juce::Colour trackCol;
-    float ghostValue = std::numeric_limits<float>::quiet_NaN();
+
+    // Ghost marker smoothing
+    static constexpr float NaN_ = std::numeric_limits<float>::quiet_NaN();
+    static constexpr float kGhostSmooth = 0.3f;  // one-pole coeff, ~80 ms at 30 fps
+    float ghostTarget   = NaN_;
+    float ghostSmoothed = NaN_;
+    float lastGhostPx   = -100.0f;
+
+    float ghostToPixelX(float v)
+    {
+        auto sb = slider.getBounds();
+        double norm = slider.valueToProportionOfLength(static_cast<double>(v));
+        norm = juce::jlimit(0.0, 1.0, norm);
+        int thumbW = slider.getLookAndFeel().getSliderThumbRadius(slider) * 2;
+        return static_cast<float>(sb.getX() + thumbW / 2)
+             + static_cast<float>(sb.getWidth() - thumbW) * static_cast<float>(norm);
+    }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderRow)
 };

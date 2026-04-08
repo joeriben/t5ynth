@@ -217,6 +217,28 @@ void WaveformDisplay::setWaveform(const float* data, int numSamples)
     waveformData.assign(data, data + numSamples);
 }
 
+void WaveformDisplay::tickScan()
+{
+    if (!scanVisible) return;
+
+    static constexpr float kSmooth = 0.3f; // one-pole, ~80 ms at 30 fps
+
+    if (std::isnan(scanTarget))
+    {
+        if (!std::isnan(scanPos)) { scanPos = std::numeric_limits<float>::quiet_NaN(); repaint(); }
+        return;
+    }
+
+    if (std::isnan(scanPos))
+        scanPos = scanTarget;
+    else
+        scanPos += (scanTarget - scanPos) * kSmooth;
+
+    auto area = getWaveformArea();
+    float px = area.getX() + scanPos * area.getWidth();
+    if (std::abs(px - lastScanPx) > 0.5f) { lastScanPx = px; repaint(); }
+}
+
 void WaveformDisplay::timerCallback()
 {
     // Only repaint during active drag (bracket handles)

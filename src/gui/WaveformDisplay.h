@@ -33,10 +33,13 @@ public:
     /** Reserve pixels at the bottom for the bracket/scan line area. */
     void setBottomReserve(int px) { bottomReserve = px; repaint(); }
 
-    /** Scan position indicator (shown on the bracket line in WT mode). */
-    void setScanPosition(float pos) { if (scanPos != pos) { scanPos = pos; repaint(); } }
+    /** Set scan position target (0–1). Smoothing happens in tickScan(). */
+    void setScanPosition(float pos) { scanTarget = pos; }
     void setScanVisible(bool v) { scanVisible = v; repaint(); }
     std::function<void(float)> onScanChanged;
+
+    /** Advance scan smoothing one frame. Call from a 30 Hz timer. */
+    void tickScan();
 
     /** Get/set loop region fractions (0–1). */
     float getLoopStart() const { return loopStart; }
@@ -61,7 +64,9 @@ private:
     enum DragTarget { None, Start, End, Scan };
     DragTarget dragging = None;
     bool scanVisible = false;
-    float scanPos = 0.0f;
+    float scanTarget   = 0.0f;
+    float scanPos      = 0.0f;   // smoothed display value
+    float lastScanPx   = -100.0f;
 
 public:
     static constexpr float HANDLE_RADIUS = 7.0f;
