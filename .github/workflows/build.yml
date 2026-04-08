@@ -83,10 +83,10 @@ jobs:
           for d in build/T5ynth_artefacts/Release/Standalone \
                    build/T5ynth_artefacts/Release/VST3 \
                    build/T5ynth_artefacts/Release/AU; do
-            cp LICENSE THIRD_PARTY_LICENSES.md "$d/"
+            cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt "$d/"
           done
           tar -cJf archives/T5ynth-macOS-Standalone.tar.xz \
-            -C build/T5ynth_artefacts/Release/Standalone T5ynth.app LICENSE THIRD_PARTY_LICENSES.md
+            -C build/T5ynth_artefacts/Release/Standalone T5ynth.app LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt
           tar -cJf archives/T5ynth-macOS-VST3.tar.xz \
             -C build/T5ynth_artefacts/Release/VST3 .
           tar -cJf archives/T5ynth-macOS-AU.tar.xz \
@@ -147,13 +147,13 @@ jobs:
           cp -R build/T5ynth_artefacts/Release/Standalone/* dist/T5ynth/
           mkdir -p dist/T5ynth/backend
           cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
-          cp LICENSE THIRD_PARTY_LICENSES.md dist/T5ynth/
+          cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt dist/T5ynth/
 
       - name: Create archives
         shell: bash
         run: |
           mkdir -p archives
-          cp LICENSE THIRD_PARTY_LICENSES.md build/T5ynth_artefacts/Release/VST3/
+          cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt build/T5ynth_artefacts/Release/VST3/
           tar -cJf archives/T5ynth-Windows-Standalone.tar.xz -C dist T5ynth
           tar -cJf archives/T5ynth-Windows-VST3.tar.xz \
             -C build/T5ynth_artefacts/Release/VST3 .
@@ -225,12 +225,12 @@ jobs:
           cp build/T5ynth_artefacts/Release/Standalone/T5ynth dist/T5ynth/
           mkdir -p dist/T5ynth/backend
           cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
-          cp LICENSE THIRD_PARTY_LICENSES.md dist/T5ynth/
+          cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt dist/T5ynth/
 
       - name: Create archives
         run: |
           mkdir -p archives
-          cp LICENSE THIRD_PARTY_LICENSES.md build/T5ynth_artefacts/Release/VST3/
+          cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt build/T5ynth_artefacts/Release/VST3/
           tar -cJf archives/T5ynth-Linux-Standalone.tar.xz -C dist T5ynth
           tar -cJf archives/T5ynth-Linux-VST3.tar.xz \
             -C build/T5ynth_artefacts/Release/VST3 .

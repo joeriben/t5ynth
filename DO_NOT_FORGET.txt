@@ -1,0 +1,5 @@
+macOS: After downloading, remove the quarantine flag before first launch:
+
+    xattr -cr /Applications/T5ynth.app
+
+This is required because T5ynth is not signed with an Apple Developer certificate.
