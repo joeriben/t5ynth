@@ -41,14 +41,21 @@ public:
     /** Advance scan smoothing one frame. Call from a 30 Hz timer. */
     void tickScan();
 
-    /** Get/set loop region fractions (0–1). */
+    /** Get/set loop region fractions (0–1). P2 = loopStart, P3 = loopEnd. */
     float getLoopStart() const { return loopStart; }
     float getLoopEnd() const { return loopEnd; }
     void setLoopStart(float frac);
     void setLoopEnd(float frac);
 
+    /** Get/set playback start position (P1). Fraction 0–1. */
+    float getStartPos() const { return startPos; }
+    void setStartPos(float frac);
+
     /** Callback when brackets are dragged. */
     std::function<void(float start, float end)> onLoopRegionChanged;
+
+    /** Callback when P1 (start position) is dragged. */
+    std::function<void(float)> onStartPosChanged;
 
 private:
     void timerCallback() override;
@@ -56,12 +63,13 @@ private:
     std::vector<float> waveformData;
     juce::CriticalSection dataLock;
 
-    float loopStart = 0.0f;
-    float loopEnd   = 1.0f;
+    float startPos  = 0.0f;   // P1: playback start position
+    float loopStart = 0.0f;   // P2: loop begin
+    float loopEnd   = 1.0f;   // P3: loop end
     float bufferDurationSec = 0.0f;
     juce::String regionLabel { "Loop interval" };
 
-    enum DragTarget { None, Start, End, Scan };
+    enum DragTarget { None, Start, End, StartPos, Scan };
     DragTarget dragging = None;
     bool scanVisible = false;
     float scanTarget   = 0.0f;

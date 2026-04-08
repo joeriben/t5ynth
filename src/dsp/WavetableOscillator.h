@@ -68,11 +68,15 @@ public:
      *  Scan advances from 0→1 in (bufferLen / bufferSR) seconds. */
     void setAutoScanRate(double bufferSR, int bufferLen);
 
-    /** Set auto-scan loop region (frame indices). */
+    /** Set auto-scan loop region (frame fractions). */
     enum class LoopMode { OneShot, Loop, PingPong };
     void setAutoScanLoop(float startFrac, float endFrac, LoopMode mode);
 
-    /** Reset scan to loop start (call on noteOn). */
+    /** Set auto-scan start position (P1). Fraction 0–1. */
+    void setAutoScanStartPos(float frac);
+    float getAutoScanStartPos() const { return autoScanStartPos_; }
+
+    /** Reset scan to start position (call on noteOn). */
     void retriggerAutoScan();
 
     /** Extract contiguous (non-pitch-synchronous) frames from audio buffer.
@@ -128,12 +132,14 @@ private:
 
     // Auto-scan state (per-voice, not shared)
     bool autoScan_ = false;
-    double autoScanPos_ = 0.0;       // 0.0–1.0
-    double autoScanIncr_ = 0.0;      // per-sample increment
-    float autoScanLoopStart_ = 0.0f; // fraction 0–1
-    float autoScanLoopEnd_ = 1.0f;   // fraction 0–1
+    double autoScanPos_ = 0.0;           // 0.0–1.0 current position
+    double autoScanIncr_ = 0.0;          // per-sample increment
+    float autoScanStartPos_ = 0.0f;      // P1: start position (fraction 0–1)
+    float autoScanLoopStart_ = 0.0f;     // P2: loop begin (fraction 0–1)
+    float autoScanLoopEnd_ = 1.0f;       // P3: loop end (fraction 0–1)
     LoopMode autoScanLoopMode_ = LoopMode::Loop;
-    bool autoScanReverse_ = false;   // for ping-pong
+    bool  autoScanInFirstPass_ = true;   // true until first loop boundary hit
+    int   autoScanDirection_ = 1;        // +1 forward, -1 backward
 
     /** Return the active mip data (own or shared master's). Lock-free for audio thread. */
     const MipData& getActiveMipData() const

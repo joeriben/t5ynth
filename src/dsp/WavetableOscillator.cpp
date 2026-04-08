@@ -19,6 +19,12 @@ void WavetableOscillator::reset()
 void WavetableOscillator::shareFramesFrom(const WavetableOscillator& source)
 {
     sharedSource_ = &source;
+    // Copy auto-scan configuration (not per-voice state like pos/direction)
+    autoScanIncr_ = source.autoScanIncr_;
+    autoScanStartPos_ = source.autoScanStartPos_;
+    autoScanLoopStart_ = source.autoScanLoopStart_;
+    autoScanLoopEnd_ = source.autoScanLoopEnd_;
+    autoScanLoopMode_ = source.autoScanLoopMode_;
 }
 
 // ─── FFT (Radix-2 Cooley-Tukey, in-place) ───
@@ -366,10 +372,19 @@ void WavetableOscillator::setAutoScanLoop(float startFrac, float endFrac, LoopMo
     autoScanLoopMode_ = mode;
 }
 
+void WavetableOscillator::setAutoScanStartPos(float frac)
+{
+    autoScanStartPos_ = juce::jlimit(0.0f, 1.0f, frac);
+}
+
 void WavetableOscillator::retriggerAutoScan()
 {
-    autoScanPos_ = static_cast<double>(autoScanLoopStart_);
-    autoScanReverse_ = false;
+    // Determine direction from P1 vs P3
+    bool reversed = (autoScanStartPos_ > autoScanLoopEnd_);
+    autoScanDirection_ = reversed ? -1 : 1;
+    autoScanInFirstPass_ = true;
+
+    autoScanPos_ = static_cast<double>(autoScanStartPos_);
     // Jump scan immediately (no smoothing lag on retrigger)
     targetScanPosition = static_cast<float>(autoScanPos_);
     smoothedScan = targetScanPosition;
@@ -461,38 +476,67 @@ float WavetableOscillator::processSample()
             targetFrequency = glideFreqTarget;
     }
 
-    // Auto-scan: advance scan position per sample
+    // Auto-scan: advance scan position per sample (3-point logic)
     if (autoScan_)
     {
-        const double loopLen = static_cast<double>(autoScanLoopEnd_ - autoScanLoopStart_);
+        const double pEnd   = static_cast<double>(autoScanLoopEnd_);
+        const double pStart = static_cast<double>(autoScanLoopStart_);
 
-        if (autoScanReverse_)
-            autoScanPos_ -= autoScanIncr_;
-        else
-            autoScanPos_ += autoScanIncr_;
+        autoScanPos_ += autoScanIncr_ * autoScanDirection_;
 
-        // Loop wrapping
-        if (autoScanPos_ >= static_cast<double>(autoScanLoopEnd_))
+        if (autoScanInFirstPass_)
         {
-            if (autoScanLoopMode_ == LoopMode::OneShot)
-                autoScanPos_ = static_cast<double>(autoScanLoopEnd_) - 0.0001;
-            else if (autoScanLoopMode_ == LoopMode::PingPong)
+            // During first pass, only check the boundary we're moving toward
+            if (autoScanDirection_ > 0 && autoScanPos_ >= pEnd)
             {
-                autoScanPos_ = static_cast<double>(autoScanLoopEnd_) - (autoScanPos_ - static_cast<double>(autoScanLoopEnd_));
-                autoScanReverse_ = true;
+                autoScanInFirstPass_ = false;
+                if (autoScanLoopMode_ == LoopMode::OneShot)
+                    autoScanPos_ = pEnd - 0.0001;
+                else if (autoScanLoopMode_ == LoopMode::PingPong)
+                {
+                    autoScanPos_ = pEnd - (autoScanPos_ - pEnd);
+                    autoScanDirection_ = -1;
+                }
+                else // Loop
+                    autoScanPos_ = pStart + (autoScanPos_ - pEnd);
             }
-            else // Loop
-                autoScanPos_ -= loopLen;
+            else if (autoScanDirection_ < 0 && autoScanPos_ < pStart)
+            {
+                autoScanInFirstPass_ = false;
+                if (autoScanLoopMode_ == LoopMode::OneShot)
+                    autoScanPos_ = pStart;
+                else if (autoScanLoopMode_ == LoopMode::PingPong)
+                {
+                    autoScanPos_ = pStart + (pStart - autoScanPos_);
+                    autoScanDirection_ = 1;
+                }
+                else // Loop
+                    autoScanPos_ = pEnd - (pStart - autoScanPos_);
+            }
         }
-        else if (autoScanPos_ < static_cast<double>(autoScanLoopStart_))
+        else
         {
-            if (autoScanLoopMode_ == LoopMode::PingPong)
+            // Standard looping between P2-P3
+            if (autoScanPos_ >= pEnd)
             {
-                autoScanPos_ = static_cast<double>(autoScanLoopStart_) + (static_cast<double>(autoScanLoopStart_) - autoScanPos_);
-                autoScanReverse_ = false;
+                if (autoScanLoopMode_ == LoopMode::PingPong)
+                {
+                    autoScanPos_ = pEnd - (autoScanPos_ - pEnd);
+                    autoScanDirection_ = -1;
+                }
+                else
+                    autoScanPos_ = pStart + (autoScanPos_ - pEnd);
             }
-            else
-                autoScanPos_ += loopLen;
+            else if (autoScanPos_ < pStart)
+            {
+                if (autoScanLoopMode_ == LoopMode::PingPong)
+                {
+                    autoScanPos_ = pStart + (pStart - autoScanPos_);
+                    autoScanDirection_ = 1;
+                }
+                else
+                    autoScanPos_ = pEnd - (pStart - autoScanPos_);
+            }
         }
 
         targetScanPosition = static_cast<float>(autoScanPos_);

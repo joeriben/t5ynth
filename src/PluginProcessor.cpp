@@ -1325,61 +1325,69 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     // Feed the sampler/voice chain
     masterSampler.loadBuffer(feedBuffer, sr);
 
-    // In wavetable mode, auto-position brackets to the active signal region
-    // (trim leading/trailing silence so extraction doesn't produce useless frames)
-    if (isWavetableMode())
+    // Auto-position brackets and start point — but only if the user hasn't
+    // manually adjusted them. This preserves user-placed points across regenerations.
+    if (!masterSampler.getUserPointsAdjusted())
     {
-        const int numSamples = feedBuffer.getNumSamples();
-        if (numSamples > 0)
+        // In wavetable mode, auto-position brackets to the active signal region
+        // (trim leading/trailing silence so extraction doesn't produce useless frames)
+        if (isWavetableMode())
         {
-            const float* data = feedBuffer.getReadPointer(0);
-            const int windowSize = 256;
-            const float threshold = 0.002f; // Peak threshold (~-54dB)
-
-            int firstActive = 0;
-            int lastActive = numSamples;
-
-            // Find first window with peak above threshold
-            for (int pos = 0; pos + windowSize <= numSamples; pos += windowSize)
+            const int numSamples = feedBuffer.getNumSamples();
+            if (numSamples > 0)
             {
-                float peak = 0.0f;
-                for (int i = 0; i < windowSize; ++i)
-                    peak = std::max(peak, std::abs(data[pos + i]));
-                if (peak > threshold)
+                const float* data = feedBuffer.getReadPointer(0);
+                const int windowSize = 256;
+                const float threshold = 0.002f; // Peak threshold (~-54dB)
+
+                int firstActive = 0;
+                int lastActive = numSamples;
+
+                // Find first window with peak above threshold
+                for (int pos = 0; pos + windowSize <= numSamples; pos += windowSize)
                 {
-                    firstActive = pos;
-                    break;
+                    float peak = 0.0f;
+                    for (int i = 0; i < windowSize; ++i)
+                        peak = std::max(peak, std::abs(data[pos + i]));
+                    if (peak > threshold)
+                    {
+                        firstActive = pos;
+                        break;
+                    }
                 }
-            }
 
-            // Find last window with peak above threshold
-            for (int pos = numSamples - windowSize; pos >= 0; pos -= windowSize)
-            {
-                float peak = 0.0f;
-                int len = juce::jmin(windowSize, numSamples - pos);
-                for (int i = 0; i < len; ++i)
-                    peak = std::max(peak, std::abs(data[pos + i]));
-                if (peak > threshold)
+                // Find last window with peak above threshold
+                for (int pos = numSamples - windowSize; pos >= 0; pos -= windowSize)
                 {
-                    lastActive = juce::jmin(pos + windowSize, numSamples);
-                    break;
+                    float peak = 0.0f;
+                    int len = juce::jmin(windowSize, numSamples - pos);
+                    for (int i = 0; i < len; ++i)
+                        peak = std::max(peak, std::abs(data[pos + i]));
+                    if (peak > threshold)
+                    {
+                        lastActive = juce::jmin(pos + windowSize, numSamples);
+                        break;
+                    }
                 }
-            }
 
-            // Small margin (one window each side)
-            firstActive = juce::jmax(0, firstActive - windowSize);
-            lastActive  = juce::jmin(numSamples, lastActive + windowSize);
+                // Small margin (one window each side)
+                firstActive = juce::jmax(0, firstActive - windowSize);
+                lastActive  = juce::jmin(numSamples, lastActive + windowSize);
 
-            float startFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
-            float endFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
+                float startFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
+                float endFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
 
-            // Only apply if the detected region is meaningful
-            if (endFrac - startFrac >= 0.05f)
-            {
-                masterSampler.setLoopStart(startFrac);
-                masterSampler.setLoopEnd(endFrac);
+                // Only apply if the detected region is meaningful
+                if (endFrac - startFrac >= 0.05f)
+                {
+                    masterSampler.setLoopStart(startFrac);
+                    masterSampler.setLoopEnd(endFrac);
+                }
             }
         }
+
+        // Default P1 = P2 (start position = loop start) on new audio load
+        masterSampler.setStartPos(masterSampler.getLoopStart());
     }
 
     // Extract frames for the wavetable oscillator (both modes use it now)
@@ -1744,6 +1752,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     engine->setProperty("loopMode", lm == 0 ? "oneshot" : (lm == 1 ? "loop" : "pingpong"));
     engine->setProperty("loopStartFrac", static_cast<double>(masterSampler.getLoopStart()));
     engine->setProperty("loopEndFrac", static_cast<double>(masterSampler.getLoopEnd()));
+    engine->setProperty("startPosFrac", static_cast<double>(masterSampler.getStartPos()));
     engine->setProperty("crossfadeMs", get("crossfade_ms"));
     root->setProperty("engine", engine.get());
 
@@ -1933,6 +1942,11 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
 
         masterSampler.setLoopStart(static_cast<float>(engine->getProperty("loopStartFrac")));
         masterSampler.setLoopEnd(static_cast<float>(engine->getProperty("loopEndFrac")));
+        if (engine->hasProperty("startPosFrac"))
+            masterSampler.setStartPos(static_cast<float>(engine->getProperty("startPosFrac")));
+        else
+            masterSampler.setStartPos(masterSampler.getLoopStart()); // backward compat
+        masterSampler.setUserPointsAdjusted(false); // preset owns the points now
         setParam(parameters, "crossfade_ms", static_cast<float>(engine->getProperty("crossfadeMs")));
     }
 

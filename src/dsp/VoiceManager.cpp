@@ -55,7 +55,10 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
             v.getSampler().retrigger();
         if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable)
+        {
             v.getSampler().stop();
+            v.getOsc().retriggerAutoScan();
+        }
         updateGainTarget();
         return;
     }
@@ -107,7 +110,10 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
     if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
         v.getSampler().retrigger();
     if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable)
+    {
         v.getSampler().stop();
+        v.getOsc().retriggerAutoScan();
+    }
 
     updateGainTarget();
 }

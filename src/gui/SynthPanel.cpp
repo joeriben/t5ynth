@@ -228,10 +228,19 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     waveformDisplay.onLoopRegionChanged = [this](float start, float end) {
         processorRef.getSampler().setLoopStart(start);
         processorRef.getSampler().setLoopEnd(end);
+        processorRef.getSampler().setUserPointsAdjusted(true);
 
         // In wavetable mode, re-extract frames from the new region
         if (processorRef.isWavetableMode())
             processorRef.reextractWavetable();
+    };
+
+    // P1 (start position) handle
+    waveformDisplay.onStartPosChanged = [this](float pos) {
+        processorRef.getSampler().setStartPos(pos);
+        processorRef.getSampler().setUserPointsAdjusted(true);
+        if (processorRef.isWavetableMode())
+            processorRef.getMasterOsc().setAutoScanStartPos(pos);
     };
 
     // Scan position: dragging in WaveformDisplay updates the APVTS slider
@@ -592,13 +601,17 @@ void SynthPanel::timerCallback()
         if (sr > 0)
             waveformDisplay.setBufferDuration(static_cast<float>(numSamples / sr));
 
-        // Sync auto-positioned brackets from processor (wavetable mode)
-        if (processorRef.isWavetableMode())
+        // Sync brackets + start position from processor
         {
             float s = processorRef.getSampler().getLoopStart();
             float e = processorRef.getSampler().getLoopEnd();
-            waveformDisplay.setLoopStart(s);
-            waveformDisplay.setLoopEnd(e);
+            float p1 = processorRef.getSampler().getStartPos();
+            if (processorRef.isWavetableMode())
+            {
+                waveformDisplay.setLoopStart(s);
+                waveformDisplay.setLoopEnd(e);
+            }
+            waveformDisplay.setStartPos(p1);
         }
 
         processorRef.clearNewWaveformFlag();
@@ -1102,10 +1115,11 @@ void SynthPanel::resized()
     else
     {
         // ── Sampler: waveform + bracket handles + controls row ──
-        waveformDisplay.setBottomReserve(0);
+        int handleLineH = juce::roundToInt(WaveformDisplay::HANDLE_RADIUS * 2.0f + 4.0f);
+        waveformDisplay.setBottomReserve(handleLineH);
         waveformDisplay.setScanVisible(false);
-        waveformDisplay.setBounds(area.removeFromTop(waveH));
-        area.removeFromTop(gap * 3);  // bracket handle space
+        waveformDisplay.setBounds(area.removeFromTop(waveH + handleLineH));
+        area.removeFromTop(gap);  // spacing to controls
 
         // [▶][↻][⇄] Crossfade [slider]    [Normalize][Auto-opt]
         auto loopRow = area.removeFromTop(rowH);

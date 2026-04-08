@@ -38,6 +38,12 @@ void WaveformDisplay::setLoopEnd(float frac)
     repaint();
 }
 
+void WaveformDisplay::setStartPos(float frac)
+{
+    startPos = juce::jlimit(0.0f, 1.0f, frac);
+    repaint();
+}
+
 void WaveformDisplay::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colour(0xff0a0a0a));
@@ -107,27 +113,41 @@ void WaveformDisplay::paint(juce::Graphics& g)
     g.setColour(kAccent);
     g.drawLine(area.getX(), lineY, area.getRight(), lineY, 2.0f);
 
-    // ── Bracket handles (circles on the line) ──
-    auto drawHandle = [&](float x) {
+    // ── Bracket handles with labels ──
+    auto drawBracketHandle = [&](float x, const juce::String& label) {
         g.setColour(kAccent);
         g.fillEllipse(x - HANDLE_RADIUS, lineY - HANDLE_RADIUS,
                       HANDLE_RADIUS * 2.0f, HANDLE_RADIUS * 2.0f);
         g.setColour(juce::Colour(0xff0a0a0a));
         g.fillEllipse(x - HANDLE_RADIUS + 2.0f, lineY - HANDLE_RADIUS + 2.0f,
                       HANDLE_RADIUS * 2.0f - 4.0f, HANDLE_RADIUS * 2.0f - 4.0f);
+        // Label inside ring
         g.setColour(kAccent);
-        g.fillEllipse(x - 2.5f, lineY - 2.5f, 5.0f, 5.0f);
+        g.setFont(juce::FontOptions(9.0f));
+        g.drawText(label, juce::Rectangle<float>(x - HANDLE_RADIUS, lineY - HANDLE_RADIUS,
+                   HANDLE_RADIUS * 2.0f, HANDLE_RADIUS * 2.0f), juce::Justification::centred);
     };
-    drawHandle(xStart);
-    drawHandle(xEnd);
+    drawBracketHandle(xStart, "[");
+    drawBracketHandle(xEnd, "]");
 
-    // ── Scan position indicator (filled dot on the same line) ──
+    // ── P1 (Start position) handle — filled circle with "S" label, always visible ──
+    {
+        float xP1 = fracToX(startPos);
+        g.setColour(kAccent.brighter(0.3f));
+        g.fillEllipse(xP1 - HANDLE_RADIUS, lineY - HANDLE_RADIUS,
+                      HANDLE_RADIUS * 2.0f, HANDLE_RADIUS * 2.0f);
+        g.setColour(juce::Colour(0xff0a0a0a));
+        g.setFont(juce::FontOptions(9.0f));
+        g.drawText("S", juce::Rectangle<float>(xP1 - HANDLE_RADIUS, lineY - HANDLE_RADIUS,
+                   HANDLE_RADIUS * 2.0f, HANDLE_RADIUS * 2.0f), juce::Justification::centred);
+    }
+
+    // ── Scan position indicator (live playback, small dot) ──
     if (scanVisible)
     {
         float scanX = area.getX() + scanPos * area.getWidth();
-        g.setColour(kAccent.brighter(0.3f));
-        g.fillEllipse(scanX - HANDLE_RADIUS * 0.6f, lineY - HANDLE_RADIUS * 0.6f,
-                      HANDLE_RADIUS * 1.2f, HANDLE_RADIUS * 1.2f);
+        g.setColour(kAccent.withAlpha(0.5f));
+        g.fillEllipse(scanX - 2.5f, lineY - 2.5f, 5.0f, 5.0f);
     }
 }
 
@@ -136,47 +156,26 @@ void WaveformDisplay::resized() {}
 void WaveformDisplay::mouseDown(const juce::MouseEvent& e)
 {
     float mx = static_cast<float>(e.getPosition().getX());
-    float xS = fracToX(loopStart);
-    float xE = fracToX(loopEnd);
+    float xS  = fracToX(loopStart);
+    float xE  = fracToX(loopEnd);
+    float xP1 = fracToX(startPos);
 
-    float distS = std::abs(mx - xS);
-    float distE = std::abs(mx - xE);
+    float distS  = std::abs(mx - xS);
+    float distE  = std::abs(mx - xE);
+    float distP1 = std::abs(mx - xP1);
 
-    // Scan hit test (smaller dot, check first if visible)
-    if (scanVisible)
+    // P1 (start pos) hit test — priority since it may overlap P2 in default state
+    if (distP1 <= HANDLE_RADIUS * 2.0f && distP1 <= distS && distP1 <= distE)
     {
-        auto area = getWaveformArea();
-        float scanX = area.getX() + scanPos * area.getWidth();
-        float distScan = std::abs(mx - scanX);
-        if (distScan <= HANDLE_RADIUS * 2.0f && distScan <= distS && distScan <= distE)
-        {
-            dragging = Scan;
-            return;
-        }
+        dragging = StartPos;
+        return;
     }
 
-    // Bracket handle hit test
+    // P2/P3 bracket handle hit test
     if (distS <= HANDLE_RADIUS * 2.0f && distS <= distE)
         dragging = Start;
     else if (distE <= HANDLE_RADIUS * 2.0f)
         dragging = End;
-    else if (scanVisible)
-    {
-        // Click anywhere on the line area sets scan position
-        auto area = getWaveformArea();
-        float lineYCheck = (bottomReserve > 0)
-            ? area.getBottom() + HANDLE_RADIUS + static_cast<float>(bottomReserve) * 0.5f
-            : area.getBottom() - 2.0f;
-        if (std::abs(static_cast<float>(e.getPosition().getY()) - lineYCheck) <= HANDLE_RADIUS * 2.0f)
-        {
-            dragging = Scan;
-            scanPos = xToFrac(mx);
-            if (onScanChanged) onScanChanged(scanPos);
-            repaint();
-            return;
-        }
-        dragging = None;
-    }
     else
         dragging = None;
 }
@@ -187,6 +186,14 @@ void WaveformDisplay::mouseDrag(const juce::MouseEvent& e)
 
     float frac = xToFrac(static_cast<float>(e.getPosition().getX()));
 
+    if (dragging == StartPos)
+    {
+        startPos = juce::jlimit(0.0f, 1.0f, frac);
+        if (onStartPosChanged) onStartPosChanged(startPos);
+        repaint();
+        return;
+    }
+
     if (dragging == Scan)
     {
         scanPos = juce::jlimit(0.0f, 1.0f, frac);
@@ -195,10 +202,27 @@ void WaveformDisplay::mouseDrag(const juce::MouseEvent& e)
         return;
     }
 
+    // P2/P3 drag with swap logic (Rule A: P2 always < P3)
     if (dragging == Start)
-        loopStart = juce::jlimit(0.0f, loopEnd - 0.01f, frac);
-    else
-        loopEnd = juce::jlimit(loopStart + 0.01f, 1.0f, frac);
+    {
+        loopStart = juce::jlimit(0.0f, 1.0f, frac);
+        if (loopStart >= loopEnd)
+        {
+            // Swap: P2 crossed over P3
+            std::swap(loopStart, loopEnd);
+            dragging = End;
+        }
+    }
+    else if (dragging == End)
+    {
+        loopEnd = juce::jlimit(0.0f, 1.0f, frac);
+        if (loopEnd <= loopStart)
+        {
+            // Swap: P3 crossed over P2
+            std::swap(loopStart, loopEnd);
+            dragging = Start;
+        }
+    }
 
     if (onLoopRegionChanged)
         onLoopRegionChanged(loopStart, loopEnd);

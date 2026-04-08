@@ -101,7 +101,8 @@ public:
 
     // Sampler/oscillator access for preset import and UI queries
     SamplePlayer& getSampler() { return masterSampler; }
-    const WavetableOscillator& getMasterOsc() const { return masterOsc; }
+    WavetableOscillator& getMasterOsc() { return masterOsc; }
+    const WavetableOscillator& getMasterOscConst() const { return masterOsc; }
 
     /** Re-extract wavetable frames using current bracket region. */
     void reextractWavetable();

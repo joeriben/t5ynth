@@ -63,13 +63,21 @@ public:
     bool isPlaying() const { return playing; }
 
     // ─── Loop region ("brackets") ───
-    /** Set loop start as fraction of buffer (0.0–1.0). */
+    /** Set loop start as fraction of buffer (0.0–1.0). P2. */
     void setLoopStart(float frac);
-    /** Set loop end as fraction of buffer (0.0–1.0). */
+    /** Set loop end as fraction of buffer (0.0–1.0). P3. */
     void setLoopEnd(float frac);
+    /** Set playback start position as fraction of buffer (0.0–1.0). P1. */
+    void setStartPos(float frac);
 
     float getLoopStart() const { return loopStartFrac; }
     float getLoopEnd()   const { return loopEndFrac; }
+    float getStartPos()  const { return startPosFrac; }
+
+    /** True if the user has manually adjusted any of P1/P2/P3 via the UI.
+     *  When set, auto-positioning on regeneration is skipped. */
+    bool  getUserPointsAdjusted() const { return userPointsAdjusted_; }
+    void  setUserPointsAdjusted(bool v) { userPointsAdjusted_ = v; }
 
     /** Share playback buffer from a master player (for polyphonic voices).
      *  Shared-mode players have their own read position but read from the
@@ -114,13 +122,19 @@ private:
     bool   playing            = false;
 
     // Loop region (fractions of original buffer length)
-    float loopStartFrac = 0.0f;
-    float loopEndFrac   = 1.0f;
+    float startPosFrac  = 0.0f;   // P1: playback start position
+    float loopStartFrac = 0.0f;   // P2: loop begin
+    float loopEndFrac   = 1.0f;   // P3: loop end
+    bool  userPointsAdjusted_ = false; // true if user manually moved any point
 
     // Playback bounds in samples (within playBuffer)
     int playStart  = 0;
     int playEnd    = 0;
-    int coldStart  = 0; // past crossfade zone for cold starts
+    int coldStart  = 0; // past crossfade zone (Loop mode only)
+
+    // 3-point playback state (per-voice, reset on retrigger)
+    bool inFirstPass_   = true;   // true until first loop boundary hit
+    int  playDirection_ = 1;      // +1 forward, -1 backward
 
     // Settings
     LoopMode loopMode     = LoopMode::Loop;
@@ -152,6 +166,11 @@ private:
      *  Advances readPosition and handles loop wrapping. */
     void readRawSamples(float* output, int numSamples);
 
+    /** Advance read position by speedMagnitude in current direction.
+     *  Handles first-pass logic, loop wrapping, and direction reversal.
+     *  Returns false if playback stopped (OneShot end). */
+    bool advancePosition(double speedMagnitude);
+
     /** Initialize/reconfigure the Signalsmith Stretch instance. */
     void prepareStretcher();
 
@@ -164,10 +183,6 @@ private:
 
     /** Apply equal-power crossfade at loop boundary. */
     void applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopStart, int& loopEnd) const;
-
-    /** Create palindrome for ping-pong mode. */
-    void createPalindrome(const juce::AudioBuffer<float>& src, int loopStart, int loopEnd,
-                          juce::AudioBuffer<float>& dest, int& palindromeEnd) const;
 
     /** Peak-normalize play region to 0.95. */
     void normalizeBuffer(juce::AudioBuffer<float>& buf, int regionStart, int regionEnd) const;

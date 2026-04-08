@@ -41,6 +41,9 @@ void SamplePlayer::shareBufferFrom(const SamplePlayer& master)
     playEnd = master.playEnd;
     coldStart = master.coldStart;
     loopMode = master.loopMode;
+    startPosFrac = master.startPosFrac;
+    loopStartFrac = master.loopStartFrac;
+    loopEndFrac = master.loopEndFrac;
     audioLoaded = master.audioLoaded;
     // Only reset read position on first share, not on subsequent syncs
     if (!wasShared)
@@ -67,8 +70,25 @@ void SamplePlayer::glideToSemitones(int semitones, float durationMs)
 
 void SamplePlayer::retrigger()
 {
-    readPosition = static_cast<double>(coldStart);
+    const auto& buf = sharedMode ? *sharedPlayBuffer : playBuffer;
+    const int bufLen = buf.getNumSamples();
+    if (bufLen == 0) return;
+
+    // Determine direction based on P1 vs P3
+    bool reversed = (startPosFrac > loopEndFrac);
+    playDirection_ = reversed ? -1 : 1;
+    inFirstPass_ = true;
+
+    // Convert P1 fraction to sample position
+    int startSample = static_cast<int>(std::floor(startPosFrac * bufLen));
+
+    // In Loop mode, skip crossfade zone if P1 falls in it
+    if (loopMode == LoopMode::Loop && startSample >= playStart && startSample < coldStart)
+        startSample = coldStart;
+
+    readPosition = static_cast<double>(juce::jlimit(0, bufLen - 1, startSample));
     playing = true;
+
     if (stretcherPrepared)
     {
         stretcher.reset();
@@ -94,6 +114,11 @@ void SamplePlayer::setLoopEnd(float frac)
         loopEndFrac = clamped;
         needsReprepareFlag = true;
     }
+}
+
+void SamplePlayer::setStartPos(float frac)
+{
+    startPosFrac = juce::jlimit(0.0f, 1.0f, frac);
 }
 
 void SamplePlayer::setLoopMode(LoopMode mode)
@@ -134,54 +159,39 @@ void SamplePlayer::preparePlaybackBuffer()
 
     if (le - ls < 4) { le = std::min(bufLen, ls + 4); }
 
-    if (loopMode == LoopMode::PingPong)
+    // All modes: start from a plain copy of the original
+    playBuffer.makeCopyOf(originalBuffer);
+
+    int actualEnd = le;
+
+    if (loopMode == LoopMode::Loop)
     {
-        // Ping-pong: optionally optimize, then create palindrome (no crossfade)
-        int actualEnd = le;
+        // Forward loop: optimize loop point + apply crossfade at boundary
         if (loopOptimizeLevel > 0 && numCh > 0)
             actualEnd = optimizeLoopEnd(originalBuffer.getReadPointer(0), ls, le, bufLen, loopOptimizeLevel);
 
-        // Copy original into working buffer
-        juce::AudioBuffer<float> working;
-        working.makeCopyOf(originalBuffer);
-
-        // Create palindrome
-        int palindromeEnd = 0;
-        createPalindrome(working, ls, actualEnd, playBuffer, palindromeEnd);
-
-        playStart = ls;
-        playEnd   = palindromeEnd;
-        coldStart = ls; // no crossfade zone in palindrome
-    }
-    else
-    {
-        // Forward loop or one-shot: apply crossfade at boundary
-        playBuffer.makeCopyOf(originalBuffer);
-
-        int actualEnd = le;
-        if (loopOptimizeLevel > 0 && numCh > 0 && loopMode == LoopMode::Loop)
-            actualEnd = optimizeLoopEnd(originalBuffer.getReadPointer(0), ls, le, bufLen, loopOptimizeLevel);
-
-        int fadeSamples = 0;
-        if (loopMode == LoopMode::Loop)
-        {
-            // Apply crossfade — modifies playBuffer and moves actualEnd back
-            int preEnd = actualEnd;
-            applyLoopCrossfade(playBuffer, ls, actualEnd);
-            fadeSamples = preEnd - actualEnd;
-        }
+        int preEnd = actualEnd;
+        applyLoopCrossfade(playBuffer, ls, actualEnd);
+        int fadeSamples = preEnd - actualEnd;
 
         playStart = ls;
         playEnd   = actualEnd;
-        // Cold start: past crossfade zone (head samples are modified tail audio)
-        coldStart = ls + fadeSamples;
+        coldStart = ls + fadeSamples; // past crossfade zone
+    }
+    else
+    {
+        // OneShot or PingPong: no crossfade, no palindrome
+        // PingPong uses runtime direction reversal instead of palindrome buffer
+        playStart = ls;
+        playEnd   = actualEnd;
+        coldStart = ls;
     }
 
     // Normalize if enabled (only scan the play region for peak)
     if (normalizeOn)
         normalizeBuffer(playBuffer, playStart, playEnd);
 
-    // Reset read position to cold start
+    // Reset read position via retrigger (respects P1)
     readPosition = static_cast<double>(coldStart);
     needsReprepareFlag = false;
 }
@@ -221,6 +231,85 @@ float SamplePlayer::cubicSample(double pos) const
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// advancePosition — 3-point loop logic (shared by processSample/readRawSamples)
+// ═══════════════════════════════════════════════════════════════════
+
+bool SamplePlayer::advancePosition(double speedMagnitude)
+{
+    readPosition += speedMagnitude * playDirection_;
+
+    const double pEnd   = static_cast<double>(playEnd);
+    const double pStart = static_cast<double>(playStart);
+
+    if (inFirstPass_)
+    {
+        // During first pass, only check the boundary the playhead is moving toward
+        if (playDirection_ > 0 && readPosition >= pEnd)
+        {
+            inFirstPass_ = false;
+            if (loopMode == LoopMode::OneShot) { playing = false; return false; }
+            double overshoot = readPosition - pEnd;
+            if (loopMode == LoopMode::PingPong)
+            {
+                readPosition = pEnd - overshoot;
+                playDirection_ = -1;
+            }
+            else // Loop
+            {
+                readPosition = pStart + overshoot;
+            }
+        }
+        else if (playDirection_ < 0 && readPosition < pStart)
+        {
+            inFirstPass_ = false;
+            if (loopMode == LoopMode::OneShot) { playing = false; return false; }
+            double overshoot = pStart - readPosition;
+            if (loopMode == LoopMode::PingPong)
+            {
+                readPosition = pStart + overshoot;
+                playDirection_ = 1;
+            }
+            else // Loop
+            {
+                readPosition = pEnd - overshoot;
+            }
+        }
+    }
+    else
+    {
+        // Standard looping between P2-P3
+        if (readPosition >= pEnd)
+        {
+            double overshoot = readPosition - pEnd;
+            if (loopMode == LoopMode::PingPong)
+            {
+                readPosition = pEnd - overshoot;
+                playDirection_ = -1;
+            }
+            else
+            {
+                readPosition = pStart + overshoot;
+            }
+        }
+        else if (readPosition < pStart)
+        {
+            double overshoot = pStart - readPosition;
+            if (loopMode == LoopMode::PingPong)
+            {
+                readPosition = pStart + overshoot;
+                playDirection_ = 1;
+            }
+            else
+            {
+                readPosition = pEnd - overshoot;
+            }
+        }
+    }
+
+    return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // processSample (Bypass mode / legacy — speed-based transposition)
 // ═══════════════════════════════════════════════════════════════════
 
@@ -244,16 +333,8 @@ float SamplePlayer::processSample()
     // Read with cubic interpolation
     float result = cubicSample(readPosition);
 
-    readPosition += speedRatio;
-
-    // Handle wrapping / stopping based on mode
-    if (readPosition >= static_cast<double>(playEnd))
-    {
-        if (loopMode == LoopMode::OneShot)
-            playing = false;
-        else
-            readPosition -= static_cast<double>(regionLen);
-    }
+    // Advance with 3-point logic (direction, first-pass, boundaries)
+    advancePosition(std::abs(speedRatio));
 
     return result;
 }
@@ -276,21 +357,13 @@ void SamplePlayer::readRawSamples(float* output, int numSamples)
     for (int i = 0; i < numSamples; ++i)
     {
         output[i] = cubicSample(readPosition);
-        readPosition += srRatio; // 1:1 speed, only SR correction
 
-        if (readPosition >= static_cast<double>(playEnd))
+        if (!advancePosition(std::abs(srRatio)))
         {
-            if (loopMode == LoopMode::OneShot)
-            {
-                playing = false;
-                std::memset(output + i + 1, 0,
-                            sizeof(float) * static_cast<size_t>(numSamples - i - 1));
-                return;
-            }
-            else
-            {
-                readPosition -= static_cast<double>(regionLen);
-            }
+            // OneShot ended — zero-fill remainder
+            std::memset(output + i + 1, 0,
+                        sizeof(float) * static_cast<size_t>(numSamples - i - 1));
+            return;
         }
     }
 }
@@ -543,48 +616,6 @@ void SamplePlayer::applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopSta
 
     // Shorten loop: tail samples are baked into head, never played directly
     loopEnd -= fadeSamples;
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Palindrome for ping-pong (from useSamplePlayer.ts)
-// ═══════════════════════════════════════════════════════════════════
-
-void SamplePlayer::createPalindrome(const juce::AudioBuffer<float>& src, int loopStart, int loopEnd,
-                                    juce::AudioBuffer<float>& dest, int& palindromeEnd) const
-{
-    int loopLen = loopEnd - loopStart;
-    if (loopLen < 4)
-    {
-        dest.makeCopyOf(src);
-        palindromeEnd = loopEnd;
-        return;
-    }
-
-    int reverseLen = loopLen - 2; // skip endpoints to avoid doubling
-    int newLen = src.getNumSamples() + reverseLen;
-    int numCh  = src.getNumChannels();
-
-    dest.setSize(numCh, newLen, false, false, true);
-
-    for (int ch = 0; ch < numCh; ++ch)
-    {
-        const float* s = src.getReadPointer(ch);
-        float*       d = dest.getWritePointer(ch);
-
-        // Copy everything up to loopEnd
-        for (int i = 0; i < loopEnd; ++i)
-            d[i] = s[i];
-
-        // Insert reversed loop (skip endpoints)
-        for (int i = 0; i < reverseLen; ++i)
-            d[loopEnd + i] = s[loopEnd - 2 - i];
-
-        // Copy post-loop data (shifted)
-        for (int i = loopEnd; i < src.getNumSamples(); ++i)
-            d[i + reverseLen] = s[i];
-    }
-
-    palindromeEnd = loopEnd + reverseLen;
 }
 
 // ═══════════════════════════════════════════════════════════════════
