@@ -431,10 +431,15 @@ def _apply_semantic_axes(manipulated, axes_dict, encode_fn, model_name):
         # Direction: positive value → pole_b, negative → pole_a
         if value >= 0:
             direction = emb_b - neutral_emb
-            manipulated = manipulated + direction * value
         else:
             direction = emb_a - neutral_emb
-            manipulated = manipulated + direction * abs(value)
+
+        # Mean-pool direction to [1, 1, dim] for models with variable seq_len
+        # (AudioLDM2 uses dynamic T5 padding; SA uses fixed 128-token padding)
+        if direction.shape[1] != manipulated.shape[1]:
+            direction = direction.mean(dim=1, keepdim=True)
+
+        manipulated = manipulated + direction * abs(value)
 
     return manipulated
 
@@ -450,10 +455,12 @@ def _mean_pool(emb, mask):
 
 
 def _generate_audioldm2(wrapper, request):
-    """Generate audio using AudioLDM2Pipeline.
+    """Generate audio using AudioLDM2Pipeline with full embedding manipulation.
 
-    AudioLDM2 uses dual text encoders (CLAP + T5) → projection → GPT2.
-    We manipulate the projected prompt_embeds (post-projection, pre-UNet).
+    AudioLDM2 uses dual embeddings: prompt_embeds (T5 raw, [B,seq,1024]) for
+    secondary cross-attention and generated_prompt_embeds (GPT2, [B,8,768]) for
+    primary cross-attention. We encode with CFG=True to get properly shaped
+    negative+positive pairs, then manipulate the positive halves.
     Output is resampled from 16kHz to 44.1kHz for JUCE compatibility.
     """
     pipe = wrapper.pipe
@@ -476,54 +483,83 @@ def _generate_audioldm2(wrapper, request):
     generator = torch.Generator("cpu").manual_seed(seed)
 
     with torch.no_grad():
+        # Encode A with CFG — returns [2, seq, dim] (neg @ 0, pos @ 1)
         pe_a, mask_a, gpe_a = pipe.encode_prompt(
             prompt=prompt_a, device=device,
             num_waveforms_per_prompt=1,
-            do_classifier_free_guidance=False,
+            do_classifier_free_guidance=True,
+            negative_prompt="",
         )
-
-        emb_a_pooled = pe_a.squeeze(0).mean(dim=0).cpu().float().numpy()
+        neg_pe   = pe_a[0:1]
+        pos_pe_a = pe_a[1:2]
+        neg_mask  = mask_a[0:1]
+        pos_mask_a = mask_a[1:2]
+        neg_gpe  = gpe_a[0:1]
+        pos_gpe_a = gpe_a[1:2]
 
         if prompt_b:
             pe_b, mask_b, gpe_b = pipe.encode_prompt(
                 prompt=prompt_b, device=device,
                 num_waveforms_per_prompt=1,
-                do_classifier_free_guidance=False,
+                do_classifier_free_guidance=True,
+                negative_prompt="",
             )
-            emb_b_pooled = pe_b.squeeze(0).mean(dim=0).cpu().float().numpy()
+            pos_pe_b   = pe_b[1:2]
+            pos_mask_b = mask_b[1:2]
+            pos_gpe_b  = gpe_b[1:2]
 
-            manipulated_pe = (0.5 - 0.5 * alpha) * pe_a + (0.5 + 0.5 * alpha) * pe_b
-            manipulated_gpe = (0.5 - 0.5 * alpha) * gpe_a + (0.5 + 0.5 * alpha) * gpe_b
-            mask = mask_a
+            # Pad prompt_embeds to same seq_len (T5 uses dynamic padding)
+            s_a, s_b = pos_pe_a.shape[1], pos_pe_b.shape[1]
+            if s_a != s_b:
+                pad_a = max(0, s_b - s_a)
+                pad_b = max(0, s_a - s_b)
+                if pad_a:
+                    pos_pe_a   = torch.nn.functional.pad(pos_pe_a, (0, 0, 0, pad_a))
+                    pos_mask_a = torch.nn.functional.pad(pos_mask_a, (0, pad_a))
+                    neg_pe     = torch.nn.functional.pad(neg_pe, (0, 0, 0, pad_a))
+                    neg_mask   = torch.nn.functional.pad(neg_mask, (0, pad_a))
+                if pad_b:
+                    pos_pe_b   = torch.nn.functional.pad(pos_pe_b, (0, 0, 0, pad_b))
+                    pos_mask_b = torch.nn.functional.pad(pos_mask_b, (0, pad_b))
 
+            # Alpha interpolation: 0 = midpoint, -1 = pure A, +1 = pure B
+            w_a = 0.5 - 0.5 * alpha
+            w_b = 0.5 + 0.5 * alpha
+            manipulated_pe  = w_a * pos_pe_a  + w_b * pos_pe_b
+            manipulated_gpe = w_a * pos_gpe_a + w_b * pos_gpe_b
+            pos_mask = (pos_mask_a | pos_mask_b)
+
+            # Renormalize if extrapolating (|alpha| > 1)
             if alpha < -1.0 or alpha > 1.0:
-                for tensors in [(manipulated_pe, pe_a, pe_b), (manipulated_gpe, gpe_a, gpe_b)]:
-                    manip, ref_a, ref_b = tensors
+                for manip, ref_a, ref_b in [(manipulated_pe, pos_pe_a, pos_pe_b),
+                                             (manipulated_gpe, pos_gpe_a, pos_gpe_b)]:
                     ref_norm = ref_a.norm() if alpha < 0.0 else ref_b.norm()
                     res_norm = manip.norm()
                     if res_norm > 1e-8:
                         manip.mul_(ref_norm / res_norm)
         else:
-            emb_dim = pe_a.shape[-1]
-            emb_b_pooled = np.zeros(emb_dim, dtype=np.float32)
-            manipulated_pe = pe_a.clone()
-            manipulated_gpe = gpe_a.clone()
-            mask = mask_a
+            manipulated_pe  = pos_pe_a.clone()
+            manipulated_gpe = pos_gpe_a.clone()
+            pos_mask = pos_mask_a
 
+        # Magnitude scaling
         if abs(magnitude - 1.0) > 1e-6:
             manipulated_pe = manipulated_pe * magnitude
 
+        # Noise injection (numpy PCG64 for cross-platform determinism)
         if noise_sigma > 0.0:
             rng = np.random.Generator(np.random.PCG64(seed))
             noise_np = rng.standard_normal(manipulated_pe.shape).astype(np.float32)
             noise = torch.from_numpy(noise_np).to(manipulated_pe.device) * noise_sigma
             manipulated_pe = manipulated_pe + noise
 
+        # Dimension offsets from DimensionExplorer
         if dim_offsets:
             for idx, val in dim_offsets:
                 if 0 <= idx < manipulated_pe.shape[-1]:
                     manipulated_pe[:, :, idx] += val
 
+        # Semantic axes
         sem_axes = request.get("semantic_axes")
         if sem_axes:
             def audioldm2_encode(text):
@@ -537,10 +573,6 @@ def _generate_audioldm2(wrapper, request):
                 manipulated_pe, sem_axes, audioldm2_encode, "audioldm2"
             )
 
-        neg_pe = torch.zeros_like(manipulated_pe)
-        neg_gpe = torch.zeros_like(manipulated_gpe)
-        neg_mask = torch.ones_like(mask)
-
     offsets_str = f", {len(dim_offsets)} offsets" if dim_offsets else ""
     log.info(f"Generating (AudioLDM2) on {device}: '{prompt_a[:60]}' ({duration}s, {steps} steps, "
              f"CFG={cfg_scale}, mag={magnitude}, noise={noise_sigma}, seed={seed}{offsets_str})")
@@ -548,10 +580,10 @@ def _generate_audioldm2(wrapper, request):
 
     result = pipe(
         prompt_embeds=manipulated_pe,
-        attention_mask=mask,
-        generated_prompt_embeds=manipulated_gpe,
+        attention_mask=pos_mask,
         negative_prompt_embeds=neg_pe,
         negative_attention_mask=neg_mask,
+        generated_prompt_embeds=manipulated_gpe,
         negative_generated_prompt_embeds=neg_gpe,
         audio_length_in_s=duration,
         num_inference_steps=steps,
@@ -572,9 +604,7 @@ def _generate_audioldm2(wrapper, request):
         audio_np = np.vstack([audio_np, audio_np])
 
     log.info(f"Generated (AudioLDM2) in {elapsed:.1f}s, {audio_np.shape[1]} samples @ 44.1kHz")
-
-    emb_stats = (emb_a_pooled, emb_b_pooled)
-    return audio_np, wrapper.target_sample_rate, seed, elapsed, emb_stats
+    return audio_np, wrapper.target_sample_rate, seed, elapsed, None
 
 
 def _generate_native(pipe, request):
