@@ -306,6 +306,25 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     normalizeToggle.setToggleState(
         apvts.getRawParameterValue("normalize")->load() > 0.5f, juce::dontSendNotification);
 
+    // HF boost toggle — compensates VAE decoder high-frequency rolloff
+    hfBoostBtn.setConnectedEdges(juce::Button::ConnectedOnRight);
+    hfBoostBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    hfBoostBtn.setColour(juce::TextButton::buttonOnColourId, kAccent);
+    hfBoostBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    hfBoostBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+    hfBoostBtn.setClickingTogglesState(true);
+    hfBoostBtn.setToggleState(
+        apvts.getRawParameterValue("gen_hf_boost")->load() > 0.5f, juce::dontSendNotification);
+    hfBoostBtn.onClick = [this] {
+        bool on = hfBoostBtn.getToggleState();
+        processorRef.getValueTreeState().getParameter("gen_hf_boost")
+            ->setValueNotifyingHost(on ? 1.0f : 0.0f);
+        const auto& raw = processorRef.getGeneratedAudioRaw();
+        if (raw.getNumSamples() > 0)
+            processorRef.loadGeneratedAudio(raw, processorRef.getGeneratedSampleRate());
+    };
+    addAndMakeVisible(hfBoostBtn);
+
     // Loop optimize cycling button (Off → Low → High)
     loopOptimizeBtn.setConnectedEdges(juce::Button::ConnectedOnLeft);
     loopOptimizeBtn.setColour(juce::TextButton::buttonColourId, kSurface);
@@ -703,6 +722,7 @@ void SynthPanel::updateVisibility()
     crossfadeRow->setVisible(isSampler);
     loopOptimizeBtn.setVisible(isSampler);
     normalizeToggle.setVisible(isSampler);
+    hfBoostBtn.setVisible(isSampler);
 
     // Wavetable-only controls
     scanRow->setVisible(isWavetable);
@@ -1170,11 +1190,12 @@ void SynthPanel::resized()
         loopOptimizeBtn.setBounds(leftCol.removeFromLeft(optW));
         leftCol.removeFromLeft(2);
 
-        // Norm at the right end of left column (gap to noise switchbox)
+        // HF + Norm at the right end of left column (gap to noise switchbox)
         leftCol.removeFromRight(juce::roundToInt(f * 1.5f));
         int normW = juce::roundToInt(f * 4.0f);
-        auto normBounds = leftCol.removeFromRight(normW);
-        normalizeToggle.setBounds(normBounds);
+        int hfW = juce::roundToInt(f * 2.8f);
+        normalizeToggle.setBounds(leftCol.removeFromRight(normW));
+        hfBoostBtn.setBounds(leftCol.removeFromRight(hfW));
         leftCol.removeFromRight(2);
 
         // Xfade gets remaining space

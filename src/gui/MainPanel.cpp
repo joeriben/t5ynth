@@ -98,25 +98,7 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
         return axesPanel.getAxisValuesWithOffsets(o1, o2, o3);
     };
 
-    // HF boost toggle — compensates VAE decoder high-frequency rolloff
-    hfBoostBtn.setColour(juce::TextButton::buttonColourId, kSurface);
-    hfBoostBtn.setColour(juce::TextButton::buttonOnColourId, kOscCol);
-    hfBoostBtn.setColour(juce::TextButton::textColourOffId, kDim);
-    hfBoostBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-    hfBoostBtn.setClickingTogglesState(true);
-    hfBoostBtn.setToggleState(
-        processorRef.getValueTreeState().getRawParameterValue("gen_hf_boost")->load() > 0.5f,
-        juce::dontSendNotification);
-    hfBoostBtn.onClick = [this] {
-        bool on = hfBoostBtn.getToggleState();
-        processorRef.getValueTreeState().getParameter("gen_hf_boost")
-            ->setValueNotifyingHost(on ? 1.0f : 0.0f);
-        // Re-apply HF boost from raw audio without re-generating
-        const auto& raw = processorRef.getGeneratedAudioRaw();
-        if (raw.getNumSamples() > 0)
-            processorRef.loadGeneratedAudio(raw, processorRef.getGeneratedSampleRate());
-    };
-    addAndMakeVisible(hfBoostBtn);
+
 
     // Status callback — show in Generate button
     startTimerHz(30);  // 30fps glow animation
@@ -407,7 +389,7 @@ void MainPanel::timerCallback()
     glowPhase += glowGenerating ? 0.25f : 0.08f;
     if (glowPhase > juce::MathConstants<float>::twoPi)
         glowPhase -= juce::MathConstants<float>::twoPi;
-    repaint(mainGenerateBtn.getBounds().expanded(16));
+    repaint(mainGenerateBtn.getBounds().expanded(20));
 
     // Poll drift ghost offsets for AxesPanel (30Hz)
     auto& mv = processorRef.modulatedValues;
@@ -449,7 +431,7 @@ void MainPanel::resized()
     auto genCol = b.removeFromLeft(col1W).reduced(6, 2);
 
     int headerH = juce::jlimit(14, 20, juce::roundToInt(h * 0.022f));
-    constexpr int kGenBtnH = 34;
+    constexpr int kGenBtnH = 54;
     int kGap = juce::jlimit(3, 6, juce::roundToInt(h * 0.005f));
 
     int available = genCol.getHeight() - headerH * 3 - kGap * 2;
@@ -486,14 +468,6 @@ void MainPanel::resized()
     int genW = juce::roundToInt(genBtnArea.getWidth() * 0.6f);
     int genX = genBtnArea.getX() + (genBtnArea.getWidth() - genW) / 2;
     mainGenerateBtn.setBounds(genX, genBtnArea.getY(), genW, genBtnArea.getHeight());
-
-    // HF toggle — compact, same height as GPU/CPU buttons
-    int hfH = juce::roundToInt(genBtnArea.getHeight() * 0.6f);
-    int hfW = juce::roundToInt(hfH * 1.6f);  // wide enough for "HF"
-    int gap = (genBtnArea.getRight() - (genX + genW));
-    int hfX = genX + genW + (gap - hfW) / 2;
-    int hfY = genBtnArea.getY() + (genBtnArea.getHeight() - hfH) / 2;
-    hfBoostBtn.setBounds(hfX, hfY, hfW, hfH);
 
     // Col 2: ENGINE
     synthPanel.setBounds(b);

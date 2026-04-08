@@ -32,7 +32,6 @@ private:
     PromptPanel promptPanel;
     AxesPanel axesPanel;
     juce::TextButton mainGenerateBtn { "Generate" };
-    juce::TextButton hfBoostBtn { "HF" };
     float glowPhase = 0.0f;
     bool glowGenerating = false;
     void timerCallback() override;

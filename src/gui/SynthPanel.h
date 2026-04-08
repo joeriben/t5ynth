@@ -49,6 +49,7 @@ private:
     std::unique_ptr<SliderRow> crossfadeRow;
     juce::TextButton loopOptimizeBtn { "Opt: Off" };
     juce::TextButton normalizeToggle { "Norm" };
+    juce::TextButton hfBoostBtn { "HF" };
 
     // ── Scan ──
     std::unique_ptr<SliderRow> scanRow;
