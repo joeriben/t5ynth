@@ -725,24 +725,18 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
             generateButton.setEnabled(true);
             if (result.success)
             {
-                // Capture old processed+normalized audio BEFORE overwriting
+                // Crossfade two RAW signals, then single load (Rumble→HF→Norm once)
+                auto newAudio = result.audio; // mutable copy
                 float xfadeMs = processor->getValueTreeState()
                     .getRawParameterValue("drift_crossfade")->load();
                 int xfadeSamples = juce::roundToInt(xfadeMs * 0.001f * 44100.0f);
-                juce::AudioBuffer<float> oldProcessed;
                 if (xfadeSamples > 0)
-                    oldProcessed.makeCopyOf(processor->getGeneratedAudio());
-
-                // Load new audio (applies Rumble → HF → Normalize)
-                processor->loadGeneratedAudio(result.audio, 44100.0);
-
-                // Crossfade between two fully-processed signals
-                if (xfadeSamples > 0 && oldProcessed.getNumSamples() > 0)
                 {
-                    auto blended = processor->getGeneratedAudio(); // copy of new processed
-                    applyDriftCrossfade(blended, oldProcessed, xfadeSamples);
-                    processor->reloadProcessedAudio(blended);
+                    const auto& oldRaw = processor->getGeneratedAudioRaw();
+                    if (oldRaw.getNumSamples() > 0)
+                        applyDriftCrossfade(newAudio, oldRaw, xfadeSamples);
                 }
+                processor->loadGeneratedAudio(newAudio, 44100.0);
                 processor->setLastSeed(result.seed);
                 seedEditor.setText(juce::String(result.seed), false);
                 auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | drift regen";
