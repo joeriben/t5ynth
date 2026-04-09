@@ -1,0 +1,545 @@
+# T5ynth Architecture
+
+Code-level walkthrough for C++/JUCE developers new to the project. This document
+describes *where code lives* and *how the C++ layers are wired together*. It
+deliberately does **not** cover the audio signal flow — that is documented in
+`resources/T5ynth_Guide.html`, section 16 ("Signal flow reference"), which is
+shipped as `BinaryData::T5ynth_Guide_html` and reachable from the plugin's
+`Manual` button.
+
+For sibling docs written alongside this one, see the cross-reference list at
+the end.
+
+---
+
+## 1. Top-level directory layout
+
+```
+t5ynth/
+├── CMakeLists.txt              # Single top-level CMake file — only build entry point
+├── src/                        # All C++ sources
+│   ├── PluginProcessor.{h,cpp} # juce::AudioProcessor root — owns APVTS + DSP + inference
+│   ├── PluginEditor.{h,cpp}    # juce::AudioProcessorEditor — thin wrapper around MainPanel
+│   ├── dsp/                    # Voice, oscillators, filters, envelopes, effects
+│   ├── gui/                    # All juce::Component panels + LookAndFeel
+│   ├── inference/              # PipeInference — C++ side of the Python IPC
+│   ├── sequencer/              # Step sequencer, arpeggiator, generative sequencer
+│   └── presets/                # .t5p binary preset format serialization
+├── backend/                    # Python inference subprocess
+│   ├── pipe_inference.py       # Script form (dev mode)
+│   ├── pipe_inference.spec     # PyInstaller spec
+│   ├── runtime_hook.py         # PyInstaller runtime hook
+│   ├── requirements.txt        # Python deps (diffusers, torch, transformers, …)
+│   ├── services/               # Model backends (stable_audio_backend, cross_aesthetic_backend)
+│   ├── routes/                 # Legacy HTTP routes (kept but unused by the plugin)
+│   ├── config.py               # Device/model enumeration logic
+│   └── dist/pipe_inference/    # PyInstaller one-folder output (populated by `pyinstaller`)
+├── JUCE/                       # Vendored JUCE framework, see §9
+├── resources/
+│   ├── ir/                     # Convolution reverb impulse responses (.wav)
+│   ├── presets/                # Factory .t5p presets
+│   ├── logos/                  # App icon, about-dialog logos
+│   └── T5ynth_Guide.html       # HTML user manual (rendered by WebBrowserComponent)
+├── docs/                       # Developer documentation (you are here's siblings)
+├── tools/                      # Standalone Python + C++ validation/comparison scripts
+└── .github/workflows/build.yml # CI: Linux/macOS/Windows build + PyInstaller bundling
+```
+
+### `src/` subtree
+
+- **`src/PluginProcessor.{h,cpp}`** — root of the plugin, see §2.
+- **`src/PluginEditor.{h,cpp}`** — 31 lines total. Installs the custom
+  `T5ynthLookAndFeel`, instantiates a `MainPanel`, sets window size
+  `1300×867` with a `3:2` fixed aspect ratio. Real UI lives in `gui/`.
+- **`src/dsp/`** — per-voice and global DSP classes. Notable entries:
+  - `SynthVoice.{h,cpp}` — single monophonic voice; owns its `WavetableOscillator`,
+    `SamplePlayer`, three `ADSREnvelope`s (amp + 2 mod), two per-voice `LFO`s,
+    `NoiseGenerator`, and `StateVariableFilter` (`T5ynthFilter`).
+    See `src/dsp/SynthVoice.h:17`.
+  - `VoiceManager.{h,cpp}` — fixed `std::array<SynthVoice, 16>` pool with
+    runtime `voiceLimit` (1/4/6/8/12/16) and oldest-note stealing.
+    See `src/dsp/VoiceManager.h:14`.
+  - `WavetableOscillator`, `SamplePlayer`, `WavetableBank` — the two
+    oscillator types fed by the generator output. Both are owned by
+    `T5ynthProcessor` as *master* instances (`masterOsc`, `masterSampler`) and
+    the per-voice copies share frame/buffer data.
+  - `LFO`, `DriftLFO`, `ADSREnvelope`, `StateVariableFilter`,
+    `NoiseGenerator`.
+  - `DelayLine`, `ConvolutionReverb`, `AlgorithmicReverb`, `Limiter` —
+    global post-sum effects.
+  - `BlockParams.h` — plain-old-data struct carrying every per-block
+    parameter value from APVTS down into `VoiceManager::renderBlock`.
+  - `ModulationMatrix.{h,cpp}` — **stub**, see §5.
+- **`src/gui/`** — every `juce::Component` subclass, plus `T5ynthLookAndFeel`
+  and `GuiHelpers.h` (shared `SliderRow`, `SwitchBox` primitives). See §3.
+- **`src/inference/`** — `PipeInference.{h,cpp}` only. C++ side of the IPC to
+  Python. See §6.
+- **`src/sequencer/`** — `StepSequencer`, `Arpeggiator`,
+  `GenerativeSequencer` (Euclidean + scale-quantized note generator).
+  Driven from `processBlock` and exposed via `PluginProcessor` accessors.
+- **`src/presets/PresetFormat.{h,cpp}`** — .t5p binary serialization with
+  embedded audio. Magic `T5YN`, current version `2`. See
+  `src/presets/PresetFormat.h:8` and `docs/PRESET_FORMAT.md` for the
+  wire format.
+
+---
+
+## 2. Plugin lifecycle orchestration
+
+`T5ynthProcessor` (`src/PluginProcessor.h:17`) is the root object owned by the
+host (DAW or standalone wrapper). It owns everything with lifetime bound to
+the plugin instance:
+
+- the `juce::AudioProcessorValueTreeState parameters` tree, built in
+  `createParameterLayout()` (`src/PluginProcessor.cpp:19` — returns at line
+  467);
+- the DSP pipeline (`voiceManager`, `masterOsc`, `masterSampler`, two global
+  `LFO`s, `driftLfo`, `postFilter`, `delay`, `reverb`, `algoReverb`,
+  `limiter`);
+- the three sequencers (`stepSequencer`, `generativeSequencer`, `arpeggiator`);
+- the `PipeInference pipeInference` client that manages the Python
+  subprocess;
+- generated-audio buffers (`generatedAudioFull`, `generatedAudioRaw`) plus
+  the last known `sampleRate`, seed, prompts, and prompt embeddings —
+  these are *GUI-visible state that is not in APVTS*. See §7.
+
+### APVTS as single source of truth
+
+`createParameterLayout()` is the only place where APVTS parameters are
+registered. Every exposed control in the GUI ultimately resolves to an
+`AudioProcessorValueTreeState::SliderAttachment`, `ButtonAttachment`, or
+`ComboBoxAttachment` against an ID declared here. When adding a new
+parameter you touch three places: this function, the DSP class that reads
+it (typically via `BlockParams` populated in `processBlock`), and the panel
+that exposes it.
+
+### `prepareToPlay`
+
+`src/PluginProcessor.cpp:470`. Calls `prepare(sampleRate, samplesPerBlock)`
+on every DSP member, loads the default convolution-reverb IR from
+`BinaryData::emt_140_plate_medium_wav` (§8), resizes pre-allocated scratch
+buffers (`lfo1Buffer`, `lfo2Buffer`, `reverbSendBuffer`), and computes
+`tailBlocks` for deep-idle detection (≈10 seconds of reverb tail at the
+current block size).
+
+### `processBlock`
+
+`src/PluginProcessor.cpp:505`. High-level structure:
+
+1. **Idle gating.** Track `silentBlockCount` — once no voices are active
+   and no MIDI has arrived for `tailBlocks` blocks, skip the entire body
+   and just advance LFO phases (`audioIdle` becomes `true`).
+2. **Voice count update.** Read `voice_count` choice and resize the
+   active pool.
+3. **Parameter snapshot.** Read every APVTS value into a `BlockParams bp`
+   local (`src/dsp/BlockParams.h`). This happens once per block — voice
+   rendering never touches APVTS directly.
+4. **Modulation targets resolved.** Drift LFO target, ENV 2/3 targets
+   (`mod1_target`, `mod2_target`), LFO1/LFO2 targets are all stored as
+   integer choices in APVTS; `processBlock` dispatches them onto the
+   correct DSP destinations. See §5.
+5. **Global LFOs ticked into `lfo1Buffer` / `lfo2Buffer`.**
+6. **MIDI routed** through sequencer / arpeggiator / direct note-on.
+7. **`voiceManager.renderBlock(...)`** sums polyphonic voices into
+   `buffer` with `1/sqrt(N)` scaling.
+8. **Post-sum chain.** Global filter → delay → parallel reverb send (via
+   `reverbSendBuffer`) → limiter → master gain.
+9. **GUI telemetry.** Modulated parameter snapshots (`modulatedValues`),
+   `lastMidiNote`, `waveformSnapshot`, `audioIdle` are stored with relaxed
+   atomics for the GUI thread to read on its timers.
+
+### `releaseResources`
+
+Resets the master oscillator, sampler, and voice manager.
+`src/PluginProcessor.cpp:498`.
+
+### State (`getStateInformation` / `setStateInformation`)
+
+`src/PluginProcessor.cpp:1516` — APVTS state is serialized as XML via JUCE's
+`copyXmlToBinary`. On load, transport flags `seq_running` and `gen_seq_running`
+are explicitly forced to `0` so sessions never auto-start audio on restore.
+
+Note that this session serialization only captures APVTS. Prompts, seed,
+generated audio, axes slot state, and prompt embeddings live outside APVTS
+and are persisted separately via the .t5p preset format (§7).
+
+---
+
+## 3. GUI hierarchy
+
+`MainPanel` (`src/gui/MainPanel.h:15`) is the GUI root. `T5ynthEditor`
+contains exactly one `MainPanel` member (`src/PluginEditor.h:20`). All
+layout is driven by `MainPanel::resized()` — no JUCE `Viewport` or
+`ResizableWindow` wrappers.
+
+`MainPanel` owns the major fixed panels as direct members:
+
+| Member                 | Type                     | Source                           |
+|------------------------|--------------------------|----------------------------------|
+| `promptPanel`          | `PromptPanel`            | `src/gui/PromptPanel.h:15`       |
+| `axesPanel`            | `AxesPanel`              | `src/gui/AxesPanel.h:16`         |
+| `synthPanel`           | `SynthPanel`             | `src/gui/SynthPanel.h:14`        |
+| `fxPanel`              | `FxPanel`                | `src/gui/FxPanel.h:10`           |
+| `sequencerPanel`       | `SequencerPanel`         | `src/gui/SequencerPanel.h:17`    |
+| `statusBar`            | `StatusBar`              | `src/gui/StatusBar.h:5`          |
+| `dimensionExplorer`    | `DimensionExplorer`      | `src/gui/DimensionExplorer.h:13` |
+| `settingsPage`         | `SettingsPage`           | `src/gui/SetupWizard.h:12`       |
+| `manualWeb`            | `juce::WebBrowserComponent` | inline in MainPanel           |
+
+### Layout columns
+
+`MainPanel::resized()` divides the window into three columns (generation,
+engine/filter/modulation, FX) plus a full-width sequencer row and a top/
+bottom status bar. Each panel is a self-contained `juce::Component` that
+binds to `T5ynthProcessor::getValueTreeState()` via APVTS attachments. There
+is no cross-panel state — panels communicate through APVTS or via
+`std::function` callbacks set by `MainPanel` (e.g.
+`PromptPanel::onEmbeddingsReady`, `StatusBar::onSavePreset`).
+
+### Overlay panels (Scrim pattern)
+
+Three features render as full-window overlays instead of being inlined:
+
+1. **Dimension Explorer** — launched from the mini preview in
+   `MainPanel`. Uses the nested `Scrim` component
+   (`src/gui/MainPanel.h:56`) to darken the background and swallow
+   click-outside events.
+2. **Settings** — `SettingsPage` (the legacy name of the file is
+   `SetupWizard.{h,cpp}`; the class is `SettingsPage`). Shows model
+   status, Smart Auto-Scan, HuggingFace download buttons, and backend
+   connection state.
+3. **Manual** — renders `BinaryData::T5ynth_Guide_html` via a JUCE
+   `WebBrowserComponent`. The HTML is extracted to a temp file on first
+   open (`manualHtmlOnDisk`, `MainPanel.h:94`) because
+   `WebBrowserComponent` loads URLs rather than raw HTML strings.
+
+Each overlay has its own `Scrim` member instance and a `visible` flag.
+
+### LookAndFeel
+
+`src/gui/T5ynthLookAndFeel.{h,cpp}` is a single `juce::LookAndFeel_V4`
+subclass installed once by `T5ynthEditor`. Shared slider/button/header
+primitives live in `src/gui/GuiHelpers.h` (`SliderRow`, `SwitchBox`,
+header-bar helpers) — every panel uses these so that spacing, colors and
+header treatment stay consistent.
+
+---
+
+## 4. Voice chain
+
+Polyphony is managed by `VoiceManager` (`src/dsp/VoiceManager.h:14`), which
+holds a fixed `std::array<SynthVoice, 16>` pool (`MAX_VOICES = 16`) and a
+runtime `voiceLimit` from APVTS `voice_count` (choices:
+`Mono / 4 / 6 / 8 / 12 / 16`). Policy:
+
+- **Allocation order:** find free voice first, else steal by *oldest note*
+  (`noteOnCounter` monotonic, `stealVoice()` at `VoiceManager.h:85`).
+- **Equal-power gain scaling:** each voice multiplied by `1/sqrt(N)` where
+  `N` = number of active voices, ramped over `GAIN_RAMP_MS = 5ms` on any
+  voice count change to prevent clicks.
+- **Mono mode** (`voiceLimit == 1`): a single voice with legato glide
+  configured via `glideToNote`.
+
+Each `SynthVoice` (`src/dsp/SynthVoice.h:17`) owns its own instance of:
+
+- `WavetableOscillator osc` and `SamplePlayer sampler` (engine mode
+  switches between the two; mode is stored in APVTS `engine_mode`, not as
+  a class member — see `PluginProcessor::isWavetableMode()` at
+  `src/PluginProcessor.h:47`).
+- `NoiseGenerator noise` for the sub-oscillator noise source.
+- Three `ADSREnvelope`s: `ampEnv` (amplifier/ENV1), `modEnv1` (ENV2),
+  `modEnv2` (ENV3).
+- Two per-voice `LFO`s (`perVoiceLfo1`, `perVoiceLfo2`) used only when
+  the corresponding global LFO is in *Trigger* mode — in *Free* mode the
+  global `T5ynthProcessor::lfo1` / `lfo2` values are used instead.
+- `T5ynthFilter` (State Variable Filter, `src/dsp/StateVariableFilter.h`).
+
+### Engine data distribution
+
+The oscillator frame data lives once on the *master* instances owned by
+`T5ynthProcessor` (`masterOsc`, `masterSampler`,
+`src/PluginProcessor.h:122`). After a new generation lands via
+`loadGeneratedAudio`, `VoiceManager::distributeSamplerBuffer` and
+`distributeWavetableFrames` push pointers/copies to every voice. This keeps
+the hot render path lock-free while allowing a single source of truth for
+the loaded audio.
+
+### Sub-block filter updates
+
+`SynthVoice::renderBlock` processes audio in chunks of
+`SUB_BLOCK_SIZE = 32` samples so filter coefficients can be updated at
+sub-block rate without paying the cost of per-sample recomputation
+(`src/dsp/SynthVoice.h:49`).
+
+---
+
+## 5. Modulation routing
+
+**Important:** `src/dsp/ModulationMatrix.{h,cpp}` exists in the tree and is
+compiled, but it is currently a **stub** — `ModulationMatrix::process()`
+does nothing, `getModulationValue()` returns 0. See
+`src/dsp/ModulationMatrix.cpp:13`. The planned central routing matrix is
+not implemented.
+
+Actual modulation routing today uses a **target-dropdown-per-source**
+pattern. Every modulation source has a single `*_target` APVTS choice that
+picks its destination at runtime. `processBlock` reads these choices into
+`BlockParams`, then in the voice/global mix applies the source to the
+selected destination.
+
+Current sources and their target parameters (see
+`PluginProcessor.cpp:294-314`):
+
+- `mod1_target` — ENV 2 (Mod 1). Choices:
+  `--- / DCA / Filter / Scan / Pitch / Dly Time / Dly FB / Dly Mix / Rev Mix / LFO1 Rate / LFO1 Depth / LFO2 Rate / LFO2 Depth`.
+- `mod2_target` — ENV 3 (Mod 2). Same choices as ENV 2.
+- `lfo1_target`, `lfo2_target` — Choices:
+  `--- / Filter / Scan / Pitch / Dly Time / Dly FB / Dly Mix / Rev Mix / ENV1 Amt / ENV2 Amt / ENV3 Amt`.
+- `drift1_target`, `drift2_target`, `drift3_target` — Drift LFO targets
+  driving the oscillator generation parameters (Alpha, Noise, Magnitude,
+  Axes) and a subset of DSP targets.
+
+### APVTS prefix convention
+
+- `amp_*` — ENV 1 (Amplifier envelope).
+- `mod1_*` — ENV 2 (configurable modulation envelope).
+- `mod2_*` — ENV 3 (configurable modulation envelope).
+
+ENV 1 is fixed as the amplifier, ENV 2 and ENV 3 are fully assignable.
+The naming (`amp_` vs `mod1_`/`mod2_`) preserves the ENV 1 = DCA convention
+but all three envelopes use the same `ADSREnvelope` class.
+
+### Ghost indicators
+
+Any slider whose target is currently being modulated paints a small "ghost"
+position marker indicating the *modulated* value versus the *set* value.
+The audio thread writes the modulated values atomically to
+`T5ynthProcessor::modulatedValues` (`src/PluginProcessor.h:212`) with
+`NaN` as the "no modulation" sentinel. GUI panels read these on their
+timer tick and draw the ghost only when the value is non-NaN. See the
+`ModulatedValues` struct definition for the full set of tracked targets.
+
+### Adding a new modulation target
+
+See `docs/ADDING_A_MODULATION_TARGET.md`. In short: add the string to the
+relevant `*_target` choice array in `createParameterLayout`, then handle
+the new target index in the `processBlock` dispatch and (if it is a
+"continuous" target) add a matching atomic to `ModulatedValues`.
+
+---
+
+## 6. Inference IPC
+
+C++ side is `src/inference/PipeInference.{h,cpp}`; the single instance
+lives in `T5ynthProcessor::pipeInference` (`src/PluginProcessor.h:144`) and
+is launched via `launchPipeInference(const juce::File& backendDir)` called
+from the editor on startup.
+
+Python side is `backend/pipe_inference.py`, which is also the entry point
+for the PyInstaller bundle. In a release build the PyInstaller one-folder
+output at `backend/dist/pipe_inference/pipe_inference` is shipped inside
+the plugin bundle; `PipeInference::findBundledBinary` at
+`src/inference/PipeInference.cpp:15` searches both that path and sibling
+locations inside the app/.vst3/.component resources. In a dev build (no
+bundled binary present) the client falls back to invoking
+`pipe_inference.py` via a system Python (`PipeInference.cpp:128`).
+
+Key characteristics:
+
+- **Persistent subprocess.** One Python process per plugin instance; it
+  stays alive across generations so model-load cost is paid once.
+- **Binary protocol** over child stdin/stdout. The platform-specific
+  handles are in `PipeInference::`-private members (`stdinFd_` /
+  `stdoutFd_` on POSIX, `hChildStdinWr_` / `hChildStdoutRd_` on Windows).
+- **Blocking `generate(Request)`.** Called from a JUCE
+  `Thread`/`ThreadPoolJob` in `PromptPanel` — not from `processBlock`.
+- **Auto-restart.** `generate()` checks `isChildAlive()` and will call
+  `tryRestart()` once if the child has died.
+- **Startup handshake** exposes the available devices (`mps`, `cuda`,
+  `cpu`) and available models; these populate the Settings overlay.
+
+The `Request` struct (`src/inference/PipeInference.h:45`) carries prompts,
+alpha/magnitude/noiseSigma, duration, steps, cfgScale, seed,
+device/model selection, per-dimension offsets from Dimension Explorer,
+and the semantic axes map. The `Result` struct carries the audio buffer,
+generation time, final seed, and the two mean-pooled 768-dim T5 prompt
+embeddings.
+
+**Wire format details (flag bytes, header layout, error frames) are
+documented separately in `docs/IPC_PROTOCOL.md`.** This file intentionally
+does not duplicate the protocol spec.
+
+---
+
+## 7. APVTS parameters and non-APVTS state
+
+### What lives in APVTS
+
+Every real-time audio parameter (oscillator scan, filter cutoff, envelope
+stages, LFO rate/depth, modulation targets, delay/reverb mix, sequencer
+bpm, step values, arpeggiator mode, master volume, etc.) is declared in
+`T5ynthProcessor::createParameterLayout()` at `src/PluginProcessor.cpp:19`.
+The layout has grown to ~445 lines and is the single authoritative list;
+when in doubt, grep this function for a parameter ID.
+
+Adding a new parameter requires three edits:
+
+1. **`createParameterLayout()`** — register the ID and declare the range.
+2. **DSP class that consumes it** — usually add a field to
+   `BlockParams.h` and populate it in `processBlock` (and then read in
+   the voice / DSP class).
+3. **Panel that exposes it** — add a slider/combo and attach it via
+   `SliderAttachment` / `ComboBoxAttachment` / `ButtonAttachment`.
+
+### What does NOT live in APVTS
+
+Some state is GUI-visible but does not belong on the audio thread and
+cannot easily be encoded as a `juce::RangedAudioParameter`. It lives as
+plain members on `T5ynthProcessor` and is serialized only via the .t5p
+preset format:
+
+- Prompt text A/B — `setLastPrompts`, `getLastPromptA/B`
+  (`src/PluginProcessor.h:68`).
+- Last seed — `setLastSeed / getLastSeed` (`PluginProcessor.h:72`).
+- Axes panel slot state — `lastAxes[3]` with `{dropdownId, value}`
+  (`PluginProcessor.h:76`).
+- Prompt embeddings — `lastEmbeddingA`, `lastEmbeddingB` (two 768-float
+  vectors, used by DimensionExplorer).
+- Generated audio — `generatedAudioFull` (post-HF-boost, for playback +
+  display) and `generatedAudioRaw` (unmodified VAE output, for re-apply
+  on HF toggle) plus `generatedSampleRate`.
+- `lastDevice` / `lastModel` — for preset tagging.
+
+Note that DAW session state (`getStateInformation` /
+`setStateInformation`) only captures APVTS, so any of the above that is
+needed in a DAW round-trip must be in a preset file or pushed into APVTS.
+
+---
+
+## 8. Binary resources
+
+`CMakeLists.txt:110` calls `juce_add_binary_data(T5ynthData ...)` to bake
+runtime assets into the plugin library. Current contents:
+
+- `resources/ir/emt_140_plate_bright.wav`
+- `resources/ir/emt_140_plate_medium.wav`
+- `resources/ir/emt_140_plate_dark.wav`
+- `resources/presets/DEMO T5-Oscillator-Drift.t5p`
+- `resources/T5ynth_Guide.html`
+
+These are accessed via the generated `BinaryData::` namespace symbols
+(`BinaryData::emt_140_plate_medium_wav`, `::emt_140_plate_medium_wavSize`,
+etc.). The convolution reverb loads its default IR this way in
+`prepareToPlay` (`src/PluginProcessor.cpp:482`), and the Manual overlay
+extracts `T5ynth_Guide_html` to a temp file before pointing
+`WebBrowserComponent` at it.
+
+Adding a new binary resource is a CMake-level change: append the source
+file path to the `juce_add_binary_data` block and rebuild — the
+`BinaryData` sources are regenerated automatically.
+
+---
+
+## 9. Vendored JUCE
+
+`JUCE/` is a full vendored copy of the JUCE framework
+(**version 8.0.6** at time of writing, per `JUCE/CHANGE_LIST.md`).
+`CMakeLists.txt` pulls it in with a plain `add_subdirectory(JUCE)`
+(line 31); there is no JUCE find_package or Projucer layer.
+
+Guidelines:
+
+- **Do not modify JUCE core.** Treat the `JUCE/` tree as a read-only
+  third-party checkout. Local fixes to framework bugs should be made
+  only if unavoidable, and must be clearly flagged in the commit log
+  because they will complicate future JUCE bumps.
+- **`JUCE_WEB_BROWSER=1`** is set in `CMakeLists.txt:142`. This is a
+  hard requirement for the Manual overlay (`WebBrowserComponent`).
+  Disabling it will fail to link.
+- **Linux WebBrowser deps.** `CMakeLists.txt:132` explicitly links
+  `juce::pkgconfig_JUCE_BROWSER_LINUX_DEPS` because JUCE 8's
+  `juce_gui_extra` module does not auto-declare its webkit2gtk/gtk3
+  requirements. Without this, Linux builds fail with
+  `gtk/gtk.h: No such file or directory`.
+
+---
+
+## 10. Build outputs
+
+The project convention is to build out-of-source in `build_clean/` using
+the `Release` config:
+
+```sh
+cmake -S . -B build_clean -DCMAKE_BUILD_TYPE=Release
+cmake --build build_clean --config Release -j
+```
+
+Plugin artefacts are written under
+`build_clean/T5ynth_artefacts/Release/`:
+
+- `Standalone/T5ynth.app` — standalone macOS app (the one JUCE builds
+  for "Standalone" target; also `.exe` on Windows, binary on Linux)
+- `VST3/T5ynth.vst3`
+- `AU/T5ynth.component`
+- `../JuceLibraryCode/` — intermediate JUCE module compile units
+- `../libT5ynth_SharedCode.a` — the shared static archive linked by each
+  plugin wrapper
+
+Do not commit `build_clean/`. Do not use alternate build directories —
+sibling scripts (distribution, signing, log paths) assume `build_clean/`.
+
+### Python bundle
+
+The PyInstaller output at `backend/dist/pipe_inference/` is produced
+separately by running `pyinstaller backend/pipe_inference.spec` from the
+`backend/` directory. In CI (`.github/workflows/build.yml`) this happens
+before the C++ build so that the bundle can be copied into the plugin
+resources. For local dev, running from a source checkout lets
+`PipeInference` fall back to `python pipe_inference.py`, so the
+PyInstaller step is optional during iteration.
+
+---
+
+## 11. What is auto-generated
+
+Do not edit these by hand — they are regenerated on every CMake
+configure/build:
+
+- **`juceaide`** — JUCE's build helper, compiled once into
+  `build_clean/JUCE/extras/Build/juceaide/`.
+- **`JuceHeader.h`** — master include umbrella, generated by
+  `juce_generate_juce_header(T5ynth)` (`CMakeLists.txt:51`). This is
+  the file to `#include <JuceHeader.h>` from; do not include individual
+  JUCE module headers directly in T5ynth sources.
+- **`BinaryData.{h,cpp}`** — generated by `juce_add_binary_data` from
+  the resources listed in §8. Output lands in
+  `build_clean/juce_binarydata_T5ynthData/`.
+- **`libT5ynthData.a`** — static archive wrapping the binary data, linked
+  into the plugin targets via `target_link_libraries(T5ynth PRIVATE T5ynthData)`.
+
+---
+
+## 12. Cross-references
+
+Developer docs being written alongside this file. Some may not yet exist
+at the moment you read this — paths are listed so that links can be
+followed once they land:
+
+- **`docs/IPC_PROTOCOL.md`** — exact wire format for the JUCE ↔ Python
+  pipe (flag bytes, header layout, error encoding, handshake). Referenced
+  from §6.
+- **`docs/ADDING_A_MODEL.md`** — step-by-step HOWTO for plugging a new
+  text-to-audio backend into `backend/services/` and advertising it in
+  the inference handshake. Referenced from §6.
+- **`docs/ADDING_A_MODULATION_TARGET.md`** — HOWTO for adding a new
+  `*_target` choice entry, wiring the `processBlock` dispatch, and
+  declaring the associated atomic in `ModulatedValues`. Referenced from §5.
+- **`docs/PRESET_FORMAT.md`** — complete `.t5p` binary format spec,
+  including the JSON payload schema, the current version byte, and the
+  legacy JSON/XML fallback detection path. Referenced from §1 and §7.
+- **`resources/T5ynth_Guide.html`, section 16** — end-user and DSP
+  signal flow reference. This is the "how does the audio actually get
+  from MIDI to speakers" document and is intentionally not duplicated
+  here. Accessible at runtime via the plugin's *Manual* button.
+- **`README.md`** — user-facing project description and install
+  instructions. Not duplicated here.
