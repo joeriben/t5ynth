@@ -25,8 +25,11 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.header.setColour(juce::Label::textColourId, kEnvCol);
     addAndMakeVisible(env.header);
 
-    env.targetBox.addItemList({"---", "DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                               "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth"}, 1);
+    // Labels driven from BlockParams::EnvTarget::kLabels (single source of
+    // truth for enum index ↔ human-readable label).
+    juce::StringArray envItems;
+    for (const char* s : EnvTarget::kLabels) envItems.add(s);
+    env.targetBox.addItemList(envItems, 1);
     env.targetBox.setSelectedId(defaultTarget, juce::dontSendNotification);
     env.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(env.targetBox);
@@ -96,8 +99,11 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.header.setColour(juce::Label::textColourId, kLfoCol);
     addAndMakeVisible(lfo.header);
 
-    lfo.targetBox.addItemList({"---", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                               "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"}, 1);
+    // Labels driven from BlockParams::LfoTarget::kLabels (single source of
+    // truth for enum index ↔ human-readable label).
+    juce::StringArray lfoItems;
+    for (const char* s : LfoTarget::kLabels) lfoItems.add(s);
+    lfo.targetBox.addItemList(lfoItems, 1);
     lfo.targetBox.setSelectedId(1, juce::dontSendNotification);
     lfo.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(lfo.targetBox);

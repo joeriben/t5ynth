@@ -291,27 +291,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod2_release_curve", 2}, "Mod2 Release Curve", curveChoices, 4));
 
-    // ENV targets: see BlockParams::EnvTarget enum — must stay in lock-step
-    // with both this StringArray and gui/SynthPanel.cpp env.targetBox.
-    const juce::StringArray envTargetChoices {
-        "---", "DCA", "Filter", "Scan", "Pitch",
-        "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-        "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth"
-    };
-    jassert(envTargetChoices.size() == EnvTarget::kCount);
+    // ENV / LFO target choice lists — the single source of truth lives in
+    // src/dsp/BlockParams.h (EnvTarget::kLabels / LfoTarget::kLabels). The
+    // enum, this APVTS StringArray and gui/SynthPanel.cpp all iterate the
+    // same array, so the index↔label mapping cannot drift.
+    juce::StringArray envTargetChoices;
+    for (const char* s : EnvTarget::kLabels) envTargetChoices.add(s);
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod1_target", 1}, "Mod1 Target", envTargetChoices, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod2_target", 1}, "Mod2 Target", envTargetChoices, 0));
 
-    // LFO targets: see BlockParams::LfoTarget enum — must stay in lock-step
-    // with both this StringArray and gui/SynthPanel.cpp lfo.targetBox.
-    const juce::StringArray lfoTargetChoices {
-        "---", "Filter", "Scan", "Pitch",
-        "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-        "ENV1 Amt", "ENV2 Amt", "ENV3 Amt"
-    };
-    jassert(lfoTargetChoices.size() == LfoTarget::kCount);
+    juce::StringArray lfoTargetChoices;
+    for (const char* s : LfoTarget::kLabels) lfoTargetChoices.add(s);
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_target", 1}, "LFO1 Target", lfoTargetChoices, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(

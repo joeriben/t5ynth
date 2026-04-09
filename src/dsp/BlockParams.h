@@ -1,16 +1,18 @@
 #pragma once
 
-// ── Target index constants (must match APVTS AudioParameterChoice order) ──
+// ── Modulation target index + label tables ──
 //
-// These enums are kept in lock-step with:
+// Single source of truth for the modulation target choice lists. The
+// `kLabels` array below is consumed by:
 //   - juce::AudioParameterChoice StringArrays in PluginProcessor.cpp
 //     (mod{1,2}_target, lfo{1,2}_target)
 //   - juce::ComboBox::addItemList calls in gui/SynthPanel.cpp
 //     (env.targetBox, lfo.targetBox)
-// The kCount constants below are the single source of truth for the
-// expected number of entries. PluginProcessor.cpp asserts the
-// StringArray sizes match these counts at construction time — adding
-// a new target without updating all three sites will trip that assert.
+// Both call sites iterate over kLabels directly — so the count, the
+// order and the label strings are impossible to drift between APVTS,
+// the GUI dropdown and the enum. Adding a new target means touching
+// exactly this file (add an enum entry + the matching label string
+// at the same index); every consumer picks up the change.
 
 namespace EnvTarget {
     enum : int {
@@ -28,12 +30,25 @@ namespace EnvTarget {
         LFO2Rate = 11,
         LFO2Depth = 12
     };
-    static constexpr int kCount = 13;
+    static constexpr const char* kLabels[] = {
+        "---",        // None
+        "DCA",        // DCA
+        "Filter",     // Filter
+        "Scan",       // Scan
+        "Pitch",      // Pitch
+        "Dly Time",   // DelayTime
+        "Dly FB",     // DelayFB
+        "Dly Mix",    // DelayMix
+        "Rev Mix",    // ReverbMix
+        "LFO1 Rate",  // LFO1Rate
+        "LFO1 Depth", // LFO1Depth
+        "LFO2 Rate",  // LFO2Rate
+        "LFO2 Depth"  // LFO2Depth
+    };
+    static constexpr int kCount = sizeof(kLabels) / sizeof(kLabels[0]);
     static_assert(LFO2Depth + 1 == kCount,
-                  "EnvTarget::kCount out of sync with the last enum value. "
-                  "When adding a new env target, update kCount here *and* "
-                  "the matching StringArray in PluginProcessor.cpp *and* "
-                  "the addItemList call in gui/SynthPanel.cpp.");
+                  "EnvTarget enum and kLabels are out of sync — the last "
+                  "enum value must equal kCount - 1.");
 }
 
 namespace LfoTarget {
@@ -50,12 +65,23 @@ namespace LfoTarget {
         Env2Amt = 9,
         Env3Amt = 10
     };
-    static constexpr int kCount = 11;
+    static constexpr const char* kLabels[] = {
+        "---",       // None
+        "Filter",    // Filter
+        "Scan",      // Scan
+        "Pitch",     // Pitch
+        "Dly Time",  // DelayTime
+        "Dly FB",    // DelayFB
+        "Dly Mix",   // DelayMix
+        "Rev Mix",   // ReverbMix
+        "ENV1 Amt",  // Env1Amt
+        "ENV2 Amt",  // Env2Amt
+        "ENV3 Amt"   // Env3Amt
+    };
+    static constexpr int kCount = sizeof(kLabels) / sizeof(kLabels[0]);
     static_assert(Env3Amt + 1 == kCount,
-                  "LfoTarget::kCount out of sync with the last enum value. "
-                  "When adding a new LFO target, update kCount here *and* "
-                  "the matching StringArray in PluginProcessor.cpp *and* "
-                  "the addItemList call in gui/SynthPanel.cpp.");
+                  "LfoTarget enum and kLabels are out of sync — the last "
+                  "enum value must equal kCount - 1.");
 }
 
 /**
