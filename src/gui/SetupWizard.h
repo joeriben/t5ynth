@@ -5,8 +5,8 @@
 /**
  * Model settings panel.
  *
- * Shows model status, auto-scans known paths, browse for model directory,
- * download from HuggingFace with token.
+ * Shows model status, auto-scans known paths, browses for model directory,
+ * downloads ungated models directly from HuggingFace (no token).
  * Embedded in the JUCE Audio/MIDI Settings dialog.
  */
 class SettingsPage : public juce::Component,
@@ -40,6 +40,19 @@ private:
     void updateStatus();
     void timerCallback() override;
 
+    // Smart Auto-Scan entry point: checks known install paths, and for
+    // SA Small walks the user's Downloads folder looking for the three
+    // files they were told to fetch manually from HuggingFace.
+    void performAutoScan();
+
+    // Try to install SA Small from the given source folder: checks for
+    // the required files, reports missing / wrong / success, copies to
+    // the target app-support dir on success. Used for both the Downloads
+    // folder (primary path) and any folder chosen via the picker fallback.
+    // Returns true if the install completed.
+    bool trySaSmallInstallFromFolder(const juce::File& sourceFolder,
+                                     bool reportIfMissing);
+
     void downloadAllFilesInThread();
     void downloadGhReleaseInThread();
     void onDownloadFinished(bool success, const juce::String& error);
@@ -49,7 +62,7 @@ private:
     juce::String selectedModelId();
     juce::String selectedHfRepo();
     juce::String selectedGhRelease();
-    bool selectedNeedsToken();
+    bool selectedDownloadable();
 
     juce::File modelPath;
 
@@ -63,16 +76,14 @@ private:
     bool backendConnected = false;
     juce::String backendFailReason;
 
-    juce::Label tokenLabel;
-    juce::TextEditor tokenEditor;
-
     double downloadProgress = 0.0;
     juce::ProgressBar progressBar { downloadProgress };
 
     juce::ComboBox modelChooser;
-    juce::TextButton scanButton     { "Auto-Scan" };
-    juce::TextButton browseButton   { "Browse..." };
-    juce::TextButton downloadButton { "Download" };
+    juce::TextButton scanButton         { "Auto-Scan" };
+    juce::TextButton browseButton       { "Browse..." };
+    juce::TextButton openPageButton     { "Open Model Page" };
+    juce::TextButton downloadButton     { "Download from HuggingFace" };
 
     std::unique_ptr<juce::FileChooser> fileChooser;
 
@@ -85,10 +96,6 @@ private:
     std::atomic<int64_t> downloadedBytes { 0 };
     std::atomic<bool> downloading { false };
     bool licenseAccepted_ = false;
-
-    void loadSettings();
-    void saveSettings();
-    juce::File getSettingsFile() const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsPage)
 };

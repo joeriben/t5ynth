@@ -3,27 +3,48 @@
 #include <nlohmann/json.hpp>
 #include <thread>
 
-// A valid model directory contains one of these marker files
+// A valid model directory contains one of these metadata files…
 static const juce::String kModelMarkers[] = { "model_index.json", "model_config.json" };
+
+// …AND enough actual weight bytes to be a real model (not a stale metadata-only
+// stub like the HF cache leaves behind when only config was fetched).
+static constexpr int64_t kMinWeightBytes = 100ll * 1024 * 1024;  // 100 MB
 
 static bool hasModelMarker(const juce::File& dir)
 {
+    bool hasMetadata = false;
     for (auto& marker : kModelMarkers)
-        if (dir.getChildFile(marker).existsAsFile()) return true;
-    return false;
+        if (dir.getChildFile(marker).existsAsFile()) { hasMetadata = true; break; }
+    if (!hasMetadata) return false;
+
+    // Sum weight file sizes (recursive, covers both native and diffusers layouts).
+    int64_t weightBytes = 0;
+    for (auto& f : dir.findChildFiles(juce::File::findFiles, true, "*.safetensors"))
+        weightBytes += f.getSize();
+    if (weightBytes < kMinWeightBytes)
+        for (auto& f : dir.findChildFiles(juce::File::findFiles, true, "*.bin"))
+            weightBytes += f.getSize();
+    if (weightBytes < kMinWeightBytes)
+        for (auto& f : dir.findChildFiles(juce::File::findFiles, true, "*.ckpt"))
+            weightBytes += f.getSize();
+
+    return weightBytes >= kMinWeightBytes;
 }
 
-// Known downloadable models — extend this list to add new engines
-// ghRelease: if non-empty, download from GitHub Releases (no token needed)
-// licenseNotice: shown in confirmation dialog before download
+// Known models — extend this list to add new engines.
+// downloadable: if false, show manual instructions only (no Download button).
+//   Both Stable Audio models are gated on HuggingFace and T5ynth never prompts
+//   for tokens, so users must fetch them via huggingface-cli once and point
+//   Browse… at the resulting folder. AudioLDM2 is the only ungated model and
+//   the only one T5ynth downloads directly.
 struct KnownModel {
     const char* id;
     const char* displayName;
-    const char* hfRepo;       // HuggingFace repo (for models that need HF download)
+    const char* hfRepo;       // HuggingFace repo
     const char* ghRelease;    // GitHub Release tag URL base (nullptr = use HF)
     const char* licenseUrl;   // URL to full license text
     const char* licenseNotice;// Shown in confirmation dialog before download
-    bool        needsToken;   // true = gated model, HF token required
+    bool        downloadable; // false = manual-only (no in-app download)
 };
 static const KnownModel kKnownModels[] = {
     { "stable-audio-open-1.0",   "Stable Audio Open 1.0",     "stabilityai/stable-audio-open-1.0", nullptr,
@@ -33,8 +54,8 @@ static const KnownModel kKnownModels[] = {
       "- Commercial use under $1M annual revenue: free (register at stability.ai)\n"
       "- Commercial use over $1M: enterprise license required\n\n"
       "T5ynth does not provide the model weights. By downloading, you accept\n"
-      "the license terms and take responsibility for compliance.", true },
-    { "stable-audio-open-small", "Stable Audio Open Small",    "stabilityai/stable-audio-open-small",
+      "the license terms and take responsibility for compliance.", false },
+    { "stable-audio-open-small", "Stable Audio Open Small (recommended)", "stabilityai/stable-audio-open-small",
       nullptr,
       "https://stability.ai/community-license-agreement",
       "This model is licensed under the Stability AI Community License.\n\n"
@@ -49,7 +70,7 @@ static const KnownModel kKnownModels[] = {
       "- Non-commercial use only (no revenue threshold, no exceptions)\n"
       "- Commercial use is NOT permitted under this license\n\n"
       "T5ynth does not provide the model weights. By downloading, you accept\n"
-      "the license terms and take responsibility for compliance.", false },
+      "the license terms and take responsibility for compliance.", true },
 };
 static constexpr int kNumKnownModels = sizeof(kKnownModels) / sizeof(kKnownModels[0]);
 
@@ -91,21 +112,12 @@ juce::String SettingsPage::selectedGhRelease()
     return {};
 }
 
-bool SettingsPage::selectedNeedsToken()
+bool SettingsPage::selectedDownloadable()
 {
     int idx = modelChooser.getSelectedItemIndex();
     if (idx >= 0 && idx < kNumKnownModels)
-        return kKnownModels[idx].needsToken;
-    return true; // default: require token for unknown models
-}
-
-juce::File SettingsPage::getSettingsFile() const
-{
-    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
-   #if JUCE_LINUX
-    appData = appData.getChildFile("share");
-   #endif
-    return appData.getChildFile("T5ynth/settings.json");
+        return kKnownModels[idx].downloadable;
+    return false;
 }
 
 SettingsPage::SettingsPage()
@@ -121,7 +133,9 @@ SettingsPage::SettingsPage()
     modelChooser.setColour(juce::ComboBox::outlineColourId, kBorder);
     for (int i = 0; i < kNumKnownModels; ++i)
         modelChooser.addItem(kKnownModels[i].displayName, i + 1);
-    modelChooser.setSelectedId(1, juce::dontSendNotification);
+    // Default to Stable Audio Open Small — the recommended main model.
+    // Index in kKnownModels is 1, so ComboBox id (1-based) is 2.
+    modelChooser.setSelectedId(2, juce::dontSendNotification);
     modelChooser.onChange = [this] { updateStatus(); resized(); };
     addAndMakeVisible(modelChooser);
 
@@ -152,18 +166,7 @@ SettingsPage::SettingsPage()
 
     scanButton.setColour(juce::TextButton::buttonColourId, kSurface);
     scanButton.setColour(juce::TextButton::textColourOffId, kAccent);
-    scanButton.onClick = [this] {
-        auto found = scanForModel();
-        if (found.exists()) {
-            setModelPath(found);
-            downloadStatusLabel.setText("Model found.", juce::dontSendNotification);
-            downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
-        } else {
-            updateStatus();
-            downloadStatusLabel.setText("No model found in standard locations.", juce::dontSendNotification);
-            downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
-        }
-    };
+    scanButton.onClick = [this] { performAutoScan(); };
     addAndMakeVisible(scanButton);
 
     browseButton.setColour(juce::TextButton::buttonColourId, kSurface);
@@ -171,23 +174,18 @@ SettingsPage::SettingsPage()
     browseButton.onClick = [this] { browseForModel(); };
     addAndMakeVisible(browseButton);
 
-    tokenLabel.setText("HuggingFace Token:", juce::dontSendNotification);
-    tokenLabel.setColour(juce::Label::textColourId, kDim);
-    addAndMakeVisible(tokenLabel);
-
-    tokenEditor.setColour(juce::TextEditor::backgroundColourId, kSurface);
-    tokenEditor.setColour(juce::TextEditor::textColourId, juce::Colours::white);
-    tokenEditor.setColour(juce::TextEditor::outlineColourId, kBorder);
-    tokenEditor.setTextToShowWhenEmpty("hf_...", kDim);
-    tokenEditor.setPasswordCharacter(0x2022);  // bullet character
-    addAndMakeVisible(tokenEditor);
+    openPageButton.setColour(juce::TextButton::buttonColourId, kSurface);
+    openPageButton.setColour(juce::TextButton::textColourOffId, kAccent);
+    openPageButton.onClick = [this] {
+        auto repo = selectedHfRepo();
+        juce::URL("https://huggingface.co/" + repo).launchInDefaultBrowser();
+    };
+    addAndMakeVisible(openPageButton);
 
     downloadButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2d6a4f));
     downloadButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
     downloadButton.onClick = [this] { startDownload(); };
     addAndMakeVisible(downloadButton);
-
-    loadSettings();
 
     auto found = scanForModel();
     if (found.exists()) modelPath = found;
@@ -268,9 +266,280 @@ void SettingsPage::browseForModel()
         });
 }
 
+// ── Smart Auto-Scan ─────────────────────────────────────────────────────────
+// For SA Small the user follows a manual-download walkthrough (fetch 3 files
+// from HuggingFace to the system Downloads folder). Auto-Scan then hides all
+// path details: it looks there for the files and copies them to the correct
+// app-support location, or guides the user if something is missing / wrong.
+//
+// For SA 1.0 and AudioLDM2, Auto-Scan falls back to the existing known-paths
+// scan (scanForModel), because SA 1.0 is a huggingface-cli install (files go
+// straight into the target dir) and AudioLDM2 is downloaded in-app.
+
+// Files T5ynth cares about for an SA Small install.
+static const char* kSaSmallRequired[] = {
+    "model.safetensors",
+    "model_config.json",
+    "LICENSE",
+};
+static constexpr int kNumSaSmallRequired =
+    sizeof(kSaSmallRequired) / sizeof(kSaSmallRequired[0]);
+
+// Files the user may have fetched by mistake alongside the correct ones.
+// When we see these in the source folder, we call them out by name so the
+// user can delete them. None of them are needed by T5ynth.
+static const char* kSaSmallWrongFiles[] = {
+    "model.ckpt",
+    "base_model.ckpt",
+    "base_model.safetensors",
+    "base_model_config.json",
+};
+static constexpr int kNumSaSmallWrongFiles =
+    sizeof(kSaSmallWrongFiles) / sizeof(kSaSmallWrongFiles[0]);
+
+static juce::File getDownloadsFolder()
+{
+    // macOS/Windows/Linux all use ~/Downloads as the browser default on a
+    // fresh user account. If a user has customised their downloads dir via
+    // XDG_DOWNLOAD_DIR or similar, the folder-picker fallback catches it.
+    return juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+               .getChildFile("Downloads");
+}
+
+bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
+                                               bool reportIfMissing)
+{
+    if (!sourceFolder.isDirectory())
+    {
+        if (reportIfMissing)
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Folder not found",
+                "T5ynth could not read the folder:\n  " + sourceFolder.getFullPathName());
+        return false;
+    }
+
+    // Look at the contents.
+    juce::Array<juce::File> foundRequired;
+    juce::StringArray missingNames;
+    for (int i = 0; i < kNumSaSmallRequired; ++i)
+    {
+        auto candidate = sourceFolder.getChildFile(kSaSmallRequired[i]);
+        if (candidate.existsAsFile())
+            foundRequired.add(candidate);
+        else
+            missingNames.add(kSaSmallRequired[i]);
+    }
+
+    juce::StringArray wrongFound;
+    for (int i = 0; i < kNumSaSmallWrongFiles; ++i)
+    {
+        auto candidate = sourceFolder.getChildFile(kSaSmallWrongFiles[i]);
+        if (candidate.existsAsFile())
+            wrongFound.add(kSaSmallWrongFiles[i]);
+    }
+
+    const juce::String wrongNote = wrongFound.isEmpty()
+        ? juce::String()
+        : juce::String("\n\nNote: these files in the same folder are NOT needed "
+                       "by T5ynth and can be deleted to save space:\n  ")
+              + wrongFound.joinIntoString("\n  ");
+
+    // Scenario (d): all three required files present — copy and done.
+    if (missingNames.isEmpty())
+    {
+        auto targetDir = getAppSupportModelDir("stable-audio-open-small");
+        if (!targetDir.createDirectory())
+        {
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Could not create model folder",
+                "T5ynth could not create:\n  " + targetDir.getFullPathName()
+                    + "\n\nCheck folder permissions and try again.");
+            return false;
+        }
+
+        juce::StringArray copyErrors;
+        for (auto& f : foundRequired)
+        {
+            auto dest = targetDir.getChildFile(f.getFileName());
+            if (dest.existsAsFile()) dest.deleteFile();
+            if (!f.copyFileTo(dest))
+                copyErrors.add(f.getFileName());
+        }
+
+        if (!copyErrors.isEmpty())
+        {
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Copy failed",
+                "Found all required files, but copying failed for:\n  "
+                    + copyErrors.joinIntoString(", ")
+                    + "\n\nCheck disk space and folder permissions in:\n  "
+                    + targetDir.getFullPathName());
+            return false;
+        }
+
+        if (!hasModelMarker(targetDir))
+        {
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Files copied, but look incomplete",
+                "Files were copied to:\n  " + targetDir.getFullPathName()
+                    + "\n\nBut the model weights look too small. The download may "
+                      "have been interrupted. Re-download model.safetensors from "
+                      "HuggingFace (click 'Open Model Page' above) and try again.");
+            return false;
+        }
+
+        setModelPath(targetDir);
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::InfoIcon,
+            "Stable Audio Open Small \xe2\x80\x94 Installed",
+            "T5ynth copied the model files from:\n  " + sourceFolder.getFullPathName()
+                + "\n\nto:\n  " + targetDir.getFullPathName()
+                + "\n\nThe originals are still in your Downloads folder \xe2\x80\x94 "
+                  "you can delete them now if you want."
+                + wrongNote);
+        return true;
+    }
+
+    // Scenario (a): some but not all required files present.
+    if (!foundRequired.isEmpty() && reportIfMissing)
+    {
+        juce::String foundList;
+        for (auto& f : foundRequired)
+            foundList += "  \xe2\x9c\x93 " + f.getFileName() + "\n";
+
+        juce::AlertWindow::showMessageBoxAsync(
+            juce::MessageBoxIconType::InfoIcon,
+            "Download incomplete",
+            "Found in:\n  " + sourceFolder.getFullPathName() + "\n\n"
+                + foundList + "\nStill missing:\n  \xe2\x9c\x97 "
+                + missingNames.joinIntoString("\n  \xe2\x9c\x97 ")
+                + "\n\nPlease download the missing files from the model page "
+                  "(click 'Open Model Page' above) and click 'Auto-Scan' again."
+                + wrongNote);
+        return false;
+    }
+
+    // Scenario (b)/(c): nothing useful in this folder.
+    if (reportIfMissing)
+    {
+        if (!wrongFound.isEmpty())
+        {
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::WarningIcon,
+                "Wrong files in folder",
+                "This folder contains files that LOOK related to the model, "
+                "but T5ynth does not need them:\n  "
+                    + wrongFound.joinIntoString("\n  ")
+                    + "\n\nThe files T5ynth actually needs are:\n"
+                      "  \xe2\x80\xa2 model.safetensors (NOT model.ckpt, NOT base_model.*)\n"
+                      "  \xe2\x80\xa2 model_config.json\n"
+                      "  \xe2\x80\xa2 LICENSE\n\n"
+                      "Click 'Open Model Page' above, go to 'Files and versions', "
+                      "and download exactly those three files.");
+        }
+        else
+        {
+            juce::AlertWindow::showMessageBoxAsync(
+                juce::MessageBoxIconType::InfoIcon,
+                "No model files found",
+                "This folder does not contain the three files T5ynth needs:\n"
+                "  \xe2\x80\xa2 model.safetensors\n"
+                "  \xe2\x80\xa2 model_config.json\n"
+                "  \xe2\x80\xa2 LICENSE\n\n"
+                "Click 'Open Model Page' above to fetch them from HuggingFace.");
+        }
+    }
+    return false;
+}
+
+void SettingsPage::performAutoScan()
+{
+    // 1. Already installed anywhere we recognise?
+    auto found = scanForModel();
+    if (found.exists())
+    {
+        setModelPath(found);
+        downloadStatusLabel.setText("Model found: " + found.getFullPathName(),
+                                    juce::dontSendNotification);
+        downloadStatusLabel.setColour(juce::Label::textColourId,
+                                      juce::Colour(0xff4ade80));
+        return;
+    }
+
+    // 2. Model-specific smart scan. Only SA Small is designed for the
+    //    "download 3 files to Downloads, click Auto-Scan" flow.
+    auto modelId = selectedModelId();
+    if (modelId != "stable-audio-open-small")
+    {
+        updateStatus();
+        downloadStatusLabel.setText(
+            "No model found in standard locations. Follow the instructions below.",
+            juce::dontSendNotification);
+        downloadStatusLabel.setColour(juce::Label::textColourId,
+                                      juce::Colour(0xffef4444));
+        return;
+    }
+
+    // 3. Look in the system Downloads folder first.
+    auto downloads = getDownloadsFolder();
+    if (trySaSmallInstallFromFolder(downloads, /*reportIfMissing*/ false))
+        return;  // success path already showed a dialog
+
+    // Re-run the check to see *why* Downloads didn't work (missing / wrong /
+    // nothing), so we can decide whether to nag or to open the picker.
+    // We re-use the same helper with reportIfMissing=false to classify.
+    int foundInDownloads = 0;
+    for (int i = 0; i < kNumSaSmallRequired; ++i)
+        if (downloads.getChildFile(kSaSmallRequired[i]).existsAsFile())
+            ++foundInDownloads;
+
+    // Scenario (a): some files present in Downloads — tell the user which
+    // are still missing instead of opening a picker.
+    if (foundInDownloads > 0)
+    {
+        trySaSmallInstallFromFolder(downloads, /*reportIfMissing*/ true);
+        return;
+    }
+
+    // Scenario (b)/(c): nothing correct in Downloads. Offer a folder picker,
+    // pre-opened at the Downloads folder.
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Where did you save the model files?",
+        downloads.isDirectory()
+            ? downloads
+            : juce::File::getSpecialLocation(juce::File::userHomeDirectory),
+        "");
+    fileChooser->launchAsync(
+        juce::FileBrowserComponent::openMode
+            | juce::FileBrowserComponent::canSelectDirectories,
+        [this, downloads](const juce::FileChooser& fc)
+        {
+            auto folder = fc.getResult();
+            if (folder == juce::File())
+            {
+                // Cancelled — leave a trail so the user knows nothing happened.
+                downloadStatusLabel.setText(
+                    "Auto-Scan cancelled. Follow the instructions below.",
+                    juce::dontSendNotification);
+                downloadStatusLabel.setColour(juce::Label::textColourId,
+                                              juce::Colour(0xffef4444));
+                return;
+            }
+            trySaSmallInstallFromFolder(folder, /*reportIfMissing*/ true);
+        });
+}
+
 // ── Download ────────────────────────────────────────────────────────────────
 void SettingsPage::startDownload()
 {
+    // Gated/manual-only models never start a download.
+    if (!selectedDownloadable())
+        return;
+
     // Show license confirmation dialog before any download
     int idx = modelChooser.getSelectedItemIndex();
     if (idx >= 0 && idx < kNumKnownModels && kKnownModels[idx].licenseNotice != nullptr
@@ -295,16 +564,6 @@ void SettingsPage::startDownload()
 
     auto ghRelease = selectedGhRelease();
 
-    // Token only required for gated HF models
-    if (ghRelease.isEmpty() && selectedNeedsToken()) {
-        auto token = tokenEditor.getText().trim();
-        if (token.isEmpty()) {
-            downloadStatusLabel.setText("Enter your HuggingFace token first.", juce::dontSendNotification);
-            downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
-            return;
-        }
-        saveSettings();
-    }
     downloading = true;
     downloadButton.setEnabled(false);
     scanButton.setEnabled(false);
@@ -325,22 +584,18 @@ void SettingsPage::startDownload()
     }
 
     downloadStatusLabel.setText("Fetching file list...", juce::dontSendNotification);
-    auto hfToken = tokenEditor.getText().trim();
     auto hfRepo = selectedHfRepo();
-    std::thread([this, hfToken, hfRepo, modelId]() {
+    std::thread([this, hfRepo, modelId]() {
         juce::URL apiUrl("https://huggingface.co/api/models/" + hfRepo + "/tree/main?recursive=true");
         auto opts = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-                        .withExtraHeaders(hfToken.isNotEmpty() ? "Authorization: Bearer " + hfToken : juce::String())
                         .withConnectionTimeoutMs(15000);
         auto stream = apiUrl.createInputStream(opts);
         if (!stream) {
-            juce::MessageManager::callAsync([this]() {
+            juce::MessageManager::callAsync([this, hfRepo]() {
                 onDownloadFinished(false,
-                    "Failed to fetch file list from HuggingFace.\n\n"
-                    "Possible causes:\n"
-                    "- Invalid or expired HuggingFace token\n"
-                    "- No internet connection\n"
-                    "- HuggingFace API temporarily unavailable");
+                    "Failed to contact https://huggingface.co/api/models/"
+                    + hfRepo + "/tree/main\n\n"
+                    "Check your network connection and try again.");
             });
             return;
         }
@@ -348,13 +603,12 @@ void SettingsPage::startDownload()
         try {
             auto json = nlohmann::json::parse(response.toStdString());
 
-            // HF API returns {"error":"..."} on auth/license failures
+            // HF API returns {"error":"..."} for any failure — surface verbatim.
             if (json.is_object() && json.contains("error")) {
                 auto errMsg = juce::String(json["error"].get<std::string>());
                 juce::MessageManager::callAsync([this, errMsg, hfRepo]() {
                     onDownloadFinished(false,
-                        "HuggingFace API error:\n" + errMsg + "\n\n"
-                        "Accept the license at huggingface.co/" + hfRepo);
+                        "HuggingFace API error for " + hfRepo + ":\n\n" + errMsg);
                 });
                 return;
             }
@@ -384,8 +638,8 @@ void SettingsPage::startDownload()
         } catch (const std::exception& e) {
             auto err = juce::String(e.what());
             juce::MessageManager::callAsync([this, err, hfRepo]() {
-                onDownloadFinished(false, "Parse error: " + err +
-                    "\n\nAccept the license at huggingface.co/" + hfRepo + " first.");
+                onDownloadFinished(false,
+                    "Could not parse HuggingFace response for " + hfRepo + ":\n\n" + err);
             });
         }
     }).detach();
@@ -505,16 +759,14 @@ void SettingsPage::cleanupBadFiles(const juce::File& dir)
 
 void SettingsPage::downloadAllFilesInThread()
 {
-    auto token = tokenEditor.getText().trim();
     auto modelId = selectedModelId();
     auto hfRepo = selectedHfRepo();
     auto targetDir = getAppSupportModelDir(modelId);
     auto files = filesToDownload;  // copy for thread
-    auto total = totalBytes;
 
     startTimer(250);  // timer updates progress bar from atomic downloadedBytes
 
-    std::thread([this, token, hfRepo, targetDir, files]()
+    std::thread([this, hfRepo, targetDir, files]()
     {
         int64_t bytesCompleted = 0;
 
@@ -546,19 +798,16 @@ void SettingsPage::downloadAllFilesInThread()
             // Download via createInputStream — follows HF's LFS redirects
             juce::URL fileUrl("https://huggingface.co/" + hfRepo + "/resolve/main/" + fileName);
             auto opts = juce::URL::InputStreamOptions(juce::URL::ParameterHandling::inAddress)
-                            .withExtraHeaders(token.isNotEmpty() ? "Authorization: Bearer " + token : juce::String())
                             .withConnectionTimeoutMs(30000);
             auto stream = fileUrl.createInputStream(opts);
 
             if (!stream)
             {
-                juce::MessageManager::callAsync([this, fileName]() {
+                juce::MessageManager::callAsync([this, fileName, hfRepo]() {
                     onDownloadFinished(false,
-                        "Connection failed for: " + fileName + "\n\n"
-                        "Possible causes:\n"
-                        "- Invalid or expired HuggingFace token\n"
-                        "- License not accepted at the model page\n"
-                        "- No internet connection");
+                        "Could not open:\n"
+                        "  https://huggingface.co/" + hfRepo + "/resolve/main/" + fileName
+                        + "\n\nCheck your network connection.");
                 });
                 return;
             }
@@ -592,7 +841,7 @@ void SettingsPage::downloadAllFilesInThread()
                 auto content = targetFile.loadFileAsString().trim();
                 juce::String serverMsg;
 
-                // HF returns JSON {"error":"..."} for auth/license failures
+                // HF returns JSON {"error":"..."} for any failure — surface verbatim.
                 try {
                     auto errJson = nlohmann::json::parse(content.toStdString());
                     if (errJson.contains("error"))
@@ -606,11 +855,10 @@ void SettingsPage::downloadAllFilesInThread()
                 if (serverMsg.isNotEmpty())
                 {
                     targetFile.deleteFile();
-                    juce::MessageManager::callAsync([this, fileName, serverMsg]() {
+                    juce::MessageManager::callAsync([this, fileName, serverMsg, hfRepo]() {
                         onDownloadFinished(false,
-                            "Server rejected download of: " + fileName + "\n\n"
-                            + serverMsg + "\n\n"
-                            "Make sure you have accepted the license and your token is valid.");
+                            "HuggingFace rejected download of " + fileName + " from "
+                            + hfRepo + ":\n\n" + serverMsg);
                     });
                     return;
                 }
@@ -625,14 +873,12 @@ void SettingsPage::downloadAllFilesInThread()
                 auto gotStr = (written < 1024 * 1024)
                     ? juce::String(written / 1024) + " KB"
                     : juce::String(written / (1024 * 1024)) + " MB";
-                juce::MessageManager::callAsync([this, fileName, expectedStr, gotStr]() {
+                juce::MessageManager::callAsync([this, fileName, expectedStr, gotStr, hfRepo]() {
                     onDownloadFinished(false,
-                        "Download incomplete: " + fileName + "\n"
-                        "Expected " + expectedStr + ", got " + gotStr + "\n\n"
-                        "Possible causes:\n"
-                        "- License not accepted on HuggingFace\n"
-                        "- Token expired or insufficient permissions\n"
-                        "- Network connection interrupted");
+                        "Transfer ended early for " + fileName + " (" + hfRepo + ")\n"
+                        "Expected " + expectedStr + ", received " + gotStr + ".\n\n"
+                        "Retry the download, or use Browse\xe2\x80\xa6 to point at an "
+                        "existing copy of the model.");
                 });
                 return;
             }
@@ -693,27 +939,6 @@ void SettingsPage::onDownloadFinished(bool success, const juce::String& error)
     }
 }
 
-// ── Persistence ─────────────────────────────────────────────────────────────
-void SettingsPage::loadSettings()
-{
-    auto file = getSettingsFile();
-    if (!file.existsAsFile()) return;
-    try {
-        auto json = nlohmann::json::parse(file.loadFileAsString().toStdString());
-        if (json.contains("hf_token"))
-            tokenEditor.setText(juce::String(json["hf_token"].get<std::string>()), false);
-    } catch (...) {}
-}
-
-void SettingsPage::saveSettings()
-{
-    auto file = getSettingsFile();
-    file.getParentDirectory().createDirectory();
-    nlohmann::json json;
-    json["hf_token"] = tokenEditor.getText().toStdString();
-    file.replaceWithText(juce::String(json.dump(2)));
-}
-
 void SettingsPage::setBackendConnected(bool connected)
 {
     backendConnected = connected;
@@ -746,6 +971,10 @@ void SettingsPage::updateStatus()
     auto id = selectedModelId();
     auto hfRepo = selectedHfRepo();
     auto targetDir = getAppSupportModelDir(id);
+    bool downloadable = selectedDownloadable();
+
+    // Download button is only shown for models T5ynth can fetch itself.
+    downloadButton.setVisible(downloadable);
 
     if (modelPath.exists() && hasModelMarker(modelPath)) {
         modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
@@ -766,35 +995,75 @@ void SettingsPage::updateStatus()
         modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
         modelPathLabel.setText("", juce::dontSendNotification);
 
-        int idx = modelChooser.getSelectedItemIndex();
-        bool hasGhRelease = idx >= 0 && idx < kNumKnownModels && kKnownModels[idx].ghRelease != nullptr;
+        // Per-model honest instructions. AudioLDM2 is the only model T5ynth
+        // can fetch itself; the two Stability models are both gated on HF
+        // and require a one-time manual install via huggingface-cli.
+        auto targetPath = targetDir.getFullPathName();
 
-        if (hasGhRelease) {
+        if (id == "audioldm2") {
             instructionsLabel.setText(
-                "Click 'Download' to get this model (no token needed).\n"
-                "  Downloads to: " + targetDir.getFullPathName() + "\n\n"
-                "Or use 'Browse...' to select an existing model directory.", false);
-        } else if (selectedNeedsToken()) {
+                "AudioLDM2 is the only model T5ynth can install directly \xe2\x80\x94 "
+                "it is ungated on HuggingFace. Click 'Download from HuggingFace' above "
+                "and wait for the download to finish.\n\n"
+                "  Source: https://huggingface.co/" + hfRepo + "\n"
+                "  Target: " + targetPath + "\n\n"
+                "License: CC BY-NC-SA 4.0 \xe2\x80\x94 non-commercial use only, no revenue "
+                "threshold, no exceptions.\n\n"
+                "For commercial use, install Stable Audio Open Small instead "
+                "(select it in the dropdown above).", false);
+        } else if (id == "stable-audio-open-small") {
             instructionsLabel.setText(
-                "DOWNLOAD:\n"
-                "  1. Go to huggingface.co/" + hfRepo + " and accept the license\n"
-                "  2. Go to huggingface.co/settings/tokens, click 'Create new token'\n"
-                "     Name: T5ynth, Type: Read (read-only is sufficient)\n"
-                "  3. Paste the token above and click 'Download'\n"
-                "  Downloads to: " + targetDir.getFullPathName() + "\n\n"
-                "MANUAL:\n"
-                "  huggingface-cli download " + hfRepo + " \\\n"
-                "    --local-dir \"" + targetDir.getFullPathName() + "\"\n"
-                "  Then click 'Auto-Scan'.", false);
+                "STABLE AUDIO OPEN SMALL \xe2\x80\x94 recommended main model\n"
+                "Higher quality than AudioLDM2, faster than SA 1.0, and commercial "
+                "use is free under $1M annual revenue (Stability AI Community "
+                "License). It is gated on HuggingFace, so install is a one-time "
+                "manual step. No terminal required.\n\n"
+                "WHAT IS HUGGINGFACE?\n"
+                "HuggingFace is the standard platform for sharing AI models \xe2\x80\x94 "
+                "like GitHub for code, but for model weights. It is free and well "
+                "established; a free account is all you need.\n\n"
+                "ONE-TIME INSTALL:\n"
+                "  1. Click 'Open Model Page' above. Your browser opens the\n"
+                "     HuggingFace page for this model.\n"
+                "  2. On that page, sign up or log in (top-right corner).\n"
+                "  3. Click 'Agree and access repository' to accept the license.\n"
+                "  4. On the same page, click the 'Files and versions' tab.\n"
+                "  5. Download exactly THESE THREE FILES to your usual Downloads\n"
+                "     folder (one click each on the filename, then the download\n"
+                "     icon on the right):\n"
+                "        model.safetensors       (1.56 GB)\n"
+                "        model_config.json       (6 KB)\n"
+                "        LICENSE                 (12 KB)\n"
+                "     Do NOT download: model.ckpt, base_model.ckpt,\n"
+                "     base_model.safetensors, base_model_config.json \xe2\x80\x94\n"
+                "     they are alternative formats T5ynth does not use.\n"
+                "  6. Come back here and click 'Auto-Scan' above.\n"
+                "     T5ynth finds the files in your Downloads folder and copies\n"
+                "     them to the right place automatically. You can delete the\n"
+                "     originals from Downloads afterwards.\n\n"
+                "If you saved them somewhere other than Downloads, Auto-Scan will "
+                "open a folder picker and ask you to point at the folder.\n\n"
+                "NO HUGGINGFACE ACCOUNT? \n"
+                "Switch the dropdown above to AudioLDM2 \xe2\x80\x94 that one installs in a "
+                "single click. Quality is lower and it is non-commercial only.", false);
         } else {
+            // SA 1.0 (and any future gated Stability model)
             instructionsLabel.setText(
-                "Click 'Download' to get this model (no token needed).\n"
-                "  Downloads to: " + targetDir.getFullPathName() + "\n\n"
-                "Or use 'Browse...' to select an existing model directory.\n\n"
-                "MANUAL:\n"
-                "  huggingface-cli download " + hfRepo + " \\\n"
-                "    --local-dir \"" + targetDir.getFullPathName() + "\"\n"
-                "  Then click 'Auto-Scan'.", false);
+                "STABLE AUDIO OPEN 1.0\n"
+                "This model is larger, slower, and less suitable for T5ynth's "
+                "signal flow than Stable Audio Open Small. If you are starting "
+                "fresh, switch the dropdown above to 'Stable Audio Open Small "
+                "(recommended)' for the guided install.\n\n"
+                "SA 1.0 consists of many files in nested subfolders, so a "
+                "browser-only install is impractical. The realistic path is the "
+                "terminal:\n\n"
+                "  1. Click 'Open Model Page' above, sign in, and accept the\n"
+                "     license on the HuggingFace page.\n"
+                "  2. In a terminal:\n"
+                "       huggingface-cli login    # paste your HF access token\n"
+                "       huggingface-cli download " + hfRepo + " \\\n"
+                "         --local-dir \"" + targetPath + "\"\n"
+                "  3. Click 'Auto-Scan' above, or 'Browse\xe2\x80\xa6' and select that folder.", false);
         }
     }
 }
@@ -827,30 +1096,20 @@ void SettingsPage::resized()
     backendStatusLabel.setBounds(area.removeFromTop(rowH));
     area.removeFromTop(gap);
 
-    // Buttons: Scan | Browse
+    // Buttons: Auto-Scan | Browse… | Open Model Page
     auto btnRow = area.removeFromTop(26);
-    int btnW = 80;
+    int btnW = 90;
     scanButton.setBounds(btnRow.removeFromLeft(btnW));
     btnRow.removeFromLeft(6);
     browseButton.setBounds(btnRow.removeFromLeft(btnW));
+    btnRow.removeFromLeft(6);
+    openPageButton.setBounds(btnRow.removeFromLeft(130));
     area.removeFromTop(gap * 2);
 
-    // Token row (only for gated models)
-    bool needsToken = selectedNeedsToken();
-    tokenLabel.setVisible(needsToken);
-    tokenEditor.setVisible(needsToken);
-    if (needsToken)
-    {
-        auto tokenRow = area.removeFromTop(rowH);
-        tokenLabel.setFont(juce::FontOptions(11.0f));
-        tokenLabel.setBounds(tokenRow.removeFromLeft(120));
-        tokenEditor.setBounds(tokenRow);
-        area.removeFromTop(gap);
-    }
-
-    // Download button
+    // Download button — only visible for models T5ynth can fetch itself.
     auto dlRow = area.removeFromTop(26);
-    downloadButton.setBounds(dlRow.removeFromLeft(100));
+    if (downloadButton.isVisible())
+        downloadButton.setBounds(dlRow.removeFromLeft(220));
     area.removeFromTop(gap);
 
     // Download progress
