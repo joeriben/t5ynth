@@ -75,20 +75,23 @@ private:
     void loadDefaultPreset();
     void showSettings();
     void hideSettings();
-    void showAbout();
-    void hideAbout();
+    void showManual();
+    void hideManual();
 
     // Model settings overlay
     SettingsPage settingsPage;
     Scrim settingsScrim;
     bool settingsVisible = false;
 
-    // About overlay
-    Scrim aboutScrim;
-    juce::Component aboutPanel;
-    juce::TextEditor aboutText;
-    bool aboutVisible = false;
-    static juce::String markdownToPlainText(const juce::String& md);
+    // Manual overlay — native WebView renders the shipped HTML guide
+    // (resources/T5ynth_Guide.html), bundled via juce_add_binary_data.
+    Scrim manualScrim;
+    juce::Component manualPanel;
+    juce::WebBrowserComponent manualWeb { juce::WebBrowserComponent::Options{} };
+    juce::TextButton manualCloseBtn { "Close" };
+    bool manualVisible = false;
+    bool manualLoaded = false;
+    juce::File manualHtmlOnDisk;  // temp extraction of the bundled HTML
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MainPanel)
 };

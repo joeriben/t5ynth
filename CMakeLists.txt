@@ -112,6 +112,7 @@ juce_add_binary_data(T5ynthData SOURCES
     resources/ir/emt_140_plate_medium.wav
     resources/ir/emt_140_plate_dark.wav
     "resources/presets/DEMO T5-Oscillator-Drift.t5p"
+    resources/T5ynth_Guide.html
 )
 
 target_link_libraries(T5ynth
@@ -131,7 +132,7 @@ target_link_libraries(T5ynth
 target_compile_definitions(T5ynth
     PUBLIC
         NOMINMAX              # prevent windows.h min/max macros
-        JUCE_WEB_BROWSER=0
+        JUCE_WEB_BROWSER=1
         JUCE_USE_CURL=$<BOOL:${CURL_FOUND}>
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0

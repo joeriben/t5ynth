@@ -39,7 +39,7 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     statusBar.onLoadPreset = [this] { loadPreset(); };
     statusBar.onExportWav = [this] { exportWav(); };
     statusBar.onSettings = [this] { if (settingsVisible) hideSettings(); else showSettings(); };
-    statusBar.onAbout = [this] { showAbout(); };
+    statusBar.onManual = [this] { showManual(); };
 
     // Settings overlay (same pattern as DimExplorer)
     settingsScrim.onClick = [this] { hideSettings(); };
@@ -47,22 +47,22 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     addChildComponent(settingsScrim);
     addChildComponent(settingsPage);
 
-    // About overlay
-    aboutScrim.onClick = [this] { hideAbout(); };
-    aboutScrim.setVisible(false);
-    addChildComponent(aboutScrim);
+    // Manual overlay — hosts the native WebBrowserComponent that renders
+    // the shipped HTML guide. Clicking outside the panel or the close
+    // button hides the overlay without destroying the web view, so the
+    // page stays loaded for subsequent opens.
+    manualScrim.onClick = [this] { hideManual(); };
+    manualScrim.setVisible(false);
+    addChildComponent(manualScrim);
 
-    // About panel
-    aboutPanel.setVisible(false);
-    addChildComponent(aboutPanel);
+    manualPanel.setVisible(false);
+    addChildComponent(manualPanel);
+    manualPanel.addAndMakeVisible(manualWeb);
 
-    aboutText.setMultiLine(true);
-    aboutText.setReadOnly(true);
-    aboutText.setColour(juce::TextEditor::backgroundColourId, kCard);
-    aboutText.setColour(juce::TextEditor::textColourId, juce::Colour(0xffe3e3e3));
-    aboutText.setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
-    aboutText.setScrollbarsShown(true);
-    aboutPanel.addAndMakeVisible(aboutText);
+    manualCloseBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    manualCloseBtn.setColour(juce::TextButton::textColourOffId, kAccent);
+    manualCloseBtn.onClick = [this] { hideManual(); };
+    manualPanel.addAndMakeVisible(manualCloseBtn);
 
     // Master volume — vertical slider
     masterVolKnob.setSliderStyle(juce::Slider::LinearVertical);
@@ -226,11 +226,11 @@ void MainPanel::mouseDown(const juce::MouseEvent& e)
         if (!settingsBounds.contains(e.x, e.y))
             hideSettings();
     }
-    if (aboutVisible)
+    if (manualVisible)
     {
-        auto ab = aboutPanel.getBounds();
-        if (!ab.contains(e.x, e.y))
-            hideAbout();
+        auto mb = manualPanel.getBounds();
+        if (!mb.contains(e.x, e.y))
+            hideManual();
     }
 }
 
@@ -479,18 +479,23 @@ void MainPanel::resized()
     // Scrims cover everything
     dimScrim.setBounds(getLocalBounds());
     settingsScrim.setBounds(getLocalBounds());
-    aboutScrim.setBounds(getLocalBounds());
+    manualScrim.setBounds(getLocalBounds());
 
-    // About overlay (centered)
-    if (aboutVisible)
+    // Manual overlay (centered). Leaves a strip at the bottom of the
+    // panel for the close button; the WebBrowserComponent fills the rest.
+    if (manualVisible)
     {
-        int aboutW = juce::jlimit(600, 1000, juce::roundToInt(w * 0.7f));
-        int aboutH = juce::jlimit(400, 700, juce::roundToInt(h * 0.8f));
-        int ax = (getWidth() - aboutW) / 2;
-        int ay = (getHeight() - aboutH) / 2;
-        aboutPanel.setBounds(ax, ay, aboutW, aboutH);
+        int manW = juce::jlimit(720, 1100, juce::roundToInt(w * 0.8f));
+        int manH = juce::jlimit(480, 820, juce::roundToInt(h * 0.85f));
+        int mx = (getWidth() - manW) / 2;
+        int my = (getHeight() - manH) / 2;
+        manualPanel.setBounds(mx, my, manW, manH);
 
-        aboutText.setBounds(aboutPanel.getLocalBounds().reduced(8));
+        auto inner = manualPanel.getLocalBounds().reduced(8);
+        auto btnRow = inner.removeFromBottom(30);
+        inner.removeFromBottom(6);
+        manualWeb.setBounds(inner);
+        manualCloseBtn.setBounds(btnRow.removeFromRight(90));
     }
 
     // Settings overlay (bottom-right, above StatusBar)
@@ -626,183 +631,44 @@ void MainPanel::exportWav()
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// About
+// Manual — native WebView renders the bundled HTML guide.
+// The HTML is compiled into the plugin as BinaryData and extracted
+// once per app-session to a temp file so the WKWebView / WebView2 /
+// WebKitGTK backend has a stable file:// URL to load. Anchor links
+// (#setup, #gen, …) work natively; external https:// links launch
+// in the user's default browser.
 // ═══════════════════════════════════════════════════════════════════
 
-// Strip inline markdown: **bold**, [text](url), `code`
-static juce::String stripInline(juce::String s)
+void MainPanel::showManual()
 {
-    s = s.replace("**", "");
+    manualVisible = true;
+    manualScrim.setVisible(true);
+    manualScrim.toFront(false);
+    manualPanel.setVisible(true);
+    manualPanel.toFront(false);
 
-    while (s.contains("["))
+    if (!manualLoaded)
     {
-        int lb = s.indexOf("[");
-        int rb = s.indexOf(lb, "]");
-        int lp = (rb >= 0) ? s.indexOf(rb, "(") : -1;
-        int rp = (lp >= 0) ? s.indexOf(lp, ")") : -1;
-        if (lb >= 0 && rb > lb && lp == rb + 1 && rp > lp)
-            s = s.substring(0, lb) + s.substring(lb + 1, rb) + s.substring(rp + 1);
-        else
-            break;
+        // Extract the bundled HTML to a temp file once per session.
+        manualHtmlOnDisk = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                               .getChildFile("T5ynth_Guide.html");
+        manualHtmlOnDisk.replaceWithData(BinaryData::T5ynth_Guide_html,
+                                         static_cast<size_t>(BinaryData::T5ynth_Guide_htmlSize));
+
+        manualWeb.goToURL(juce::URL(manualHtmlOnDisk).toString(false));
+        manualLoaded = true;
     }
 
-    s = s.replace("`", "");
-    return s;
-}
-
-juce::String MainPanel::markdownToPlainText(const juce::String& md)
-{
-    juce::String result;
-    bool inCodeBlock = false;
-    auto lines = juce::StringArray::fromLines(md);
-    const juce::String star50(juce::String::repeatedString("*", 50));
-    const juce::String dash50(juce::String::repeatedString("-", 50));
-
-    for (int i = 0; i < lines.size(); ++i)
-    {
-        auto line = lines[i];
-
-        if (line.trimStart().startsWith("```"))
-        {
-            inCodeBlock = !inCodeBlock;
-            continue;
-        }
-        if (inCodeBlock) { result += "    " + line + "\n"; continue; }
-
-        auto trimmed = line.trim();
-
-        // H1: big decorated heading
-        if (trimmed.startsWith("# ") && !trimmed.startsWith("##"))
-        {
-            auto heading = stripInline(trimmed.substring(2));
-            result += "\n" + star50 + "\n  "
-                    + heading.toUpperCase()
-                    + "\n" + star50 + "\n\n";
-            continue;
-        }
-        // H2: medium decorated heading
-        if (trimmed.startsWith("## ") && !trimmed.startsWith("###"))
-        {
-            auto heading = stripInline(trimmed.substring(3));
-            result += "\n" + dash50 + "\n  "
-                    + heading.toUpperCase()
-                    + "\n" + dash50 + "\n\n";
-            continue;
-        }
-        // H3: simple heading
-        if (trimmed.startsWith("### "))
-        {
-            auto heading = stripInline(trimmed.substring(4));
-            result += "\n  " + heading.toUpperCase() + "\n\n";
-            continue;
-        }
-
-        // Horizontal rule
-        if (trimmed == "---" || trimmed == "***" || trimmed == "___")
-        {
-            result += "\n" + dash50 + "\n\n";
-            continue;
-        }
-
-        // Blockquote
-        if (trimmed.startsWith("> "))
-        {
-            result += "  | " + stripInline(trimmed.substring(2)) + "\n";
-            continue;
-        }
-
-        // Table rows
-        if (trimmed.startsWith("|"))
-        {
-            if (trimmed.containsOnly("|-: ")) continue;
-            auto cleaned = trimmed.trimCharactersAtStart("|").trimCharactersAtEnd("|");
-            cleaned = cleaned.replace("|", "   ");
-            result += "  " + stripInline(cleaned) + "\n";
-            continue;
-        }
-
-        auto clean = stripInline(trimmed);
-
-        // Bullet points
-        if (clean.startsWith("- "))
-            clean = "  * " + clean.substring(2);
-
-        result += clean + "\n";
-    }
-    return result;
-}
-
-void MainPanel::showAbout()
-{
-    aboutVisible = true;
-    aboutScrim.setVisible(true);
-    aboutScrim.toFront(false);
-
-    // Find project root (contains README.md)
-    auto exe = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
-    juce::File projectRoot;
-    auto search = exe.getParentDirectory();
-    for (int i = 0; i < 8; ++i)
-    {
-        if (search.getChildFile("README.md").existsAsFile())
-        {
-            projectRoot = search;
-            break;
-        }
-        search = search.getParentDirectory();
-    }
-
-    juce::String md;
-    if (projectRoot.exists())
-    {
-        auto readme = projectRoot.getChildFile("README.md");
-        if (readme.existsAsFile())
-        {
-            // Filter out developer-only sections (Building, etc.)
-            auto lines = juce::StringArray::fromLines(readme.loadFileAsString());
-            bool skip = false;
-            for (auto& line : lines)
-            {
-                auto trimmed = line.trim();
-                // Start skipping at "## Building"
-                if (trimmed.startsWithIgnoreCase("## Building"))
-                    skip = true;
-                // Stop skipping at "## License" (user-relevant again)
-                if (skip && trimmed.startsWithIgnoreCase("## License"))
-                    skip = false;
-                if (!skip)
-                    md += line + "\n";
-            }
-        }
-
-        auto license = projectRoot.getChildFile("LICENSE.txt");
-        if (license.existsAsFile())
-            md += "\n\n---\n\n# License\n\n" + license.loadFileAsString();
-
-        auto thirdParty = projectRoot.getChildFile("THIRD_PARTY_LICENSES.txt");
-        if (thirdParty.existsAsFile())
-            md += "\n\n---\n\n" + thirdParty.loadFileAsString();
-    }
-    else
-    {
-        md = "# T5ynth\n\nDocumentation files not found.\n";
-    }
-
-    aboutText.setFont(juce::FontOptions(19.5f)
-        .withName(juce::Font::getDefaultMonospacedFontName()));
-    aboutText.setText(markdownToPlainText(md));
-    aboutText.setCaretPosition(0);
-
-    aboutPanel.setVisible(true);
-    aboutPanel.toFront(false);
     resized();
 }
 
-void MainPanel::hideAbout()
+void MainPanel::hideManual()
 {
-    aboutVisible = false;
-    aboutScrim.setVisible(false);
-    aboutPanel.setVisible(false);
+    manualVisible = false;
+    manualScrim.setVisible(false);
+    manualPanel.setVisible(false);
+    // Deliberately keep manualWeb loaded so the next showManual() is
+    // instant — the WebView stays alive as a child of manualPanel.
 }
 
 // ═══════════════════════════════════════════════════════════════════

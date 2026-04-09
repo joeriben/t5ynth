@@ -3,7 +3,7 @@
 
 StatusBar::StatusBar()
 {
-    for (auto* btn : { &saveBtn, &loadBtn, &exportBtn, &settingsBtn, &aboutBtn })
+    for (auto* btn : { &saveBtn, &loadBtn, &exportBtn, &settingsBtn, &manualBtn })
     {
         btn->setColour(juce::TextButton::buttonColourId, kSurface);
         btn->setColour(juce::TextButton::textColourOffId, kDim);
@@ -14,7 +14,7 @@ StatusBar::StatusBar()
     loadBtn.onClick     = [this] { if (onLoadPreset) onLoadPreset(); };
     exportBtn.onClick   = [this] { if (onExportWav) onExportWav(); };
     settingsBtn.onClick = [this] { if (onSettings) onSettings(); };
-    aboutBtn.onClick    = [this] { if (onAbout) onAbout(); };
+    manualBtn.onClick   = [this] { if (onManual) onManual(); };
 }
 
 void StatusBar::paint(juce::Graphics& g)
@@ -56,13 +56,13 @@ void StatusBar::resized()
     int y = 1;
     int gap = 4;
 
-    // Right to left: About, Settings, Export, Load, Save
-    int aboutW = 50;
+    // Right to left: Manual, Settings, Export, Load, Save
+    int manualW = 60;
     int settingsW = 60;
     int exportW = 54;
 
-    aboutBtn.setBounds(b.getRight() - aboutW - gap, y, aboutW, btnH);
-    settingsBtn.setBounds(aboutBtn.getX() - settingsW - gap, y, settingsW, btnH);
+    manualBtn.setBounds(b.getRight() - manualW - gap, y, manualW, btnH);
+    settingsBtn.setBounds(manualBtn.getX() - settingsW - gap, y, settingsW, btnH);
     exportBtn.setBounds(settingsBtn.getX() - exportW - gap, y, exportW, btnH);
     loadBtn.setBounds(exportBtn.getX() - btnW - gap, y, btnW, btnH);
     saveBtn.setBounds(loadBtn.getX() - btnW - gap, y, btnW, btnH);
