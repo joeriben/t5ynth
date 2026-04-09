@@ -456,28 +456,32 @@ will produce `success = false` without further diagnostics.
 ## 8. Versioning and Migration
 
 The header contains a version field (`kVersion = 2` at
-`src/presets/PresetFormat.h:64`), but the reader at
-`src/presets/PresetFormat.cpp:125` has the version read commented out:
+`src/presets/PresetFormat.h:64`). The reader at
+`src/presets/PresetFormat.cpp:125` enforces a strict equality check:
 
 ```cpp
-// uint32_t version = *reinterpret_cast<const uint32_t*>(bytes + 4);  // reserved for future
+uint32_t version = *reinterpret_cast<const uint32_t*>(bytes + 4);
+if (version != kVersion) { /* reject, return LoadResult{success=false} */ }
 ```
 
 **No migration logic exists.** Version 1 predates the `T5YN` magic
 (it was the plain JSON / XML branches). Version 2 is the current
-binary container. There is no loader code for reading a hypothetical
-version 3 or rejecting an unknown future version.
+binary container. A future version 3 must either (a) add a branching
+dispatch in `loadFromFile` that handles both versions, or (b) bump
+`kVersion` and accept that older loaders will reject the new file
+cleanly rather than silently mis-interpret it.
 
 Consequences:
 
-- Any breaking change to the JSON schema or the PCM layout must either
-  remain backward-compatible or ship with an explicit migration pass
-  in the loader.
-- A future version 3 would silently be accepted as long as the first 4
-  bytes are `T5YN` and the JSON length field is valid — the loader
-  would then attempt to parse the JSON under the current schema and
-  quietly drop unknown fields.
-- Third-party writers should write `version = 2` until further notice.
+- Any breaking change to the JSON schema or the PCM layout should bump
+  `kVersion`. Older T5ynth builds will then report load failure instead
+  of silently dropping unknown fields.
+- A preset written with an unknown version number (including 0, 99, or
+  0xFFFFFFFF) is rejected up front — the loader returns
+  `LoadResult{success = false}` and, in debug builds, prints the
+  offending version via `DBG`.
+- Third-party writers must write `version = 2` to produce files that
+  the current loader will accept.
 
 ---
 
@@ -655,14 +659,19 @@ third-party reader must not assume a specific whitespace layout —
 only that the bytes between offset 12 and 12+jsonLen are valid UTF-8
 JSON describing a single root object.
 
-### 11.5 `version` field is not validated
+### 11.5 `version` field is validated by strict equality
 
-Because the reader at `src/presets/PresetFormat.cpp:125` does not
-dispatch on the version field, a file with any version number
-(including 0, 99, or 0xFFFFFFFF) is accepted as long as the magic
-matches and the JSON parses. A third-party writer should still use
-version 2 for forward compatibility in case a future T5ynth starts
-enforcing the field.
+The reader at `src/presets/PresetFormat.cpp:125` enforces
+`version == kVersion` (currently 2). Any other value — including
+0, 99, 0xFFFFFFFF, or a future version 3 — is rejected with
+`LoadResult{success = false}`. This is intentional: there is no
+migration logic, so accepting an unknown version would silently
+mis-interpret the payload under the v2 schema.
+
+The flip side is that a hypothetical v1 binary writer (none exists
+in practice) would also be rejected. Version 1 was never used with
+the `T5YN` magic — it referred to the pre-binary JSON/XML fallback
+branches handled in the non-`isBinary` code path.
 
 ### 11.6 Asymmetric handling of `sequencer.enabled`
 

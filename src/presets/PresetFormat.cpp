@@ -122,7 +122,17 @@ PresetFormat::LoadResult PresetFormat::loadFromFile(const juce::File& file, T5yn
     {
         // ── New binary format ──
         auto* bytes = reinterpret_cast<const uint8_t*>(data);
-        // uint32_t version = *reinterpret_cast<const uint32_t*>(bytes + 4);  // reserved for future
+        uint32_t version = *reinterpret_cast<const uint32_t*>(bytes + 4);
+        if (version != kVersion)
+        {
+            // Unknown / future version: refuse to parse rather than silently
+            // mis-interpret the JSON/PCM layout as the current schema. This
+            // prevents lossy loads when the format is evolved in a later
+            // release. (All writers emit kVersion == 2 as of format v2.)
+            DBG("PresetFormat: unsupported .t5p version " << (int) version
+                << " (expected " << (int) kVersion << ")");
+            return result;
+        }
         uint32_t jsonLen = *reinterpret_cast<const uint32_t*>(bytes + 8);
 
         if (12 + jsonLen > size) return result;
