@@ -1,4 +1,5 @@
 #include "FxPanel.h"
+#include "../dsp/BlockParams.h"
 
 static juce::String fmtMs(double v)
 {
@@ -25,7 +26,9 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     addAndMakeVisible(delayHeader);
 
     // Delay type switchbox: OFF / Stereo
-    delayTypeHidden.addItemList({"Off", "Stereo"}, 1);
+    juce::StringArray delayTypeItems;
+    for (const auto& e : DelayType::kEntries) delayTypeItems.add(e.label);
+    delayTypeHidden.addItemList(delayTypeItems, 1);
     delayTypeHidden.onChange = [this] {
         int id = delayTypeHidden.getSelectedId();
         for (int i = 0; i < kNumDelayBtns; ++i)
@@ -73,7 +76,9 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     addAndMakeVisible(reverbHeader);
 
     // Reverb type switchbox: OFF / Dark / Med / Brt / Algo
-    reverbTypeHidden.addItemList({"Off", "Dark", "Medium", "Bright", "Algo"}, 1);
+    juce::StringArray reverbTypeItems;
+    for (const auto& e : ReverbType::kEntries) reverbTypeItems.add(e.label);
+    reverbTypeHidden.addItemList(reverbTypeItems, 1);
     reverbTypeHidden.onChange = [this] {
         int id = reverbTypeHidden.getSelectedId();
         for (int i = 0; i < kNumReverbBtns; ++i)

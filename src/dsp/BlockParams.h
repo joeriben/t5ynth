@@ -1,19 +1,32 @@
 #pragma once
 
-// ── Modulation target index + label tables ──
+// ── Choice-parameter single-source-of-truth tables ──
 //
-// Single source of truth for the modulation target choice lists. The
-// `kLabels` array below is consumed by:
+// Every AudioParameterChoice in T5ynth has its canonical entry list here.
+// The `kEntries` arrays are consumed by:
 //   - juce::AudioParameterChoice StringArrays in PluginProcessor.cpp
-//     (mod{1,2}_target, lfo{1,2}_target)
-//   - juce::ComboBox::addItemList calls in gui/SynthPanel.cpp
-//     (env.targetBox, lfo.targetBox)
-// Both call sites iterate over kLabels directly — so the count, the
-// order and the label strings are impossible to drift between APVTS,
-// the GUI dropdown and the enum. Adding a new target means touching
-// exactly this file (add an enum entry + the matching label string
-// at the same index); every consumer picks up the change.
+//   - juce::ComboBox::addItemList calls in gui/*.cpp
+//   - preset save/load helpers in PluginProcessor.cpp (via the .key column)
+//
+// Each entry carries a `.key` column (stable snake_case identifier used for
+// JSON serialization — never changes once shipped) and a `.label` column
+// (user-facing display string — may be renamed without breaking presets).
+// Both columns live in the same array at the same index, so adding a new
+// choice means editing exactly one place. A `static_assert` below every
+// table pins the enum's last value to `kCount - 1` to prevent drift.
+//
+// Note: the `.key` column is used by preset JSON save/load (Session 2
+// onwards). In Session 1 the JSON helpers still use their legacy name
+// tables — only the `.label` column is consumed. Keys are committed now
+// so that Session 2's helper rewrite is a pure swap.
 
+/** Common struct layout for every choice-parameter entry table. */
+struct ChoiceEntry {
+    const char* key;
+    const char* label;
+};
+
+// ── Modulation envelope targets ──
 namespace EnvTarget {
     enum : int {
         None = 0,
@@ -30,27 +43,27 @@ namespace EnvTarget {
         LFO2Rate = 11,
         LFO2Depth = 12
     };
-    static constexpr const char* kLabels[] = {
-        "---",        // None
-        "DCA",        // DCA
-        "Filter",     // Filter
-        "Scan",       // Scan
-        "Pitch",      // Pitch
-        "Dly Time",   // DelayTime
-        "Dly FB",     // DelayFB
-        "Dly Mix",    // DelayMix
-        "Rev Mix",    // ReverbMix
-        "LFO1 Rate",  // LFO1Rate
-        "LFO1 Depth", // LFO1Depth
-        "LFO2 Rate",  // LFO2Rate
-        "LFO2 Depth"  // LFO2Depth
+    static constexpr ChoiceEntry kEntries[] = {
+        { "none",       "---"        },
+        { "dca",        "DCA"        },
+        { "filter",     "Filter"     },
+        { "scan",       "Scan"       },
+        { "pitch",      "Pitch"      },
+        { "delay_time", "Dly Time"   },
+        { "delay_fb",   "Dly FB"     },
+        { "delay_mix",  "Dly Mix"    },
+        { "reverb_mix", "Rev Mix"    },
+        { "lfo1_rate",  "LFO1 Rate"  },
+        { "lfo1_depth", "LFO1 Depth" },
+        { "lfo2_rate",  "LFO2 Rate"  },
+        { "lfo2_depth", "LFO2 Depth" }
     };
-    static constexpr int kCount = sizeof(kLabels) / sizeof(kLabels[0]);
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(LFO2Depth + 1 == kCount,
-                  "EnvTarget enum and kLabels are out of sync — the last "
-                  "enum value must equal kCount - 1.");
+                  "EnvTarget enum and kEntries are out of sync.");
 }
 
+// ── LFO targets ──
 namespace LfoTarget {
     enum : int {
         None = 0,
@@ -65,23 +78,434 @@ namespace LfoTarget {
         Env2Amt = 9,
         Env3Amt = 10
     };
-    static constexpr const char* kLabels[] = {
-        "---",       // None
-        "Filter",    // Filter
-        "Scan",      // Scan
-        "Pitch",     // Pitch
-        "Dly Time",  // DelayTime
-        "Dly FB",    // DelayFB
-        "Dly Mix",   // DelayMix
-        "Rev Mix",   // ReverbMix
-        "ENV1 Amt",  // Env1Amt
-        "ENV2 Amt",  // Env2Amt
-        "ENV3 Amt"   // Env3Amt
+    static constexpr ChoiceEntry kEntries[] = {
+        { "none",       "---"       },
+        { "filter",     "Filter"    },
+        { "scan",       "Scan"      },
+        { "pitch",      "Pitch"     },
+        { "delay_time", "Dly Time"  },
+        { "delay_fb",   "Dly FB"    },
+        { "delay_mix",  "Dly Mix"   },
+        { "reverb_mix", "Rev Mix"   },
+        { "env1_amt",   "ENV1 Amt"  },
+        { "env2_amt",   "ENV2 Amt"  },
+        { "env3_amt",   "ENV3 Amt"  }
     };
-    static constexpr int kCount = sizeof(kLabels) / sizeof(kLabels[0]);
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(Env3Amt + 1 == kCount,
-                  "LfoTarget enum and kLabels are out of sync — the last "
-                  "enum value must equal kCount - 1.");
+                  "LfoTarget enum and kEntries are out of sync.");
+}
+
+// ── Drift LFO targets ──
+namespace DriftTarget {
+    enum : int {
+        None = 0,
+        Alpha = 1,
+        Axis1 = 2,
+        Axis2 = 3,
+        Axis3 = 4,
+        WtScan = 5,
+        Filter = 6,
+        Pitch = 7,
+        DelayTime = 8,
+        DelayFB = 9,
+        DelayMix = 10,
+        ReverbMix = 11,
+        Env1Amt = 12,
+        Env2Amt = 13,
+        Env3Amt = 14,
+        Noise = 15,
+        Magnitude = 16
+    };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "none",       "---"       },
+        { "alpha",      "Alpha"     },
+        { "axis_1",     "Axis 1"    },
+        { "axis_2",     "Axis 2"    },
+        { "axis_3",     "Axis 3"    },
+        { "wt_scan",    "WT Scan"   },
+        { "filter",     "Filter"    },
+        { "pitch",      "Pitch"     },
+        { "delay_time", "Dly Time"  },
+        { "delay_fb",   "Dly FB"    },
+        { "delay_mix",  "Dly Mix"   },
+        { "reverb_mix", "Rev Mix"   },
+        { "env1_amt",   "ENV1 Amt"  },
+        { "env2_amt",   "ENV2 Amt"  },
+        { "env3_amt",   "ENV3 Amt"  },
+        { "noise",      "Noise"     },
+        { "magnitude",  "Magnitude" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Magnitude + 1 == kCount,
+                  "DriftTarget enum and kEntries are out of sync.");
+}
+
+// ── Engine mode ──
+namespace EngineMode {
+    enum : int { Sampler = 0, Wavetable = 1 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "sampler",   "Sampler"   },
+        { "wavetable", "Wavetable" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Wavetable + 1 == kCount, "EngineMode out of sync.");
+}
+
+// ── Sample loop mode ──
+namespace LoopMode {
+    enum : int { OneShot = 0, Loop = 1, PingPong = 2 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "oneshot",  "One-shot"  },
+        { "loop",     "Loop"      },
+        { "pingpong", "Ping-Pong" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(PingPong + 1 == kCount, "LoopMode out of sync.");
+}
+
+// ── Loop optimization level ──
+namespace LoopOptimize {
+    enum : int { Off = 0, Low = 1, High = 2 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",  "Off"  },
+        { "low",  "Low"  },
+        { "high", "High" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(High + 1 == kCount, "LoopOptimize out of sync.");
+}
+
+// ── Filter type ──
+namespace FilterType {
+    enum : int { Off = 0, Lowpass = 1, Highpass = 2, Bandpass = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",      "Off"      },
+        { "lowpass",  "Lowpass"  },
+        { "highpass", "Highpass" },
+        { "bandpass", "Bandpass" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Bandpass + 1 == kCount, "FilterType out of sync.");
+}
+
+// ── Filter slope ──
+namespace FilterSlope {
+    enum : int { Slope6 = 0, Slope12 = 1, Slope18 = 2, Slope24 = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "6db",  "6dB"  },
+        { "12db", "12dB" },
+        { "18db", "18dB" },
+        { "24db", "24dB" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Slope24 + 1 == kCount, "FilterSlope out of sync.");
+}
+
+// ── Delay type ──
+namespace DelayType {
+    enum : int { Off = 0, Stereo = 1 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",    "Off"    },
+        { "stereo", "Stereo" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Stereo + 1 == kCount, "DelayType out of sync.");
+}
+
+// ── Reverb type ──
+namespace ReverbType {
+    enum : int { Off = 0, Dark = 1, Medium = 2, Bright = 3, Algo = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",    "Off"    },
+        { "dark",   "Dark"   },
+        { "medium", "Medium" },
+        { "bright", "Bright" },
+        { "algo",   "Algo"   }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Algo + 1 == kCount, "ReverbType out of sync.");
+}
+
+// ── Noise oscillator type (namespace name avoids clash with the global
+//    `enum class NoiseType` in dsp/NoiseGenerator.h). ──
+namespace NoiseKind {
+    enum : int { White = 0, Pink = 1, Brown = 2 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "white", "White" },
+        { "pink",  "Pink"  },
+        { "brown", "Brown" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Brown + 1 == kCount, "NoiseKind out of sync.");
+}
+
+// ── LFO waveform (Session 1: 4 entries, S&H added in Session 3) ──
+namespace LfoWave {
+    enum : int { Sine = 0, Tri = 1, Saw = 2, Square = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "sine",     "Sine"   },
+        { "triangle", "Tri"    },
+        { "sawtooth", "Saw"    },
+        { "square",   "Square" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Square + 1 == kCount, "LfoWave out of sync.");
+}
+
+// ── LFO trigger mode ──
+namespace LfoMode {
+    enum : int { Free = 0, Trigger = 1 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "free",    "Free" },
+        { "trigger", "Trig" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Trigger + 1 == kCount, "LfoMode out of sync.");
+}
+
+// ── Drift LFO waveform (label "Sq" differs from LfoWave "Square"!) ──
+namespace DriftWave {
+    enum : int { Sine = 0, Tri = 1, Saw = 2, Square = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "sine",     "Sine" },
+        { "triangle", "Tri"  },
+        { "sawtooth", "Saw"  },
+        { "square",   "Sq"   }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Square + 1 == kCount, "DriftWave out of sync.");
+}
+
+// ── Envelope curve shape (namespace name avoids clash with the global
+//    `enum class CurveShape` in dsp/ADSREnvelope.h, which is the DSP-side
+//    strongly-typed version of this choice list). ──
+namespace EnvCurve {
+    enum : int { Log = 0, SLog = 1, Lin = 2, SExp = 3, Exp = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "log",     "Log"  },
+        { "softlog", "SLog" },
+        { "lin",     "Lin"  },
+        { "softexp", "SExp" },
+        { "exp",     "Exp"  }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Exp + 1 == kCount, "EnvCurve out of sync.");
+}
+
+// ── Drift regenerate mode (UTF-8 quarter-note glyph in labels) ──
+namespace DriftRegen {
+    enum : int { Manual = 0, Auto = 1, Max1 = 2, Max4 = 3, Max16 = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "manual",      "Manual"                                          },
+        { "auto",        "Auto"                                            },
+        { "max_1beat",   "max 1\xe2\x99\xa9"   /* UTF-8 ♩ */                },
+        { "max_4beats",  "max 4\xe2\x99\xa9"                                },
+        { "max_16beats", "max 16\xe2\x99\xa9"                               }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Max16 + 1 == kCount, "DriftRegen out of sync.");
+}
+
+// ── Voice count ──
+namespace VoiceCount {
+    enum : int { Mono = 0, V4 = 1, V6 = 2, V8 = 3, V12 = 4, V16 = 5 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "mono", "Mono" },
+        { "4",    "4"    },
+        { "6",    "6"    },
+        { "8",    "8"    },
+        { "12",   "12"   },
+        { "16",   "16"   }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(V16 + 1 == kCount, "VoiceCount out of sync.");
+}
+
+// ── Wavetable frame count ──
+namespace WtFrames {
+    enum : int { F32 = 0, F64 = 1, F128 = 2, F256 = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "32",  "32"  },
+        { "64",  "64"  },
+        { "128", "128" },
+        { "256", "256" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(F256 + 1 == kCount, "WtFrames out of sync.");
+}
+
+// ── Oscillator octave shift (pitch compensation for inferred fundamental) ──
+namespace OscOctave {
+    enum : int { Neg2 = 0, Neg1 = 1, Zero = 2, Pos1 = 3, Pos2 = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "-2", "-2" },
+        { "-1", "-1" },
+        { "0",  "0"  },
+        { "+1", "+1" },
+        { "+2", "+2" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Pos2 + 1 == kCount, "OscOctave out of sync.");
+}
+
+// ── Sequencer octave shift (melodic range, semantically different from
+//    OscOctave — kept as a separate namespace on purpose). ──
+namespace SeqOctave {
+    enum : int { Neg2 = 0, Neg1 = 1, Zero = 2, Pos1 = 3, Pos2 = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "-2", "-2" },
+        { "-1", "-1" },
+        { "0",  "0"  },
+        { "+1", "+1" },
+        { "+2", "+2" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Pos2 + 1 == kCount, "SeqOctave out of sync.");
+}
+
+// ── Sequencer mode ──
+namespace SeqMode {
+    enum : int { Seq = 0, ArpUp = 1, ArpDown = 2, ArpUpDown = 3, ArpRandom = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "seq",        "Seq"     },
+        { "arp_up",     "Arp Up"  },
+        { "arp_down",   "Arp Dn"  },
+        { "arp_updown", "Arp UD"  },
+        { "arp_random", "Arp Rnd" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(ArpRandom + 1 == kCount, "SeqMode out of sync.");
+}
+
+// ── Sequencer note division ──
+namespace SeqDivision {
+    enum : int { D1_1 = 0, D1_2 = 1, D1_4 = 2, D1_8 = 3, D1_16 = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "1_1",  "1/1"  },
+        { "1_2",  "1/2"  },
+        { "1_4",  "1/4"  },
+        { "1_8",  "1/8"  },
+        { "1_16", "1/16" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(D1_16 + 1 == kCount, "SeqDivision out of sync.");
+}
+
+// ── Arpeggiator rate (straight + triplet divisions) ──
+namespace ArpRate {
+    enum : int {
+        R1_4 = 0, R1_8 = 1, R1_16 = 2, R1_32 = 3,
+        R1_4T = 4, R1_8T = 5, R1_16T = 6
+    };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "1_4",   "1/4"   },
+        { "1_8",   "1/8"   },
+        { "1_16",  "1/16"  },
+        { "1_32",  "1/32"  },
+        { "1_4t",  "1/4T"  },
+        { "1_8t",  "1/8T"  },
+        { "1_16t", "1/16T" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(R1_16T + 1 == kCount, "ArpRate out of sync.");
+}
+
+// ── Arpeggiator mode ──
+namespace ArpMode {
+    enum : int { Off = 0, Up = 1, Down = 2, UpDown = 3, Random = 4 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",    "Off"    },
+        { "up",     "Up"     },
+        { "down",   "Down"   },
+        { "updown", "UpDown" },
+        { "random", "Random" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Random + 1 == kCount, "ArpMode out of sync.");
+}
+
+// ── Musical scale root ──
+namespace ScaleRoot {
+    enum : int {
+        C = 0, Cs = 1, D = 2, Ds = 3, E = 4, F = 5,
+        Fs = 6, G = 7, Gs = 8, A = 9, As = 10, B = 11
+    };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "c",  "C"  },
+        { "cs", "C#" },
+        { "d",  "D"  },
+        { "ds", "D#" },
+        { "e",  "E"  },
+        { "f",  "F"  },
+        { "fs", "F#" },
+        { "g",  "G"  },
+        { "gs", "G#" },
+        { "a",  "A"  },
+        { "as", "A#" },
+        { "b",  "B"  }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(B + 1 == kCount, "ScaleRoot out of sync.");
+}
+
+// ── Musical scale type ──
+namespace ScaleType {
+    enum : int { Off = 0, Maj = 1, Min = 2, Pent = 3, Dor = 4, Harm = 5, WhlT = 6 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",  "Off"  },
+        { "maj",  "Maj"  },
+        { "min",  "Min"  },
+        { "pent", "Pent" },
+        { "dor",  "Dor"  },
+        { "harm", "Harm" },
+        { "whole","WhlT" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(WhlT + 1 == kCount, "ScaleType out of sync.");
+}
+
+// ── Generative sequencer octave range ──
+namespace GenRange {
+    enum : int { R1 = 0, R2 = 1, R3 = 2, R4 = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "1", "1" },
+        { "2", "2" },
+        { "3", "3" },
+        { "4", "4" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(R4 + 1 == kCount, "GenRange out of sync.");
+}
+
+// ── Sequencer pattern preset ──
+namespace SeqPreset {
+    enum : int {
+        OctaveBounce = 0,
+        WideLeap = 1,
+        OffBeatMinor = 2,
+        GlideGroove = 3,
+        SparseStab = 4,
+        RisingArc = 5,
+        Scatter = 6,
+        Chromatic = 7,
+        BassWalk = 8,
+        GatedPulse = 9
+    };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "octave_bounce",  "Octave Bounce"  },
+        { "wide_leap",      "Wide Leap"      },
+        { "off_beat_minor", "Off-Beat Minor" },
+        { "glide_groove",   "Glide Groove"   },
+        { "sparse_stab",    "Sparse Stab"    },
+        { "rising_arc",     "Rising Arc"     },
+        { "scatter",        "Scatter"        },
+        { "chromatic",      "Chromatic"      },
+        { "bass_walk",      "Bass Walk"      },
+        { "gated_pulse",    "Gated Pulse"    }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(GatedPulse + 1 == kCount, "SeqPreset out of sync.");
 }
 
 /**
@@ -94,14 +518,14 @@ struct BlockParams
     float ampAttack = 0.0f, ampDecay = 0.0f, ampSustain = 1.0f, ampRelease = 0.0f;
     float ampAmount = 1.0f;
     float ampVelSens = 1.0f;  // 0=fixed, 1=full velocity
-    int   ampAttackCurve = 2, ampDecayCurve = 2, ampReleaseCurve = 4; // 0=Log,1=SLog,2=Lin,3=SExp,4=Exp
+    int   ampAttackCurve = 2, ampDecayCurve = 2, ampReleaseCurve = 4; // CurveShape indices
     bool  ampLoop = false;
 
     // Mod envelope 1
     float mod1Attack = 0.0f, mod1Decay = 0.0f, mod1Sustain = 1.0f, mod1Release = 0.0f;
     float mod1Amount = 0.0f;
     float mod1VelSens = 1.0f;
-    int   mod1Target = 0; // 0 = None
+    int   mod1Target = 0; // EnvTarget::None
     int   mod1AttackCurve = 2, mod1DecayCurve = 2, mod1ReleaseCurve = 4;
     bool  mod1Loop = false;
 
@@ -109,22 +533,22 @@ struct BlockParams
     float mod2Attack = 0.0f, mod2Decay = 0.0f, mod2Sustain = 1.0f, mod2Release = 0.0f;
     float mod2Amount = 0.0f;
     float mod2VelSens = 1.0f;
-    int   mod2Target = 0; // 0 = None
+    int   mod2Target = 0; // EnvTarget::None
     int   mod2AttackCurve = 2, mod2DecayCurve = 2, mod2ReleaseCurve = 4;
     bool  mod2Loop = false;
 
     // LFOs (global rates/depths for cross-mod, targets for routing)
     float lfo1Rate = 1.0f, lfo1Depth = 1.0f;
-    int   lfo1Wave = 0, lfo1Target = 0; // 0 = None
+    int   lfo1Wave = 0, lfo1Target = 0; // LfoTarget::None
     float lfo2Rate = 1.0f, lfo2Depth = 1.0f;
-    int   lfo2Wave = 0, lfo2Target = 0; // 0 = None
+    int   lfo2Wave = 0, lfo2Target = 0; // LfoTarget::None
 
     // Filter
     bool  filterEnabled = false;
     float baseCutoff = 20000.0f;
     float baseReso = 0.0f;
-    int   filterType = 0;  // 0=LP, 1=HP, 2=BP
-    int   filterSlope = 0; // 0=12dB, 1=24dB
+    int   filterType = 0;  // FilterType index
+    int   filterSlope = 0; // FilterSlope index
     float filterMix = 1.0f;
     float kbdTrack = 0.0f;
 
@@ -138,7 +562,7 @@ struct BlockParams
 
     // Noise oscillator
     float noiseLevel = 0.0f;      // 0-1 mix level
-    int   noiseType = 0;          // 0=White, 1=Pink, 2=Brown
+    int   noiseType = 0;          // NoiseType index
 
     // Octave shift (-2..+2)
     int octaveShift = 0;

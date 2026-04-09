@@ -20,6 +20,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
+    // Helper: build a juce::StringArray of display labels from any
+    // BlockParams.h kEntries table. Keeps AudioParameterChoice construction
+    // in sync with the single source of truth.
+    auto toChoices = [](const auto& entries) {
+        juce::StringArray arr;
+        for (const auto& e : entries) arr.add(e.label);
+        return arr;
+    };
+
     // Oscillator
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"osc_scan", 1}, "Scan Position",
@@ -28,7 +37,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Voice count: Mono, 4, 6, 8, 12, 16
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"voice_count", 1}, "Voice Count",
-        juce::StringArray{"Mono", "4", "6", "8", "12", "16"}, 3)); // default 8
+        toChoices(VoiceCount::kEntries), 3)); // default 8
 
     // Amplitude Envelope (A=0, D=200ms, S=10%, R=180ms)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -53,10 +62,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"filter_type", 1}, "Filter Type",
-        juce::StringArray{"Off", "Lowpass", "Highpass", "Bandpass"}, 1));
+        toChoices(FilterType::kEntries), 1));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"filter_slope", 1}, "Filter Slope",
-        juce::StringArray{"6dB", "12dB", "18dB", "24dB"}, 1));
+        toChoices(FilterSlope::kEntries), 1));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"filter_mix", 1}, "Filter Mix",
         juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
@@ -135,7 +144,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Engine mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"engine_mode", 1}, "Engine Mode",
-        juce::StringArray{"Sampler", "Wavetable"}, 0));
+        toChoices(EngineMode::kEntries), 0));
 
     // Mod Envelope 1 (A=0, D=2500ms, S=10%, R=4000ms, Amt=100%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -174,7 +183,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_wave", 1}, "LFO1 Wave",
-        juce::StringArray{"Sine", "Tri", "Saw", "Square"}, 0));
+        toChoices(LfoWave::kEntries), 0));
 
     // LFO 2 (reference defaults: rate=0.5, depth=0, triangle)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -185,17 +194,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo2_wave", 1}, "LFO2 Wave",
-        juce::StringArray{"Sine", "Tri", "Saw", "Square"}, 1));
+        toChoices(LfoWave::kEntries), 1));
 
     // Drift LFO
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"drift_enabled", 1}, "Drift Enabled", false));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift_regen", 1}, "Regenerate",
-        juce::StringArray{"Manual", "Auto",
-                          juce::String(juce::CharPointer_UTF8("max 1\xe2\x99\xa9")),
-                          juce::String(juce::CharPointer_UTF8("max 4\xe2\x99\xa9")),
-                          juce::String(juce::CharPointer_UTF8("max 16\xe2\x99\xa9"))}, 0));
+        toChoices(DriftRegen::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"drift_crossfade", 1}, "Drift Crossfade",
         juce::NormalisableRange<float>(0.0f, 2000.0f, 1.0f), 200.0f));
@@ -221,24 +227,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Drift targets + waveform selection
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift1_target", 1}, "Drift1 Target",
-        juce::StringArray{"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "Noise", "Magnitude"}, 0));
+        toChoices(DriftTarget::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift2_target", 1}, "Drift2 Target",
-        juce::StringArray{"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "Noise", "Magnitude"}, 0));
+        toChoices(DriftTarget::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift1_wave", 1}, "Drift1 Wave",
-        juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
+        toChoices(DriftWave::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift2_wave", 1}, "Drift2 Wave",
-        juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
+        toChoices(DriftWave::kEntries), 0));
 
     // Drift 3 target + waveform (was missing — drift3 rate/depth existed but had no target/wave)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift3_target", 1}, "Drift3 Target",
-        juce::StringArray{"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan", "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix", "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "Noise", "Magnitude"}, 0));
+        toChoices(DriftTarget::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"drift3_wave", 1}, "Drift3 Wave",
-        juce::StringArray{"Sine", "Tri", "Saw", "Sq"}, 0));
+        toChoices(DriftWave::kEntries), 0));
 
     // ENV Amount (per envelope)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -271,7 +277,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"mod2_loop", 1}, "Mod2 Loop", false));
 
     // ENV Curve shapes (0=Log, 1=SLog, 2=Lin, 3=SExp, 4=Exp)  —  A/D default Lin(2), R default Exp(4)
-    juce::StringArray curveChoices {"Log", "SLog", "Lin", "SExp", "Exp"};
+    const juce::StringArray curveChoices = toChoices(EnvCurve::kEntries);
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"amp_attack_curve", 2},  "Amp Attack Curve",  curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -292,18 +298,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"mod2_release_curve", 2}, "Mod2 Release Curve", curveChoices, 4));
 
     // ENV / LFO target choice lists — the single source of truth lives in
-    // src/dsp/BlockParams.h (EnvTarget::kLabels / LfoTarget::kLabels). The
+    // src/dsp/BlockParams.h (EnvTarget::kEntries / LfoTarget::kEntries). The
     // enum, this APVTS StringArray and gui/SynthPanel.cpp all iterate the
     // same array, so the index↔label mapping cannot drift.
     juce::StringArray envTargetChoices;
-    for (const char* s : EnvTarget::kLabels) envTargetChoices.add(s);
+    for (const auto& e : EnvTarget::kEntries) envTargetChoices.add(e.label);
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod1_target", 1}, "Mod1 Target", envTargetChoices, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"mod2_target", 1}, "Mod2 Target", envTargetChoices, 0));
 
     juce::StringArray lfoTargetChoices;
-    for (const char* s : LfoTarget::kLabels) lfoTargetChoices.add(s);
+    for (const auto& e : LfoTarget::kEntries) lfoTargetChoices.add(e.label);
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_target", 1}, "LFO1 Target", lfoTargetChoices, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -312,10 +318,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // LFO Mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo1_mode", 1}, "LFO1 Mode",
-        juce::StringArray{"Free", "Trig"}, 0));
+        toChoices(LfoMode::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"lfo2_mode", 1}, "LFO2 Mode",
-        juce::StringArray{"Free", "Trig"}, 0));
+        toChoices(LfoMode::kEntries), 0));
 
     // Delay damp
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -325,7 +331,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Sampler controls
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"loop_mode", 1}, "Loop Mode",
-        juce::StringArray{"One-shot", "Loop", "Ping-Pong"}, 0));
+        toChoices(LoopMode::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"crossfade_ms", 1}, "Crossfade",
         juce::NormalisableRange<float>(0.0f, 500.0f, 10.0f), 150.0f));
@@ -333,17 +339,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{"normalize", 1}, "Normalize", true));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"loop_optimize", 2}, "Loop Optimize",
-        juce::StringArray{ "Off", "Low", "High" }, 0));
+        toChoices(LoopOptimize::kEntries), 0));
 
     // Effect enables
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"filter_enabled", 1}, "Filter Enabled", true));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"delay_type", 1}, "Delay Type",
-        juce::StringArray{"Off", "Stereo"}, 0));
+        toChoices(DelayType::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"reverb_type", 1}, "Reverb Type",
-        juce::StringArray{"Off", "Dark", "Medium", "Bright", "Algo"}, 0));
+        toChoices(ReverbType::kEntries), 0));
 
     // Limiter
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -358,7 +364,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Sequencer / Arpeggiator
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"seq_mode", 1}, "Seq Mode",
-        juce::StringArray{"Seq", "Arp Up", "Arp Dn", "Arp UD", "Arp Rnd"}, 0));
+        toChoices(SeqMode::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"seq_running", 1}, "Seq Running", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -369,7 +375,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Sequencer note division (reference: 1/1, 1/2, 1/4, 1/8, 1/16)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"seq_division", 1}, "Seq Division",
-        juce::StringArray{"1/1", "1/2", "1/4", "1/8", "1/16"}, 4)); // default 1/16
+        toChoices(SeqDivision::kEntries), 4)); // default 1/16
     // Sequencer glide time (reference: 10-500ms, default 80)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"seq_glide_time", 1}, "Glide Time",
@@ -377,13 +383,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Arp rate: musical divisions (reference: 1/4, 1/8, 1/16, 1/32, 1/4T, 1/8T, 1/16T)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"arp_rate", 1}, "Arp Rate",
-        juce::StringArray{"1/4", "1/8", "1/16", "1/32", "1/4T", "1/8T", "1/16T"}, 2));
+        toChoices(ArpRate::kEntries), 2));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{"arp_octaves", 1}, "Arp Octaves", 1, 4, 1));
     // Arp mode (Off = disabled, rest = enabled with that pattern)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"arp_mode", 1}, "Arp Mode",
-        juce::StringArray{"Off", "Up", "Down", "UpDown", "Random"}, 0));
+        toChoices(ArpMode::kEntries), 0));
     // Global seq gate + preset
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"seq_gate", 1}, "Seq Gate",
@@ -391,11 +397,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Seq octave shift: -2..+2 octaves (choice index 0..4, default 2 = no shift)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"seq_octave", 1}, "Seq Octave",
-        juce::StringArray{"-2", "-1", "0", "+1", "+2"}, 2));
+        toChoices(SeqOctave::kEntries), 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"seq_preset", 1}, "Seq Preset",
-        juce::StringArray{"Octave Bounce", "Wide Leap", "Off-Beat Minor", "Glide Groove", "Sparse Stab",
-                          "Rising Arc", "Scatter", "Chromatic", "Bass Walk", "Gated Pulse"}, 0));
+        toChoices(SeqPreset::kEntries), 0));
 
     // Generative sequencer
     params.push_back(std::make_unique<juce::AudioParameterBool>(
@@ -411,7 +416,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.80f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"gen_range", 1}, "Gen Range",
-        juce::StringArray{"1","2","3","4"}, 2)); // default index 2 = "3" octaves
+        toChoices(GenRange::kEntries), 2)); // default index 2 = "3" octaves
     // Fix toggles — lock parameters against Euclidean drift
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{"gen_fix_steps", 1}, "Fix Steps", true));
@@ -424,10 +429,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Scale (shared between gen seq and future features)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"scale_root", 1}, "Scale Root",
-        juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 0));
+        toChoices(ScaleRoot::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"scale_type", 1}, "Scale Type",
-        juce::StringArray{"Off","Maj","Min","Pent","Dor","Harm","WhlT"}, 0));
+        toChoices(ScaleType::kEntries), 0));
 
     // HF boost: compensate VAE decoder high-frequency rolloff
     params.push_back(std::make_unique<juce::AudioParameterBool>(
@@ -436,7 +441,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     // Octave shift: -2 to +2 (index 0-4, default 2 = 0 octaves)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"osc_octave", 1}, "Octave Shift",
-        juce::StringArray{"-2", "-1", "0", "+1", "+2"}, 2));
+        toChoices(OscOctave::kEntries), 2));
 
     // Noise oscillator: level + type
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -444,12 +449,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"noise_type", 1}, "Noise Type",
-        juce::StringArray{"White", "Pink", "Brown"}, 0));
+        toChoices(NoiseKind::kEntries), 0));
 
     // Wavetable frame count: 0=32, 1=64, 2=128, 3=256
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{"wt_frames", 1}, "WT Frames",
-        juce::StringArray{"32", "64", "128", "256"}, 3));
+        toChoices(WtFrames::kEntries), 3));
 
     // Wavetable smooth (Catmull-Rom interpolation between frames)
     params.push_back(std::make_unique<juce::AudioParameterBool>(

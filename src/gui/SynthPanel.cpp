@@ -25,10 +25,10 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     env.header.setColour(juce::Label::textColourId, kEnvCol);
     addAndMakeVisible(env.header);
 
-    // Labels driven from BlockParams::EnvTarget::kLabels (single source of
+    // Labels driven from BlockParams::EnvTarget::kEntries (single source of
     // truth for enum index ↔ human-readable label).
     juce::StringArray envItems;
-    for (const char* s : EnvTarget::kLabels) envItems.add(s);
+    for (const auto& e : EnvTarget::kEntries) envItems.add(e.label);
     env.targetBox.addItemList(envItems, 1);
     env.targetBox.setSelectedId(defaultTarget, juce::dontSendNotification);
     env.targetBox.onChange = [this] { updateVisibility(); resized(); };
@@ -62,7 +62,9 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
                                 const juce::String& paramId,
                                 juce::AudioProcessorValueTreeState& vts,
                                 std::unique_ptr<CA>& attachment) {
-        hidden.addItemList({"Log", "SLog", "Lin", "SExp", "Exp"}, 1);
+        juce::StringArray curveItems;
+        for (const auto& e : EnvCurve::kEntries) curveItems.add(e.label);
+        hidden.addItemList(curveItems, 1);
         hidden.onChange = [&btn, &hidden] {
             btn.setCurveShape(hidden.getSelectedId() - 1);
         };
@@ -99,19 +101,26 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.header.setColour(juce::Label::textColourId, kLfoCol);
     addAndMakeVisible(lfo.header);
 
-    // Labels driven from BlockParams::LfoTarget::kLabels (single source of
+    // Labels driven from BlockParams::LfoTarget::kEntries (single source of
     // truth for enum index ↔ human-readable label).
     juce::StringArray lfoItems;
-    for (const char* s : LfoTarget::kLabels) lfoItems.add(s);
+    for (const auto& e : LfoTarget::kEntries) lfoItems.add(e.label);
     lfo.targetBox.addItemList(lfoItems, 1);
     lfo.targetBox.setSelectedId(1, juce::dontSendNotification);
     lfo.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(lfo.targetBox);
 
-    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq", "S&H"}, 1);
+    // NOTE: short-form labels ("Sin"/"Sq") differ from APVTS LfoWave labels
+    // ("Sine"/"Square"). Kept as inline literal for now — GUI/APVTS label
+    // reconciliation is a follow-up. S&H was a phantom (APVTS has 4 entries,
+    // not 5) and has been removed. Session 3 reintroduces S&H properly via
+    // LfoWave::kEntries.
+    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq"}, 1);
     addAndMakeVisible(lfo.waveBox);
 
-    lfo.modeBox.addItemList({"Free", "Trig"}, 1);
+    juce::StringArray lfoModeItems;
+    for (const auto& e : LfoMode::kEntries) lfoModeItems.add(e.label);
+    lfo.modeBox.addItemList(lfoModeItems, 1);
     addAndMakeVisible(lfo.modeBox);
 
     lfo.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF1, kLfoCol);
@@ -140,13 +149,15 @@ void SynthPanel::initDrift(DriftSection& drift, const juce::String& name,
     drift.header.setColour(juce::Label::textColourId, kDriftCol);
     addAndMakeVisible(drift.header);
 
-    drift.targetBox.addItemList({"---", "Alpha", "Axis 1", "Axis 2", "Axis 3", "WT Scan",
-                                  "Filter", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                                  "ENV1 Amt", "ENV2 Amt", "ENV3 Amt", "Noise", "Magnitude"}, 1);
+    juce::StringArray driftTargetItems;
+    for (const auto& e : DriftTarget::kEntries) driftTargetItems.add(e.label);
+    drift.targetBox.addItemList(driftTargetItems, 1);
     drift.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(drift.targetBox);
 
-    drift.waveBox.addItemList({"Sine", "Tri", "Saw", "Sq"}, 1);
+    juce::StringArray driftWaveItems;
+    for (const auto& e : DriftWave::kEntries) driftWaveItems.add(e.label);
+    drift.waveBox.addItemList(driftWaveItems, 1);
     addAndMakeVisible(drift.waveBox);
 
     drift.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF2, kDriftCol);
@@ -188,7 +199,9 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     addAndMakeVisible(samplerBtn);
     addAndMakeVisible(wavetableBtn);
 
-    engineModeHidden.addItemList({"Sampler", "Wavetable"}, 1);
+    juce::StringArray engineModeItems;
+    for (const auto& e : EngineMode::kEntries) engineModeItems.add(e.label);
+    engineModeHidden.addItemList(engineModeItems, 1);
     engineModeHidden.onChange = [this] {
         bool isSampler = engineModeHidden.getSelectedId() == 1;
         samplerBtn.setToggleState(isSampler, juce::dontSendNotification);
@@ -202,7 +215,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     // ── Voice count switchbox ──
     {
-        const juce::StringArray vcLabels { "Mono", "4", "6", "8", "12", "16" };
+        juce::StringArray vcLabels;
+        for (const auto& e : VoiceCount::kEntries) vcLabels.add(e.label);
         voiceCountHidden.addItemList(vcLabels, 1);
         voiceCountHidden.onChange = [this] {
             int id = voiceCountHidden.getSelectedId();
@@ -277,7 +291,9 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     addAndMakeVisible(loopModeBtn);
     addAndMakeVisible(pingpongBtn);
 
-    loopModeHidden.addItemList({"One-shot", "Loop", "Ping-Pong"}, 1);
+    juce::StringArray loopModeItems;
+    for (const auto& e : LoopMode::kEntries) loopModeItems.add(e.label);
+    loopModeHidden.addItemList(loopModeItems, 1);
     loopModeHidden.onChange = [this] {
         int id = loopModeHidden.getSelectedId();
         oneshotBtn.setToggleState(id == 1, juce::dontSendNotification);
@@ -373,7 +389,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     // ── Octave shift switchbox: -2 | -1 | 0 | +1 | +2 ──
     {
-        const juce::StringArray octLabels { "-2", "-1", "0", "+1", "+2" };
+        juce::StringArray octLabels;
+        for (const auto& e : OscOctave::kEntries) octLabels.add(e.label);
         octaveHidden.addItemList(octLabels, 1);
         octaveHidden.onChange = [this] {
             int id = octaveHidden.getSelectedId();
@@ -400,7 +417,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     // ── Noise type switchbox: W | P | B  (shared: both modes) ──
     {
-        const juce::StringArray noiseLabels { "White", "Pink", "Brown" };
+        juce::StringArray noiseLabels;
+        for (const auto& e : NoiseKind::kEntries) noiseLabels.add(e.label);
         noiseTypeHidden.addItemList(noiseLabels, 1);
         noiseTypeHidden.onChange = [this] {
             int id = noiseTypeHidden.getSelectedId();
@@ -433,7 +451,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     // ── Wavetable controls: frame count switchbox ──
     // Frame count switchbox: 32 | 64 | 128 | 256
     {
-        const juce::StringArray frameLabels { "32", "64", "128", "256" };
+        juce::StringArray frameLabels;
+        for (const auto& e : WtFrames::kEntries) frameLabels.add(e.label);
         framesHidden.addItemList(frameLabels, 1);
         framesHidden.onChange = [this] {
             int id = framesHidden.getSelectedId();
@@ -519,7 +538,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     // ── Filter slope switchbox: 6dB 12dB 18dB 24dB ──
     {
-        const juce::StringArray slopeLabels { "6dB", "12dB", "18dB", "24dB" };
+        juce::StringArray slopeLabels;
+        for (const auto& e : FilterSlope::kEntries) slopeLabels.add(e.label);
         filterSlopeHidden.addItemList(slopeLabels, 1);
         filterSlopeHidden.onChange = [this] {
             int id = filterSlopeHidden.getSelectedId();
@@ -588,23 +608,17 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     paintSectionHeader(regenHeader, "DRIFT + REGENERATE", kDriftCol);
     addAndMakeVisible(regenHeader);
 
-    regenHidden.addItemList({"Manual", "Auto",
-        juce::String(juce::CharPointer_UTF8("max 1\xe2\x99\xa9")),
-        juce::String(juce::CharPointer_UTF8("max 4\xe2\x99\xa9")),
-        juce::String(juce::CharPointer_UTF8("max 16\xe2\x99\xa9"))}, 1);
+    juce::StringArray regenItems;
+    for (const auto& e : DriftRegen::kEntries) regenItems.add(juce::String(juce::CharPointer_UTF8(e.label)));
+    regenHidden.addItemList(regenItems, 1);
     regenHidden.onChange = [this] {
         int id = regenHidden.getSelectedId();
         for (int i = 0; i < kNumRegenBtns; ++i)
             regenBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
     };
-    static const juce::String regenLabels[] = {
-        "Manual", "Auto",
-        juce::String(juce::CharPointer_UTF8("max 1\xe2\x99\xa9")),
-        juce::String(juce::CharPointer_UTF8("max 4\xe2\x99\xa9")),
-        juce::String(juce::CharPointer_UTF8("max 16\xe2\x99\xa9"))};
     for (int i = 0; i < kNumRegenBtns; ++i)
     {
-        regenBtns[i].setButtonText(regenLabels[i]);
+        regenBtns[i].setButtonText(regenItems[i]);
         regenBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
         regenBtns[i].setColour(juce::TextButton::buttonOnColourId, kDriftCol);
         regenBtns[i].setColour(juce::TextButton::textColourOffId, kDim);

@@ -1,4 +1,5 @@
 #include "EffectsPanel.h"
+#include "../dsp/BlockParams.h"
 
 static const auto kGreen  = juce::Colour(0xff4a9eff);
 static const auto kDim    = juce::Colour(0xff888888);
@@ -12,9 +13,18 @@ void EffectsPanel::initEnv(EnvSection& env, const juce::String& name,
     env.header.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(env.header);
 
-    env.targetBox.addItemList({"DCA", "Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                               "LFO1 Rate", "LFO1 Depth", "LFO2 Rate", "LFO2 Depth", "---"}, 1);
-    env.targetBox.setSelectedId(name == "AMP" ? 1 : 9, juce::dontSendNotification);
+    // EffectsPanel dropdowns are display-only (no APVTS attachment); labels
+    // come from the single source of truth in BlockParams.h so they never
+    // drift from SynthPanel/APVTS. The previous hardcoded list had "---" at
+    // the END (index 13) and only 10 LFO targets; the new layout uses the
+    // kEntries order which has "---" at index 0 and all 11 LFO targets.
+    juce::StringArray envTargetItems;
+    for (const auto& e : EnvTarget::kEntries) envTargetItems.add(e.label);
+    env.targetBox.addItemList(envTargetItems, 1);
+    // AMP envelope is conceptually the DCA target (index 1 = "DCA");
+    // mod envelopes default to the first real modulation target, "Filter"
+    // (index 2) — consistent with SynthPanel's initEnv defaults.
+    env.targetBox.setSelectedId(name == "AMP" ? 2 : 3, juce::dontSendNotification);
     env.targetBox.onChange = [this] { resized(); };
     addAndMakeVisible(env.targetBox);
 
@@ -51,13 +61,21 @@ void EffectsPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.header.setColour(juce::Label::textColourId, kDim);
     addAndMakeVisible(lfo.header);
 
-    lfo.targetBox.addItemList({"Filter", "Scan", "Pitch", "Dly Time", "Dly FB", "Dly Mix", "Rev Mix",
-                               "Xmod Rate", "Xmod Depth", "---"}, 1);
-    lfo.targetBox.setSelectedId(10, juce::dontSendNotification);
+    // Fix drift against BlockParams.h LfoTarget::kEntries: the old hardcoded
+    // list had stale "Xmod Rate"/"Xmod Depth" (which never existed in APVTS),
+    // was missing "ENV3 Amt", and had "---" at the end (index 10) instead of
+    // the start. The new iteration matches APVTS exactly.
+    juce::StringArray lfoTargetItems;
+    for (const auto& e : LfoTarget::kEntries) lfoTargetItems.add(e.label);
+    lfo.targetBox.addItemList(lfoTargetItems, 1);
+    lfo.targetBox.setSelectedId(1, juce::dontSendNotification); // "---" (None)
     lfo.targetBox.onChange = [this] { resized(); };
     addAndMakeVisible(lfo.targetBox);
 
-    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq", "S&H"}, 1);
+    // NOTE: short-form labels ("Sin"/"Sq") kept as inline literal to stay in
+    // sync with SynthPanel; both diverge from APVTS LfoWave labels. Label
+    // reconciliation is a follow-up. S&H phantom entry removed here too.
+    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq"}, 1);
     addAndMakeVisible(lfo.waveBox);
 
     for (auto* knob : { &lfo.rate, &lfo.depth })

@@ -208,17 +208,18 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     addAndMakeVisible(stepCountBox);
 
     // ── Division toggle strip (hidden ComboBox for APVTS) ──
-    divisionHidden.addItemList({"1/1", "1/2", "1/4", "1/8", "1/16"}, 1);
+    juce::StringArray divisionItems;
+    for (const auto& e : SeqDivision::kEntries) divisionItems.add(e.label);
+    divisionHidden.addItemList(divisionItems, 1);
     divisionHidden.onChange = [this] {
         int id = divisionHidden.getSelectedId();
         for (int i = 0; i < kNumDivBtns; ++i)
             divBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
     };
 
-    static const char* divLabels[] = {"1/1","1/2","1/4","1/8","1/16"};
     for (int i = 0; i < kNumDivBtns; ++i)
     {
-        divBtns[i].setButtonText(divLabels[i]);
+        divBtns[i].setButtonText(divisionItems[i]);
         divBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
         divBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
         divBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
@@ -243,8 +244,9 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     addAndMakeVisible(midiMonitor);
 
     // ── Preset ──
-    presetBox.addItemList({"Octave Bounce","Wide Leap","Off-Beat Minor","Glide Groove","Sparse Stab",
-                           "Rising Arc","Scatter","Chromatic","Bass Walk","Gated Pulse"}, 1);
+    juce::StringArray seqPresetItems;
+    for (const auto& e : SeqPreset::kEntries) seqPresetItems.add(e.label);
+    presetBox.addItemList(seqPresetItems, 1);
     addAndMakeVisible(presetBox);
     presetA = std::make_unique<CA>(apvts, "seq_preset", presetBox);
 
@@ -373,16 +375,17 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     gateRow->updateValue();
 
     // ── Octave shift [-2][-1][0][+1][+2] ──
-    octShiftHidden.addItemList({"-2", "-1", "0", "+1", "+2"}, 1);
+    juce::StringArray seqOctItems;
+    for (const auto& e : SeqOctave::kEntries) seqOctItems.add(e.label);
+    octShiftHidden.addItemList(seqOctItems, 1);
     octShiftHidden.onChange = [this] {
         int id = octShiftHidden.getSelectedId();
         for (int i = 0; i < kNumOctShiftBtns; ++i)
             octShiftBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
     };
-    static const char* octLabels[] = {"-2", "-1", "0", "+1", "+2"};
     for (int i = 0; i < kNumOctShiftBtns; ++i)
     {
-        octShiftBtns[i].setButtonText(octLabels[i]);
+        octShiftBtns[i].setButtonText(seqOctItems[i]);
         octShiftBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
         octShiftBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
         octShiftBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
@@ -424,7 +427,9 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genRotationRow->updateValue();
 
     // Range switchbox [1][2][3][4] octaves
-    genRangeHidden.addItemList({"1","2","3","4"}, 1);
+    juce::StringArray genRangeItems;
+    for (const auto& e : GenRange::kEntries) genRangeItems.add(e.label);
+    genRangeHidden.addItemList(genRangeItems, 1);
     genRangeHidden.onChange = [this] {
         int id = genRangeHidden.getSelectedId();
         for (int i = 0; i < kNumRangeBtns; ++i)
@@ -476,14 +481,18 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genFixRotationA = std::make_unique<BA>(apvts, "gen_fix_rotation", genFixRotationBtn);
     genFixMutationA = std::make_unique<BA>(apvts, "gen_fix_mutation", genFixMutationBtn);
 
-    genScaleRootBox.addItemList({"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 1);
+    juce::StringArray scaleRootItems;
+    for (const auto& e : ScaleRoot::kEntries) scaleRootItems.add(e.label);
+    genScaleRootBox.addItemList(scaleRootItems, 1);
     genScaleRootBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
     genScaleRootBox.setColour(juce::ComboBox::textColourId, kSeqCol);
     genScaleRootBox.setColour(juce::ComboBox::outlineColourId, kBorder);
     addAndMakeVisible(genScaleRootBox);
     genScaleRootA = std::make_unique<CA>(apvts, "scale_root", genScaleRootBox);
 
-    genScaleTypeBox.addItemList({"Off","Maj","Min","Pent","Dor","Harm","WhlT"}, 1);
+    juce::StringArray scaleTypeItems;
+    for (const auto& e : ScaleType::kEntries) scaleTypeItems.add(e.label);
+    genScaleTypeBox.addItemList(scaleTypeItems, 1);
     genScaleTypeBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
     genScaleTypeBox.setColour(juce::ComboBox::textColourId, kSeqCol);
     genScaleTypeBox.setColour(juce::ComboBox::outlineColourId, kBorder);
@@ -491,7 +500,9 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genScaleTypeA = std::make_unique<CA>(apvts, "scale_type", genScaleTypeBox);
 
     // ── Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd) ──
-    arpModeBox.addItemList({"Off","Up","Down","UpDown","Random"}, 1);
+    juce::StringArray arpModeItems;
+    for (const auto& e : ArpMode::kEntries) arpModeItems.add(e.label);
+    arpModeBox.addItemList(arpModeItems, 1);
     arpModeBox.onChange = [this] {
         int id = arpModeBox.getSelectedId();
         for (int i = 0; i < kNumModeBtns; ++i)
@@ -512,7 +523,9 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     }
     arpModeA = std::make_unique<CA>(apvts, "arp_mode", arpModeBox);
 
-    arpRateBox.addItemList({"1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}, 1);
+    juce::StringArray arpRateItems;
+    for (const auto& e : ArpRate::kEntries) arpRateItems.add(e.label);
+    arpRateBox.addItemList(arpRateItems, 1);
     addAndMakeVisible(arpRateBox);
     arpRateA = std::make_unique<CA>(apvts, "arp_rate", arpRateBox);
 
