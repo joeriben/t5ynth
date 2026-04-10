@@ -508,6 +508,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     juce::ScopedNoDenormals noDenormals;
     buffer.clear();
 
+
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
 
@@ -1065,11 +1066,13 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         }
         lastTriggeredNote = voiceOut.lastTriggeredNote;
 
-        // Capture last LFO values for block-rate modulation
+        // Capture last LFO values for block-rate modulation + ghost display
         float lastMod1Val = voiceOut.lastMod1Val;
         float lastMod2Val = voiceOut.lastMod2Val;
         float lastLfo1Val = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
         float lastLfo2Val = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
+        lastLfo1Val_ = lastLfo1Val;
+        lastLfo2Val_ = lastLfo2Val;
 
         // Filter is now per-voice (in SynthVoice::renderSample)
 
@@ -1104,9 +1107,17 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     else
     {
-        // Free-running LFOs: advance phase without per-sample computation
-        lfo1.advancePhase(numSamples);
-        lfo2.advancePhase(numSamples);
+        // Free-running LFOs: sample one value for ghost display, advance rest
+        if (numSamples > 0)
+        {
+            lastLfo1Val_ = lfo1.processSample();
+            lastLfo2Val_ = lfo2.processSample();
+            if (numSamples > 1)
+            {
+                lfo1.advancePhase(numSamples - 1);
+                lfo2.advancePhase(numSamples - 1);
+            }
+        }
     }
 
     // ── Effects (parallel send-bus: dry + delay + reverb → limiter) ───────
@@ -1234,46 +1245,78 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     // ── Update modulated values for GUI ghost indicators ────────────────────
-    // Only store non-NaN when something actually modulates the parameter.
+    // LFO-driven ghosts run continuously (LFOs are free-running) so the user
+    // sees modulation movement even between notes. Envelope-driven ghosts
+    // still require active voices (envelopes only produce values when a
+    // voice is playing).
     constexpr float NO_GHOST = std::numeric_limits<float>::quiet_NaN();
 
-    if (!skipSynthesis)
     {
+        bool hasVoices = voiceOut.hasActiveVoices;
+
         // Filter cutoff ghost
         {
-            bool filterModulated = (bp.mod1Target == EnvTarget::Filter || bp.mod2Target == EnvTarget::Filter ||
-                                    bp.lfo1Target == LfoTarget::Filter || bp.lfo2Target == LfoTarget::Filter ||
-                                    bp.kbdTrack > 0.0f) && voiceOut.hasActiveVoices;
-            modulatedValues.filterCutoff.store(filterModulated ? voiceOut.lastModulatedCutoff : NO_GHOST,
-                                               std::memory_order_relaxed);
+            bool lfoModFilter = bp.lfo1Target == LfoTarget::Filter || bp.lfo2Target == LfoTarget::Filter;
+            bool envModFilter = (bp.mod1Target == EnvTarget::Filter || bp.mod2Target == EnvTarget::Filter
+                                 || bp.kbdTrack > 0.0f) && hasVoices;
+
+            if (hasVoices && (lfoModFilter || envModFilter))
+            {
+                modulatedValues.filterCutoff.store(voiceOut.lastModulatedCutoff, std::memory_order_relaxed);
+            }
+            else if (lfoModFilter)
+            {
+                // Hypothetical cutoff from base + LFO (no envelope, no kbd track)
+                constexpr float FILTER_OCTAVES = 10.0f;
+                float hypo = bp.baseCutoff;
+                if (bp.lfo1Target == LfoTarget::Filter) hypo *= std::pow(2.0f, lastLfo1Val_ * FILTER_OCTAVES);
+                if (bp.lfo2Target == LfoTarget::Filter) hypo *= std::pow(2.0f, lastLfo2Val_ * FILTER_OCTAVES);
+                modulatedValues.filterCutoff.store(juce::jlimit(20.0f, 20000.0f, hypo), std::memory_order_relaxed);
+            }
+            else
+            {
+                modulatedValues.filterCutoff.store(NO_GHOST, std::memory_order_relaxed);
+            }
         }
 
         // Scan ghost
         {
-            bool scanModulated = (bp.mod1Target == EnvTarget::Scan || bp.mod2Target == EnvTarget::Scan ||
-                                  bp.lfo1Target == LfoTarget::Scan || bp.lfo2Target == LfoTarget::Scan ||
-                                  std::abs(bp.driftScanOffset) > 0.001f) && voiceOut.hasActiveVoices;
-            modulatedValues.scanPosition.store(scanModulated ? voiceOut.lastModulatedScan : NO_GHOST,
-                                               std::memory_order_relaxed);
+            bool lfoModScan = bp.lfo1Target == LfoTarget::Scan || bp.lfo2Target == LfoTarget::Scan;
+            bool envModScan = (bp.mod1Target == EnvTarget::Scan || bp.mod2Target == EnvTarget::Scan
+                               || std::abs(bp.driftScanOffset) > 0.001f) && hasVoices;
+
+            if (hasVoices && (lfoModScan || envModScan))
+            {
+                modulatedValues.scanPosition.store(voiceOut.lastModulatedScan, std::memory_order_relaxed);
+            }
+            else if (lfoModScan)
+            {
+                float hypo = bp.baseScan;
+                if (bp.lfo1Target == LfoTarget::Scan) hypo += lastLfo1Val_;
+                if (bp.lfo2Target == LfoTarget::Scan) hypo += lastLfo2Val_;
+                modulatedValues.scanPosition.store(juce::jlimit(0.0f, 1.0f, hypo), std::memory_order_relaxed);
+            }
+            else
+            {
+                modulatedValues.scanPosition.store(NO_GHOST, std::memory_order_relaxed);
+            }
         }
 
-        // LFO1 Rate/Depth ghost
+        // LFO1/2 Rate/Depth ghost (env → LFO modulation, requires active voices)
+        if (!skipSynthesis)
         {
             bool lfo1RateMod  = bp.mod1Target == EnvTarget::LFO1Rate  || bp.mod2Target == EnvTarget::LFO1Rate;
             bool lfo1DepthMod = bp.mod1Target == EnvTarget::LFO1Depth || bp.mod2Target == EnvTarget::LFO1Depth;
             modulatedValues.lfo1Rate.store(lfo1RateMod ? lfo1.getRate() : NO_GHOST, std::memory_order_relaxed);
             modulatedValues.lfo1Depth.store(lfo1DepthMod ? lfo1.getDepth() : NO_GHOST, std::memory_order_relaxed);
-        }
 
-        // LFO2 Rate/Depth ghost
-        {
             bool lfo2RateMod  = bp.mod1Target == EnvTarget::LFO2Rate  || bp.mod2Target == EnvTarget::LFO2Rate;
             bool lfo2DepthMod = bp.mod1Target == EnvTarget::LFO2Depth || bp.mod2Target == EnvTarget::LFO2Depth;
             modulatedValues.lfo2Rate.store(lfo2RateMod ? lfo2.getRate() : NO_GHOST, std::memory_order_relaxed);
             modulatedValues.lfo2Depth.store(lfo2DepthMod ? lfo2.getDepth() : NO_GHOST, std::memory_order_relaxed);
         }
 
-        // Delay/Reverb: modulated by env or LFO targeting them
+        // Delay/Reverb ghosts (modulated by env or LFO targeting them)
         {
             bool dlyTimeMod = modDelayTime != 0.0f;
             bool dlyFbMod   = modDelayFb != 0.0f;
@@ -1334,73 +1377,86 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     // Keep generatedAudioFull in sync (used for waveform display + presets)
     generatedAudioFull.makeCopyOf(feedBuffer);
 
-    // Feed the sampler/voice chain
-    masterSampler.loadBuffer(feedBuffer, sr);
-
-    // Auto-position brackets and start point — but only if the user hasn't
-    // manually adjusted them. This preserves user-placed points across regenerations.
-    if (!masterSampler.getUserPointsAdjusted())
+    // ── Auto-trim P2/P3 BEFORE loadBuffer so that preparePlaybackBuffer
+    //    (which runs normalization) already sees the correct region. ──────
+    if (!masterSampler.getPointsLocked())
     {
-        // In wavetable mode, auto-position brackets to the active signal region
-        // (trim leading/trailing silence so extraction doesn't produce useless frames)
-        if (isWavetableMode())
+        float prevP1 = masterSampler.getStartPos();
+
+        const int numSamples = feedBuffer.getNumSamples();
+        float startFrac = 0.0f;
+        float endFrac   = 1.0f;
+
+        if (numSamples > 0)
         {
-            const int numSamples = feedBuffer.getNumSamples();
-            if (numSamples > 0)
+            const float* data = feedBuffer.getReadPointer(0);
+
+            // Find global peak for relative threshold (-48 dB from peak).
+            // -48 dB is ~0.004× peak — catches the perceptual silence floor
+            // while tolerating low-level reverb tails that VAE decoders
+            // commonly produce. Fixed-absolute thresholds fail on quiet
+            // generations; pure psychoacoustic thresholds (-96 dB) are too
+            // sensitive for machine-generated audio with low-level artefacts.
+            float globalPeak = 0.0f;
+            for (int i = 0; i < numSamples; ++i)
+                globalPeak = std::max(globalPeak, std::abs(data[i]));
+
+            const float threshold = globalPeak * 0.004f; // -48 dB from peak
+            const int windowSize = 256;
+
+            int firstActive = 0;
+            int lastActive = numSamples;
+
+            for (int pos = 0; pos + windowSize <= numSamples; pos += windowSize)
             {
-                const float* data = feedBuffer.getReadPointer(0);
-                const int windowSize = 256;
-                const float threshold = 0.002f; // Peak threshold (~-54dB)
-
-                int firstActive = 0;
-                int lastActive = numSamples;
-
-                // Find first window with peak above threshold
-                for (int pos = 0; pos + windowSize <= numSamples; pos += windowSize)
+                float peak = 0.0f;
+                for (int i = 0; i < windowSize; ++i)
+                    peak = std::max(peak, std::abs(data[pos + i]));
+                if (peak > threshold)
                 {
-                    float peak = 0.0f;
-                    for (int i = 0; i < windowSize; ++i)
-                        peak = std::max(peak, std::abs(data[pos + i]));
-                    if (peak > threshold)
-                    {
-                        firstActive = pos;
-                        break;
-                    }
+                    firstActive = pos;
+                    break;
                 }
+            }
 
-                // Find last window with peak above threshold
-                for (int pos = numSamples - windowSize; pos >= 0; pos -= windowSize)
+            for (int pos = numSamples - windowSize; pos >= 0; pos -= windowSize)
+            {
+                float peak = 0.0f;
+                int len = juce::jmin(windowSize, numSamples - pos);
+                for (int i = 0; i < len; ++i)
+                    peak = std::max(peak, std::abs(data[pos + i]));
+                if (peak > threshold)
                 {
-                    float peak = 0.0f;
-                    int len = juce::jmin(windowSize, numSamples - pos);
-                    for (int i = 0; i < len; ++i)
-                        peak = std::max(peak, std::abs(data[pos + i]));
-                    if (peak > threshold)
-                    {
-                        lastActive = juce::jmin(pos + windowSize, numSamples);
-                        break;
-                    }
+                    lastActive = juce::jmin(pos + windowSize, numSamples);
+                    break;
                 }
+            }
 
-                // Small margin (one window each side)
-                firstActive = juce::jmax(0, firstActive - windowSize);
-                lastActive  = juce::jmin(numSamples, lastActive + windowSize);
+            // Small margin (one window each side)
+            firstActive = juce::jmax(0, firstActive - windowSize);
+            lastActive  = juce::jmin(numSamples, lastActive + windowSize);
 
-                float startFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
-                float endFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
+            startFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
+            endFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
 
-                // Only apply if the detected region is meaningful
-                if (endFrac - startFrac >= 0.05f)
-                {
-                    masterSampler.setLoopStart(startFrac);
-                    masterSampler.setLoopEnd(endFrac);
-                }
+            if (endFrac - startFrac < 0.05f)
+            {
+                startFrac = 0.0f;
+                endFrac   = 1.0f;
             }
         }
 
-        // Default P1 = P2 (start position = loop start) on new audio load
-        masterSampler.setStartPos(masterSampler.getLoopStart());
+        masterSampler.setLoopStart(startFrac);
+        masterSampler.setLoopEnd(endFrac);
+
+        // P1: preserve user's aesthetic choice, but clamp into active region
+        if (prevP1 < startFrac || prevP1 > endFrac)
+            masterSampler.setStartPos(startFrac);
     }
+
+    // Feed the sampler/voice chain — preparePlaybackBuffer now sees the
+    // correct P2/P3, so normalization targets the right region.
+    masterSampler.loadBuffer(feedBuffer, sr);
 
     // Extract frames for the wavetable oscillator (both modes use it now)
     float extractStart = masterSampler.getLoopStart();
@@ -1462,14 +1518,6 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
         newWaveformReady.store(true, std::memory_order_release);
     }
 
-    // Re-apply preset points that were deferred past auto-bracketing
-    if (hasPendingPresetPoints_)
-    {
-        masterSampler.setLoopStart(pendingPresetP2_);
-        masterSampler.setLoopEnd(pendingPresetP3_);
-        masterSampler.setStartPos(pendingPresetP1_);
-        hasPendingPresetPoints_ = false;
-    }
 }
 
 void T5ynthProcessor::reloadProcessedAudio(const juce::AudioBuffer<float>& processed)
@@ -1676,6 +1724,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     engine->setProperty("loopStartFrac", static_cast<double>(masterSampler.getLoopStart()));
     engine->setProperty("loopEndFrac", static_cast<double>(masterSampler.getLoopEnd()));
     engine->setProperty("startPosFrac", static_cast<double>(masterSampler.getStartPos()));
+    engine->setProperty("pointsLocked", masterSampler.getPointsLocked());
     engine->setProperty("crossfadeMs", get("crossfade_ms"));
     engine->setProperty("normalize", get("normalize") > 0.5f);
     engine->setProperty("loopOptimize", choiceToKey(static_cast<int>(get("loop_optimize")), LoopOptimize::kEntries));
@@ -1862,14 +1911,13 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         setParam(parameters, "loop_mode",
                  static_cast<float>(choiceFromKey(engine->getProperty("loopMode").toString(), LoopMode::kEntries)));
 
-        // Store preset points — they'll be re-applied after loadGeneratedAudio
-        // (which overwrites them via auto-bracketing when userPointsAdjusted is false).
-        // Session 3 replaces this pending-apply dance with an explicit Lock flag.
-        pendingPresetP2_ = static_cast<float>(engine->getProperty("loopStartFrac"));
-        pendingPresetP3_ = static_cast<float>(engine->getProperty("loopEndFrac"));
-        pendingPresetP1_ = static_cast<float>(engine->getProperty("startPosFrac"));
-        hasPendingPresetPoints_ = true;
-        masterSampler.setUserPointsAdjusted(false);
+        // Restore P1/P2/P3 directly — the explicit pointsLocked flag gates
+        // auto-bracketing in loadGeneratedAudio so no pending-apply dance is
+        // needed. Older v3 presets without the flag default to unlocked.
+        masterSampler.setLoopStart(static_cast<float>(engine->getProperty("loopStartFrac")));
+        masterSampler.setLoopEnd(static_cast<float>(engine->getProperty("loopEndFrac")));
+        masterSampler.setStartPos(static_cast<float>(engine->getProperty("startPosFrac")));
+        masterSampler.setPointsLocked(static_cast<bool>(engine->getProperty("pointsLocked")));
         setParam(parameters, "crossfade_ms", static_cast<float>(engine->getProperty("crossfadeMs")));
         setParam(parameters, "normalize", static_cast<bool>(engine->getProperty("normalize")) ? 1.0f : 0.0f);
         setParam(parameters, "loop_optimize",

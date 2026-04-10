@@ -1,14 +1,26 @@
 #include "LFO.h"
 
+float LFO::nextRandom()
+{
+    // xorshift64 → signed → [-1, 1]
+    rngState_ ^= rngState_ << 13;
+    rngState_ ^= rngState_ >> 7;
+    rngState_ ^= rngState_ << 17;
+    return static_cast<float>(static_cast<int64_t>(rngState_))
+         * (1.0f / 9223372036854775808.0f);
+}
+
 void LFO::prepare(double sampleRate)
 {
     sr = sampleRate;
     phase = 0.0;
+    heldValue_ = nextRandom(); // avoid silent first period for S&H
 }
 
 void LFO::reset()
 {
     phase = 0.0;
+    heldValue_ = nextRandom();
 }
 
 float LFO::processSample()
@@ -32,6 +44,9 @@ float LFO::processSample()
         case 3: // Square
             output = phase < 0.5 ? 1.0f : -1.0f;
             break;
+        case 4: // Sample & Hold
+            output = heldValue_;
+            break;
         default:
             output = static_cast<float>(std::sin(phase * TWO_PI));
             break;
@@ -41,7 +56,10 @@ float LFO::processSample()
     double phaseInc = static_cast<double>(rate) / sr;
     phase += phaseInc;
     if (phase >= 1.0)
+    {
         phase -= 1.0;
+        heldValue_ = nextRandom(); // latch new value at period boundary
+    }
 
     return output * depth;
 }

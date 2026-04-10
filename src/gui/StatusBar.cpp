@@ -3,13 +3,14 @@
 
 StatusBar::StatusBar()
 {
-    for (auto* btn : { &saveBtn, &loadBtn, &exportBtn, &settingsBtn, &manualBtn })
+    for (auto* btn : { &newBtn, &saveBtn, &loadBtn, &exportBtn, &settingsBtn, &manualBtn })
     {
         btn->setColour(juce::TextButton::buttonColourId, kSurface);
         btn->setColour(juce::TextButton::textColourOffId, kDim);
         addAndMakeVisible(btn);
     }
 
+    newBtn.onClick      = [this] { if (onNewPreset) onNewPreset(); };
     saveBtn.onClick     = [this] { if (onSavePreset) onSavePreset(); };
     loadBtn.onClick     = [this] { if (onLoadPreset) onLoadPreset(); };
     exportBtn.onClick   = [this] { if (onExportWav) onExportWav(); };
@@ -31,7 +32,7 @@ void StatusBar::paint(juce::Graphics& g)
     g.setFont(juce::FontOptions(fs));
 
     int textX = juce::roundToInt(dotX + dotSize + 6.0f);
-    int rightEdge = saveBtn.getX() - 8;
+    int rightEdge = newBtn.getX() - 8;
 
     // Status text (left side)
     g.setColour(juce::Colour(0xffe3e3e3));
@@ -56,16 +57,18 @@ void StatusBar::resized()
     int y = 1;
     int gap = 4;
 
-    // Right to left: Manual, Settings, Export, Load, Save
+    // Right to left: Manual, Settings, Export, Load, Save, New
     int manualW = 60;
     int settingsW = 60;
     int exportW = 54;
+    int newW = 40;
 
     manualBtn.setBounds(b.getRight() - manualW - gap, y, manualW, btnH);
     settingsBtn.setBounds(manualBtn.getX() - settingsW - gap, y, settingsW, btnH);
     exportBtn.setBounds(settingsBtn.getX() - exportW - gap, y, exportW, btnH);
     loadBtn.setBounds(exportBtn.getX() - btnW - gap, y, btnW, btnH);
     saveBtn.setBounds(loadBtn.getX() - btnW - gap, y, btnW, btnH);
+    newBtn.setBounds(saveBtn.getX() - newW - gap, y, newW, btnH);
 }
 
 void StatusBar::setStatusText(const juce::String& text)

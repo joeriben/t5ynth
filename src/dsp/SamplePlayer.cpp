@@ -187,9 +187,19 @@ void SamplePlayer::preparePlaybackBuffer()
         coldStart = ls;
     }
 
-    // Normalize if enabled (only scan the play region for peak)
+    // Normalize if enabled.
+    // Loop/PingPong: scan P2..P3 (the loop region determines sustained loudness).
+    // OneShot: scan P1..P3 (plays once from P1, no loop — P1 is the audible start).
     if (normalizeOn)
-        normalizeBuffer(playBuffer, playStart, playEnd);
+    {
+        int normStart = playStart; // P2
+        if (loopMode == LoopMode::OneShot)
+        {
+            int p1 = static_cast<int>(std::floor(startPosFrac * bufLen));
+            normStart = std::min(p1, playStart);
+        }
+        normalizeBuffer(playBuffer, normStart, playEnd);
+    }
 
     // Reset read position via retrigger (respects P1)
     readPosition = static_cast<double>(coldStart);

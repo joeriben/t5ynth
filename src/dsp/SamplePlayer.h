@@ -74,10 +74,11 @@ public:
     float getLoopEnd()   const { return loopEndFrac; }
     float getStartPos()  const { return startPosFrac; }
 
-    /** True if the user has manually adjusted any of P1/P2/P3 via the UI.
-     *  When set, auto-positioning on regeneration is skipped. */
-    bool  getUserPointsAdjusted() const { return userPointsAdjusted_; }
-    void  setUserPointsAdjusted(bool v) { userPointsAdjusted_ = v; }
+    /** True if P1/P2/P3 are locked (preset-preserved / user-adjusted).
+     *  When set, auto-positioning on regeneration is skipped. Serialized
+     *  as engine.pointsLocked in the preset JSON. */
+    bool  getPointsLocked() const { return pointsLocked_; }
+    void  setPointsLocked(bool v) { pointsLocked_ = v; }
 
     /** Share playback buffer from a master player (for polyphonic voices).
      *  Shared-mode players have their own read position but read from the
@@ -125,7 +126,7 @@ private:
     float startPosFrac  = 0.0f;   // P1: playback start position
     float loopStartFrac = 0.0f;   // P2: loop begin
     float loopEndFrac   = 1.0f;   // P3: loop end
-    bool  userPointsAdjusted_ = false; // true if user manually moved any point
+    bool  pointsLocked_ = false; // true → Generate never touches P1/P2/P3
 
     // Playback bounds in samples (within playBuffer)
     int playStart  = 0;

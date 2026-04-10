@@ -18,6 +18,7 @@ public:
     void setPresetName(const juce::String& name);
 
     /** Callbacks for buttons. */
+    std::function<void()> onNewPreset;
     std::function<void()> onSavePreset;
     std::function<void()> onLoadPreset;
     std::function<void()> onExportWav;
@@ -29,6 +30,7 @@ private:
     juce::String presetName;
     bool backendConnected = false;
 
+    juce::TextButton newBtn  { "New" };
     juce::TextButton saveBtn { "Save" };
     juce::TextButton loadBtn { "Load" };
     juce::TextButton exportBtn { "Export" };

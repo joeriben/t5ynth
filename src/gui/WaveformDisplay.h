@@ -12,6 +12,24 @@ class WaveformDisplay : public juce::Component,
                         private juce::Timer
 {
 public:
+    /**
+     * Small square button with a Material lock / lock_open icon inside a
+     * thin border. Sits inside the waveform rectangle, just above the
+     * P1/P2/P3 handle line. Click toggles the bound lock state.
+     */
+    class LockButton : public juce::Component
+    {
+    public:
+        LockButton() { setMouseCursor(juce::MouseCursor::PointingHandCursor); }
+        void setLocked(bool v) { if (locked_ != v) { locked_ = v; repaint(); } }
+        bool isLocked() const { return locked_; }
+        std::function<void(bool)> onToggled;
+        void paint(juce::Graphics& g) override;
+        void mouseDown(const juce::MouseEvent&) override;
+    private:
+        bool locked_ = false;
+    };
+
     WaveformDisplay();
     ~WaveformDisplay() override = default;
 
@@ -57,6 +75,9 @@ public:
     /** Callback when P1 (start position) is dragged. */
     std::function<void(float)> onStartPosChanged;
 
+    /** Access the lock button (owner wires onToggled + setLocked from preset). */
+    LockButton& getLockButton() { return lockButton; }
+
 private:
     void timerCallback() override;
 
@@ -85,6 +106,8 @@ private:
     juce::Rectangle<float> getWaveformArea() const;
     float fracToX(float frac) const;
     float xToFrac(float x) const;
+
+    LockButton lockButton;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(WaveformDisplay)
 };

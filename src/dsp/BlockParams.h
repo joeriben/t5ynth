@@ -240,17 +240,18 @@ namespace NoiseKind {
     static_assert(Brown + 1 == kCount, "NoiseKind out of sync.");
 }
 
-// ── LFO waveform (Session 1: 4 entries, S&H added in Session 3) ──
+// ── LFO waveform (5 entries including S&H) ──
 namespace LfoWave {
-    enum : int { Sine = 0, Tri = 1, Saw = 2, Square = 3 };
+    enum : int { Sine = 0, Tri = 1, Saw = 2, Square = 3, SampleHold = 4 };
     static constexpr ChoiceEntry kEntries[] = {
-        { "sine",     "Sine"   },
-        { "triangle", "Tri"    },
-        { "sawtooth", "Saw"    },
-        { "square",   "Square" }
+        { "sine",            "Sine"   },
+        { "triangle",        "Tri"    },
+        { "sawtooth",        "Saw"    },
+        { "square",          "Square" },
+        { "sample_and_hold", "S&H"    }
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
-    static_assert(Square + 1 == kCount, "LfoWave out of sync.");
+    static_assert(SampleHold + 1 == kCount, "LfoWave out of sync.");
 }
 
 // ── LFO trigger mode ──

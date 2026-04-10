@@ -1,8 +1,35 @@
 #include "WaveformDisplay.h"
 #include "GuiHelpers.h"
 
+// ── LockButton ──────────────────────────────────────────────────────────────
+
+void WaveformDisplay::LockButton::paint(juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat();
+
+    // Active = accent background (like all other toggles), inactive = surface
+    g.setColour(locked_ ? kAccent : kSurface);
+    g.fillRect(b);
+    g.setColour(kBorder);
+    g.drawRect(b, 1.0f);
+
+    g.setColour(locked_ ? juce::Colours::white : kDim);
+    g.setFont(juce::FontOptions(std::min(b.getWidth(), b.getHeight()) * 0.55f));
+    g.drawText("LOCK", b, juce::Justification::centred);
+}
+
+void WaveformDisplay::LockButton::mouseDown(const juce::MouseEvent&)
+{
+    locked_ = !locked_;
+    repaint();
+    if (onToggled) onToggled(locked_);
+}
+
+// ── WaveformDisplay ─────────────────────────────────────────────────────────
+
 WaveformDisplay::WaveformDisplay()
 {
+    addAndMakeVisible(lockButton);
     startTimerHz(5);
 }
 
@@ -151,7 +178,27 @@ void WaveformDisplay::paint(juce::Graphics& g)
     }
 }
 
-void WaveformDisplay::resized() {}
+void WaveformDisplay::resized()
+{
+    // Position the Lock button inside the waveform rectangle, bottom-right,
+    // just above the P1/P2/P3 handle line. When bottomReserve > 0 the line
+    // sits below the waveform → button goes to the bottom-right corner of
+    // the waveform area itself. When bottomReserve == 0 the line is at
+    // area.getBottom() - 2, so we nudge the button up by ~2*HANDLE_RADIUS
+    // to clear the handles.
+    constexpr int kBtnW = 32, kBtnH = 16;
+    auto area = getWaveformArea();
+    // Plant the button's bottom edge right at the P1/P2/P3 handle line so
+    // it reads as belonging to the bracket controls, not the waveform.
+    // lineY (from paint): bottomReserve>0 → area.bottom + HANDLE_RADIUS + reserve/2
+    //                     bottomReserve==0 → area.bottom - 2
+    float lineY = (bottomReserve > 0)
+        ? area.getBottom() + HANDLE_RADIUS + static_cast<float>(bottomReserve) * 0.5f
+        : area.getBottom() - 2.0f;
+    int x = static_cast<int>(area.getRight()) - kBtnW - 2;
+    int y = static_cast<int>(lineY) - kBtnH - static_cast<int>(HANDLE_RADIUS) - 1;
+    lockButton.setBounds(x, y, kBtnW, kBtnH);
+}
 
 void WaveformDisplay::mouseDown(const juce::MouseEvent& e)
 {

@@ -74,8 +74,8 @@ void EffectsPanel::initLfo(LfoSection& lfo, const juce::String& name,
 
     // NOTE: short-form labels ("Sin"/"Sq") kept as inline literal to stay in
     // sync with SynthPanel; both diverge from APVTS LfoWave labels. Label
-    // reconciliation is a follow-up. S&H phantom entry removed here too.
-    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq"}, 1);
+    // reconciliation is a follow-up. Entry count must match LfoWave::kEntries.
+    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq", "S&H"}, 1);
     addAndMakeVisible(lfo.waveBox);
 
     for (auto* knob : { &lfo.rate, &lfo.depth })

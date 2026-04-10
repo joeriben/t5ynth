@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <cstdint>
 
 /**
  * Low-frequency oscillator with multiple waveforms.
@@ -24,7 +25,7 @@ public:
     /** Set rate in Hz. */
     void setRate(float hz) { rate = hz; }
 
-    /** Set waveform type (0=Sine, 1=Triangle, 2=Saw, 3=Square). */
+    /** Set waveform type (0=Sine, 1=Triangle, 2=Saw, 3=Square, 4=S&H). */
     void setWaveform(int type) { waveform = type; }
 
     /** Set output depth/amount (multiplier). */
@@ -40,6 +41,11 @@ private:
     float rate = 1.0f;
     int waveform = 0;
     float depth = 1.0f;
+
+    // Sample-and-hold state (latched at each phase wrap)
+    float heldValue_ = 0.0f;
+    uint64_t rngState_ = 0xA1B2C3D4E5F60789ULL;
+    float nextRandom(); // xorshift64 → [-1, 1]
 
     static constexpr double TWO_PI = 6.283185307179586;
 };

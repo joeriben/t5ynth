@@ -111,11 +111,10 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     addAndMakeVisible(lfo.targetBox);
 
     // NOTE: short-form labels ("Sin"/"Sq") differ from APVTS LfoWave labels
-    // ("Sine"/"Square"). Kept as inline literal for now — GUI/APVTS label
-    // reconciliation is a follow-up. S&H was a phantom (APVTS has 4 entries,
-    // not 5) and has been removed. Session 3 reintroduces S&H properly via
-    // LfoWave::kEntries.
-    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq"}, 1);
+    // ("Sine"/"Square"). Kept as inline literal for display compactness —
+    // ComboBoxAttachment is index-based so this works. Entry count must
+    // match LfoWave::kEntries (5: Sine, Tri, Saw, Square, S&H).
+    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq", "S&H"}, 1);
     addAndMakeVisible(lfo.waveBox);
 
     juce::StringArray lfoModeItems;
@@ -248,7 +247,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     waveformDisplay.onLoopRegionChanged = [this](float start, float end) {
         processorRef.getSampler().setLoopStart(start);
         processorRef.getSampler().setLoopEnd(end);
-        processorRef.getSampler().setUserPointsAdjusted(true);
+        processorRef.getSampler().setPointsLocked(true);
+        waveformDisplay.getLockButton().setLocked(true);
 
         // In wavetable mode, re-extract frames from the new region
         if (processorRef.isWavetableMode())
@@ -258,9 +258,15 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     // P1 (start position) handle
     waveformDisplay.onStartPosChanged = [this](float pos) {
         processorRef.getSampler().setStartPos(pos);
-        processorRef.getSampler().setUserPointsAdjusted(true);
+        processorRef.getSampler().setPointsLocked(true);
+        waveformDisplay.getLockButton().setLocked(true);
         if (processorRef.isWavetableMode())
             processorRef.getMasterOsc().setAutoScanStartPos(pos);
+    };
+
+    // Lock button: toggles P1/P2/P3 preservation across Generate
+    waveformDisplay.getLockButton().onToggled = [this](bool locked) {
+        processorRef.getSampler().setPointsLocked(locked);
     };
 
     // Scan position: dragging in WaveformDisplay updates the APVTS slider
@@ -694,7 +700,7 @@ void SynthPanel::timerCallback()
         if (sr > 0)
             waveformDisplay.setBufferDuration(static_cast<float>(numSamples / sr));
 
-        // Sync brackets + start position from processor
+        // Sync brackets + start position + lock state from processor
         {
             float s = processorRef.getSampler().getLoopStart();
             float e = processorRef.getSampler().getLoopEnd();
@@ -702,6 +708,8 @@ void SynthPanel::timerCallback()
             waveformDisplay.setLoopStart(s);
             waveformDisplay.setLoopEnd(e);
             waveformDisplay.setStartPos(p1);
+            waveformDisplay.getLockButton().setLocked(
+                processorRef.getSampler().getPointsLocked());
         }
 
         processorRef.clearNewWaveformFlag();

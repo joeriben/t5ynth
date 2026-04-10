@@ -154,23 +154,6 @@ private:
     juce::AudioBuffer<float> generatedAudioRaw;   // raw VAE output (for re-apply on toggle)
     double generatedSampleRate = 44100.0;
 
-    // Deferred preset points (applied after loadGeneratedAudio auto-bracketing)
-    float pendingPresetP1_ = 0.0f, pendingPresetP2_ = 0.0f, pendingPresetP3_ = 1.0f;
-    bool  hasPendingPresetPoints_ = false;
-
-public:
-    /** Force-apply stored preset points after audio load. */
-    void applyPendingPresetPoints()
-    {
-        if (!hasPendingPresetPoints_) return;
-        masterSampler.setLoopStart(pendingPresetP2_);
-        masterSampler.setLoopEnd(pendingPresetP3_);
-        masterSampler.setStartPos(pendingPresetP1_);
-        hasPendingPresetPoints_ = false;
-    }
-    bool hasPendingPresetPoints() const { return hasPendingPresetPoints_; }
-private:
-
     /** Two-band high shelf to compensate VAE decoder HF rolloff. */
     static void applyHfBoost(juce::AudioBuffer<float>& buffer, double sampleRate);
 
@@ -182,6 +165,9 @@ private:
 
     // Pre-allocated LFO buffers (avoid heap alloc in processBlock)
     std::vector<float> lfo1Buffer, lfo2Buffer;
+
+    // Persisted LFO output for ghost display (updated every block, even during idle)
+    float lastLfo1Val_ = 0.0f, lastLfo2Val_ = 0.0f;
 
     // Waveform display
     juce::AudioBuffer<float> waveformSnapshot;
