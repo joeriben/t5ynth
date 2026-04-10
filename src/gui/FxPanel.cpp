@@ -58,10 +58,10 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
         addAndMakeVisible(*r);
 
-    delayTimeA = std::make_unique<SA>(apvts, "delay_time",     delayTimeRow->getSlider());
-    delayFbA   = std::make_unique<SA>(apvts, "delay_feedback", delayFbRow->getSlider());
-    delayDampA = std::make_unique<SA>(apvts, "delay_damp",     delayDampRow->getSlider());
-    delayMixA  = std::make_unique<SA>(apvts, "delay_mix",      delayMixRow->getSlider());
+    delayTimeA = std::make_unique<SA>(apvts, PID::delayTime,     delayTimeRow->getSlider());
+    delayFbA   = std::make_unique<SA>(apvts, PID::delayFeedback, delayFbRow->getSlider());
+    delayDampA = std::make_unique<SA>(apvts, PID::delayDamp,     delayDampRow->getSlider());
+    delayMixA  = std::make_unique<SA>(apvts, PID::delayMix,      delayMixRow->getSlider());
 
     delayTimeRow->updateValue();
     delayFbRow->updateValue();
@@ -69,7 +69,7 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     delayMixRow->updateValue();
 
     // Attach APVTS AFTER buttons are set up (triggers onChange → updateVisibility)
-    delayTypeA = std::make_unique<CA>(apvts, "delay_type", delayTypeHidden);
+    delayTypeA = std::make_unique<CA>(apvts, PID::delayType, delayTypeHidden);
 
     // ══════════ REVERB section ══════════
     paintSectionHeader(reverbHeader, "REVERB", kFxCol);
@@ -108,10 +108,10 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     for (auto* r : { reverbMixRow.get(), algoRoomRow.get(), algoDampRow.get(), algoWidthRow.get() })
         addAndMakeVisible(*r);
 
-    reverbMixA = std::make_unique<SA>(apvts, "reverb_mix",   reverbMixRow->getSlider());
-    algoRoomA  = std::make_unique<SA>(apvts, "algo_room",    algoRoomRow->getSlider());
-    algoDampA  = std::make_unique<SA>(apvts, "algo_damping", algoDampRow->getSlider());
-    algoWidthA = std::make_unique<SA>(apvts, "algo_width",   algoWidthRow->getSlider());
+    reverbMixA = std::make_unique<SA>(apvts, PID::reverbMix,   reverbMixRow->getSlider());
+    algoRoomA  = std::make_unique<SA>(apvts, PID::algoRoom,    algoRoomRow->getSlider());
+    algoDampA  = std::make_unique<SA>(apvts, PID::algoDamping, algoDampRow->getSlider());
+    algoWidthA = std::make_unique<SA>(apvts, PID::algoWidth,   algoWidthRow->getSlider());
 
     reverbMixRow->updateValue();
     algoRoomRow->updateValue();
@@ -119,7 +119,7 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
     algoWidthRow->updateValue();
 
     // Attach APVTS AFTER buttons are set up
-    reverbTypeA = std::make_unique<CA>(apvts, "reverb_type", reverbTypeHidden);
+    reverbTypeA = std::make_unique<CA>(apvts, PID::reverbType, reverbTypeHidden);
 }
 
 void FxPanel::updateVisibility()

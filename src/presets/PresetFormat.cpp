@@ -1,5 +1,6 @@
 #include "PresetFormat.h"
 #include "../PluginProcessor.h"
+#include "../dsp/BlockParams.h"
 #include <cstring>
 
 // ═══════════════════════════════════════════════════════════════════
@@ -24,7 +25,7 @@ bool PresetFormat::saveToFile(const juce::File& file, T5ynthProcessor& processor
         synth->setProperty("device", processor.getLastDevice());
         synth->setProperty("model", processor.getLastModel());
         auto genSeed = static_cast<int>(processor.getValueTreeState()
-                           .getRawParameterValue("gen_seed")->load());
+                           .getRawParameterValue(PID::genSeed)->load());
         synth->setProperty("randomSeed", genSeed == -1);
     }
 

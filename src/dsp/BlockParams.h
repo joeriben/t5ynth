@@ -26,6 +26,134 @@ struct ChoiceEntry {
     const char* label;
 };
 
+// ── APVTS parameter-ID constants ──
+// Every parameter has its canonical ID here; use PID::xxx everywhere
+// instead of string literals to get compile-time typo detection.
+namespace PID {
+    static constexpr const char* oscScan          = "osc_scan";
+    static constexpr const char* oscOctave        = "osc_octave";
+    static constexpr const char* engineMode       = "engine_mode";
+    static constexpr const char* voiceCount       = "voice_count";
+    static constexpr const char* masterVol        = "master_vol";
+    static constexpr const char* ampAttack        = "amp_attack";
+    static constexpr const char* ampDecay         = "amp_decay";
+    static constexpr const char* ampSustain       = "amp_sustain";
+    static constexpr const char* ampRelease       = "amp_release";
+    static constexpr const char* ampAmount        = "amp_amount";
+    static constexpr const char* ampVelSens       = "amp_vel_sens";
+    static constexpr const char* ampLoop          = "amp_loop";
+    static constexpr const char* ampAttackCurve   = "amp_attack_curve";
+    static constexpr const char* ampDecayCurve    = "amp_decay_curve";
+    static constexpr const char* ampReleaseCurve  = "amp_release_curve";
+    static constexpr const char* mod1Attack       = "mod1_attack";
+    static constexpr const char* mod1Decay        = "mod1_decay";
+    static constexpr const char* mod1Sustain      = "mod1_sustain";
+    static constexpr const char* mod1Release      = "mod1_release";
+    static constexpr const char* mod1Amount       = "mod1_amount";
+    static constexpr const char* mod1VelSens      = "mod1_vel_sens";
+    static constexpr const char* mod1Loop         = "mod1_loop";
+    static constexpr const char* mod1Target       = "mod1_target";
+    static constexpr const char* mod1AttackCurve  = "mod1_attack_curve";
+    static constexpr const char* mod1DecayCurve   = "mod1_decay_curve";
+    static constexpr const char* mod1ReleaseCurve = "mod1_release_curve";
+    static constexpr const char* mod2Attack       = "mod2_attack";
+    static constexpr const char* mod2Decay        = "mod2_decay";
+    static constexpr const char* mod2Sustain      = "mod2_sustain";
+    static constexpr const char* mod2Release      = "mod2_release";
+    static constexpr const char* mod2Amount       = "mod2_amount";
+    static constexpr const char* mod2VelSens      = "mod2_vel_sens";
+    static constexpr const char* mod2Loop         = "mod2_loop";
+    static constexpr const char* mod2Target       = "mod2_target";
+    static constexpr const char* mod2AttackCurve  = "mod2_attack_curve";
+    static constexpr const char* mod2DecayCurve   = "mod2_decay_curve";
+    static constexpr const char* mod2ReleaseCurve = "mod2_release_curve";
+    static constexpr const char* lfo1Rate         = "lfo1_rate";
+    static constexpr const char* lfo1Depth        = "lfo1_depth";
+    static constexpr const char* lfo1Wave         = "lfo1_wave";
+    static constexpr const char* lfo1Target       = "lfo1_target";
+    static constexpr const char* lfo1Mode         = "lfo1_mode";
+    static constexpr const char* lfo2Rate         = "lfo2_rate";
+    static constexpr const char* lfo2Depth        = "lfo2_depth";
+    static constexpr const char* lfo2Wave         = "lfo2_wave";
+    static constexpr const char* lfo2Target       = "lfo2_target";
+    static constexpr const char* lfo2Mode         = "lfo2_mode";
+    static constexpr const char* driftEnabled     = "drift_enabled";
+    static constexpr const char* driftRegen       = "drift_regen";
+    static constexpr const char* driftCrossfade   = "drift_crossfade";
+    static constexpr const char* drift1Rate       = "drift1_rate";
+    static constexpr const char* drift1Depth      = "drift1_depth";
+    static constexpr const char* drift1Target     = "drift1_target";
+    static constexpr const char* drift1Wave       = "drift1_wave";
+    static constexpr const char* drift2Rate       = "drift2_rate";
+    static constexpr const char* drift2Depth      = "drift2_depth";
+    static constexpr const char* drift2Target     = "drift2_target";
+    static constexpr const char* drift2Wave       = "drift2_wave";
+    static constexpr const char* drift3Rate       = "drift3_rate";
+    static constexpr const char* drift3Depth      = "drift3_depth";
+    static constexpr const char* drift3Target     = "drift3_target";
+    static constexpr const char* drift3Wave       = "drift3_wave";
+    static constexpr const char* filterEnabled    = "filter_enabled";
+    static constexpr const char* filterType       = "filter_type";
+    static constexpr const char* filterSlope      = "filter_slope";
+    static constexpr const char* filterCutoff     = "filter_cutoff";
+    static constexpr const char* filterResonance  = "filter_resonance";
+    static constexpr const char* filterMix        = "filter_mix";
+    static constexpr const char* filterKbdTrack   = "filter_kbd_track";
+    static constexpr const char* delayType        = "delay_type";
+    static constexpr const char* delayTime        = "delay_time";
+    static constexpr const char* delayFeedback    = "delay_feedback";
+    static constexpr const char* delayMix         = "delay_mix";
+    static constexpr const char* delayDamp        = "delay_damp";
+    static constexpr const char* reverbType       = "reverb_type";
+    static constexpr const char* reverbMix        = "reverb_mix";
+    static constexpr const char* algoRoom         = "algo_room";
+    static constexpr const char* algoDamping      = "algo_damping";
+    static constexpr const char* algoWidth        = "algo_width";
+    static constexpr const char* limiterThresh    = "limiter_thresh";
+    static constexpr const char* limiterRelease   = "limiter_release";
+    static constexpr const char* genAlpha         = "gen_alpha";
+    static constexpr const char* genMagnitude     = "gen_magnitude";
+    static constexpr const char* genNoise         = "gen_noise";
+    static constexpr const char* genDuration      = "gen_duration";
+    static constexpr const char* genStart         = "gen_start";
+    static constexpr const char* genCfg           = "gen_cfg";
+    static constexpr const char* genSeed          = "gen_seed";
+    static constexpr const char* genHfBoost       = "gen_hf_boost";
+    static constexpr const char* infSteps         = "inf_steps";
+    static constexpr const char* loopMode         = "loop_mode";
+    static constexpr const char* crossfadeMs      = "crossfade_ms";
+    static constexpr const char* normalize        = "normalize";
+    static constexpr const char* loopOptimize     = "loop_optimize";
+    static constexpr const char* noiseLevel       = "noise_level";
+    static constexpr const char* noiseType        = "noise_type";
+    static constexpr const char* wtFrames         = "wt_frames";
+    static constexpr const char* wtSmooth         = "wt_smooth";
+    static constexpr const char* seqMode          = "seq_mode";
+    static constexpr const char* seqRunning       = "seq_running";
+    static constexpr const char* seqBpm           = "seq_bpm";
+    static constexpr const char* seqSteps         = "seq_steps";
+    static constexpr const char* seqDivision      = "seq_division";
+    static constexpr const char* seqGlideTime     = "seq_glide_time";
+    static constexpr const char* seqGate          = "seq_gate";
+    static constexpr const char* seqOctave        = "seq_octave";
+    static constexpr const char* seqPreset        = "seq_preset";
+    static constexpr const char* arpMode          = "arp_mode";
+    static constexpr const char* arpRate          = "arp_rate";
+    static constexpr const char* arpOctaves       = "arp_octaves";
+    static constexpr const char* genSeqRunning    = "gen_seq_running";
+    static constexpr const char* genSteps         = "gen_steps";
+    static constexpr const char* genPulses        = "gen_pulses";
+    static constexpr const char* genRotation      = "gen_rotation";
+    static constexpr const char* genMutation      = "gen_mutation";
+    static constexpr const char* genRange         = "gen_range";
+    static constexpr const char* genFixSteps      = "gen_fix_steps";
+    static constexpr const char* genFixPulses     = "gen_fix_pulses";
+    static constexpr const char* genFixRotation   = "gen_fix_rotation";
+    static constexpr const char* genFixMutation   = "gen_fix_mutation";
+    static constexpr const char* scaleRoot        = "scale_root";
+    static constexpr const char* scaleType        = "scale_type";
+}
+
 // ── Modulation envelope targets ──
 namespace EnvTarget {
     enum : int {
@@ -244,11 +372,11 @@ namespace NoiseKind {
 namespace LfoWave {
     enum : int { Sine = 0, Tri = 1, Saw = 2, Square = 3, SampleHold = 4 };
     static constexpr ChoiceEntry kEntries[] = {
-        { "sine",            "Sine"   },
-        { "triangle",        "Tri"    },
-        { "sawtooth",        "Saw"    },
-        { "square",          "Square" },
-        { "sample_and_hold", "S&H"    }
+        { "sine",            "Sin"  },
+        { "triangle",        "Tri"  },
+        { "sawtooth",        "Saw"  },
+        { "square",          "Sq"   },
+        { "sample_and_hold", "S&H"  }
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(SampleHold + 1 == kCount, "LfoWave out of sync.");

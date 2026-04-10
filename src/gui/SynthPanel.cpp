@@ -110,11 +110,9 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.targetBox.onChange = [this] { updateVisibility(); resized(); };
     addAndMakeVisible(lfo.targetBox);
 
-    // NOTE: short-form labels ("Sin"/"Sq") differ from APVTS LfoWave labels
-    // ("Sine"/"Square"). Kept as inline literal for display compactness —
-    // ComboBoxAttachment is index-based so this works. Entry count must
-    // match LfoWave::kEntries (5: Sine, Tri, Saw, Square, S&H).
-    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq", "S&H"}, 1);
+    juce::StringArray lfoWaveItems;
+    for (const auto& e : LfoWave::kEntries) lfoWaveItems.add(e.label);
+    lfo.waveBox.addItemList(lfoWaveItems, 1);
     addAndMakeVisible(lfo.waveBox);
 
     juce::StringArray lfoModeItems;
@@ -210,7 +208,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     };
     samplerBtn.onClick = [this] { engineModeHidden.setSelectedId(1); };
     wavetableBtn.onClick = [this] { engineModeHidden.setSelectedId(2); };
-    engineModeA = std::make_unique<CA>(apvts, "engine_mode", engineModeHidden);
+    engineModeA = std::make_unique<CA>(apvts, PID::engineMode, engineModeHidden);
 
     // ── Voice count switchbox ──
     {
@@ -238,7 +236,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
             voiceBtns[i].onClick = [this, i] { voiceCountHidden.setSelectedId(i + 1); };
             addAndMakeVisible(voiceBtns[i]);
         }
-        voiceCountA = std::make_unique<CA>(apvts, "voice_count", voiceCountHidden);
+        voiceCountA = std::make_unique<CA>(apvts, PID::voiceCount, voiceCountHidden);
     }
 
     addAndMakeVisible(waveformDisplay);
@@ -311,12 +309,12 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     oneshotBtn.onClick  = [this] { loopModeHidden.setSelectedId(1); };
     loopModeBtn.onClick = [this] { loopModeHidden.setSelectedId(2); };
     pingpongBtn.onClick = [this] { loopModeHidden.setSelectedId(3); };
-    loopModeA = std::make_unique<CA>(apvts, "loop_mode", loopModeHidden);
+    loopModeA = std::make_unique<CA>(apvts, PID::loopMode, loopModeHidden);
 
     // Crossfade
     crossfadeRow = std::make_unique<SliderRow>("Xfade", fmtMs);
     addAndMakeVisible(*crossfadeRow);
-    crossfadeA = std::make_unique<SA>(apvts, "crossfade_ms", crossfadeRow->getSlider());
+    crossfadeA = std::make_unique<SA>(apvts, PID::crossfadeMs, crossfadeRow->getSlider());
     crossfadeRow->updateValue();
 
     // Normalize toggle
@@ -328,11 +326,11 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     normalizeToggle.setClickingTogglesState(true);
     addAndMakeVisible(normalizeToggle);
     normalizeToggle.onClick = [this] {
-        auto* param = processorRef.getValueTreeState().getParameter("normalize");
+        auto* param = processorRef.getValueTreeState().getParameter(PID::normalize);
         if (param) param->setValueNotifyingHost(normalizeToggle.getToggleState() ? 1.0f : 0.0f);
     };
     normalizeToggle.setToggleState(
-        apvts.getRawParameterValue("normalize")->load() > 0.5f, juce::dontSendNotification);
+        apvts.getRawParameterValue(PID::normalize)->load() > 0.5f, juce::dontSendNotification);
 
     // HF boost toggle — compensates VAE decoder high-frequency rolloff
     hfBoostBtn.setConnectedEdges(juce::Button::ConnectedOnRight);
@@ -342,10 +340,10 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     hfBoostBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
     hfBoostBtn.setClickingTogglesState(true);
     hfBoostBtn.setToggleState(
-        apvts.getRawParameterValue("gen_hf_boost")->load() > 0.5f, juce::dontSendNotification);
+        apvts.getRawParameterValue(PID::genHfBoost)->load() > 0.5f, juce::dontSendNotification);
     hfBoostBtn.onClick = [this] {
         bool on = hfBoostBtn.getToggleState();
-        processorRef.getValueTreeState().getParameter("gen_hf_boost")
+        processorRef.getValueTreeState().getParameter(PID::genHfBoost)
             ->setValueNotifyingHost(on ? 1.0f : 0.0f);
         const auto& raw = processorRef.getGeneratedAudioRaw();
         if (raw.getNumSamples() > 0)
@@ -359,7 +357,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     loopOptimizeBtn.setColour(juce::TextButton::textColourOffId, kDim);
     addAndMakeVisible(loopOptimizeBtn);
     {
-        int initLevel = static_cast<int>(apvts.getRawParameterValue("loop_optimize")->load());
+        int initLevel = static_cast<int>(apvts.getRawParameterValue(PID::loopOptimize)->load());
         static const char* labels[] = { "Opt: Off", "Opt: Low", "Opt: High" };
         loopOptimizeBtn.setButtonText(labels[juce::jlimit(0, 2, initLevel)]);
         loopOptimizeBtn.setToggleState(initLevel > 0, juce::dontSendNotification);
@@ -370,7 +368,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         }
     }
     loopOptimizeBtn.onClick = [this] {
-        auto* param = processorRef.getValueTreeState().getParameter("loop_optimize");
+        auto* param = processorRef.getValueTreeState().getParameter(PID::loopOptimize);
         if (!param) return;
         int cur = static_cast<int>(param->convertFrom0to1(param->getValue()));
         int next = (cur + 1) % 3;
@@ -390,7 +388,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     scanHint.setText("Morph between frames (0 = start, 1 = end)", juce::dontSendNotification);
     scanHint.setColour(juce::Label::textColourId, kDimmer);
     addAndMakeVisible(scanHint);
-    scanA = std::make_unique<SA>(apvts, "osc_scan", scanRow->getSlider());
+    scanA = std::make_unique<SA>(apvts, PID::oscScan, scanRow->getSlider());
     scanRow->updateValue();
 
     // ── Octave shift switchbox: -2 | -1 | 0 | +1 | +2 ──
@@ -418,7 +416,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
             addAndMakeVisible(octBtns[i]);
         }
         addChildComponent(octaveHidden);
-        octaveA = std::make_unique<CA>(apvts, "osc_octave", octaveHidden);
+        octaveA = std::make_unique<CA>(apvts, PID::oscOctave, octaveHidden);
     }
 
     // ── Noise type switchbox: W | P | B  (shared: both modes) ──
@@ -446,12 +444,12 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
             noiseBtns[i].onClick = [this, i] { noiseTypeHidden.setSelectedId(i + 1); };
             addAndMakeVisible(noiseBtns[i]);
         }
-        noiseTypeA = std::make_unique<CA>(apvts, "noise_type", noiseTypeHidden);
+        noiseTypeA = std::make_unique<CA>(apvts, PID::noiseType, noiseTypeHidden);
     }
 
     noiseLevelRow = std::make_unique<SliderRow>("Lvl", fmtF2);
     addAndMakeVisible(*noiseLevelRow);
-    noiseLevelA = std::make_unique<SA>(apvts, "noise_level", noiseLevelRow->getSlider());
+    noiseLevelA = std::make_unique<SA>(apvts, PID::noiseLevel, noiseLevelRow->getSlider());
     noiseLevelRow->updateValue();
 
     // ── Wavetable controls: frame count switchbox ──
@@ -481,7 +479,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
             frameBtns[i].onClick = [this, i] { framesHidden.setSelectedId(i + 1); };
             addAndMakeVisible(frameBtns[i]);
         }
-        wtFramesA = std::make_unique<CA>(apvts, "wt_frames", framesHidden);
+        wtFramesA = std::make_unique<CA>(apvts, PID::wtFrames, framesHidden);
     }
 
     // Smooth toggle
@@ -495,7 +493,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
                                 on ? juce::Colour(0xff0e1018) : kDimmer);
     };
     addAndMakeVisible(smoothToggle);
-    wtSmoothA = std::make_unique<BA>(apvts, "wt_smooth", smoothToggle);
+    wtSmoothA = std::make_unique<BA>(apvts, PID::wtSmooth, smoothToggle);
     smoothToggle.onClick(); // sync initial colors
 
     frameCountLabel.setColour(juce::Label::textColourId, kDimmer);
@@ -577,13 +575,13 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     for (auto* r : { cutoffRow.get(), resoRow.get(), filterMixRow.get(), kbdTrackRow.get() })
         addAndMakeVisible(*r);
 
-    cutoffA    = std::make_unique<SA>(apvts, "filter_cutoff",    cutoffRow->getSlider());
-    resoA      = std::make_unique<SA>(apvts, "filter_resonance", resoRow->getSlider());
-    filterMixA = std::make_unique<SA>(apvts, "filter_mix",       filterMixRow->getSlider());
-    kbdTrackA  = std::make_unique<SA>(apvts, "filter_kbd_track", kbdTrackRow->getSlider());
+    cutoffA    = std::make_unique<SA>(apvts, PID::filterCutoff,    cutoffRow->getSlider());
+    resoA      = std::make_unique<SA>(apvts, PID::filterResonance, resoRow->getSlider());
+    filterMixA = std::make_unique<SA>(apvts, PID::filterMix,       filterMixRow->getSlider());
+    kbdTrackA  = std::make_unique<SA>(apvts, PID::filterKbdTrack, kbdTrackRow->getSlider());
 
-    filterTypeA  = std::make_unique<CA>(apvts, "filter_type",  filterTypeHidden);
-    filterSlopeA = std::make_unique<CA>(apvts, "filter_slope", filterSlopeHidden);
+    filterTypeA  = std::make_unique<CA>(apvts, PID::filterType,  filterTypeHidden);
+    filterSlopeA = std::make_unique<CA>(apvts, PID::filterSlope, filterSlopeHidden);
 
     cutoffRow->updateValue();
     resoRow->updateValue();
@@ -591,24 +589,24 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     kbdTrackRow->updateValue();
 
     // ── Envelopes ──
-    initEnv(ampEnv,  "ENV 1", 2, "amp_attack",  "amp_decay",  "amp_sustain",  "amp_release",
-            "amp_attack_curve", "amp_decay_curve", "amp_release_curve",
-            "amp_amount",  "amp_vel_sens",  "amp_loop",  apvts);
-    initEnv(mod1Env, "ENV 2", 1, "mod1_attack", "mod1_decay", "mod1_sustain", "mod1_release",
-            "mod1_attack_curve", "mod1_decay_curve", "mod1_release_curve",
-            "mod1_amount", "mod1_vel_sens", "mod1_loop", apvts);
-    initEnv(mod2Env, "ENV 3", 1, "mod2_attack", "mod2_decay", "mod2_sustain", "mod2_release",
-            "mod2_attack_curve", "mod2_decay_curve", "mod2_release_curve",
-            "mod2_amount", "mod2_vel_sens", "mod2_loop", apvts);
+    initEnv(ampEnv,  "ENV 1", 2, PID::ampAttack,  PID::ampDecay,  PID::ampSustain,  PID::ampRelease,
+            PID::ampAttackCurve, PID::ampDecayCurve, PID::ampReleaseCurve,
+            PID::ampAmount,  PID::ampVelSens,  PID::ampLoop,  apvts);
+    initEnv(mod1Env, "ENV 2", 1, PID::mod1Attack, PID::mod1Decay, PID::mod1Sustain, PID::mod1Release,
+            PID::mod1AttackCurve, PID::mod1DecayCurve, PID::mod1ReleaseCurve,
+            PID::mod1Amount, PID::mod1VelSens, PID::mod1Loop, apvts);
+    initEnv(mod2Env, "ENV 3", 1, PID::mod2Attack, PID::mod2Decay, PID::mod2Sustain, PID::mod2Release,
+            PID::mod2AttackCurve, PID::mod2DecayCurve, PID::mod2ReleaseCurve,
+            PID::mod2Amount, PID::mod2VelSens, PID::mod2Loop, apvts);
 
     // ── LFOs ──
-    initLfo(lfo1, "LFO 1", "lfo1_rate", "lfo1_depth", "lfo1_wave", "lfo1_mode", apvts);
-    initLfo(lfo2, "LFO 2", "lfo2_rate", "lfo2_depth", "lfo2_wave", "lfo2_mode", apvts);
+    initLfo(lfo1, "LFO 1", PID::lfo1Rate, PID::lfo1Depth, PID::lfo1Wave, PID::lfo1Mode, apvts);
+    initLfo(lfo2, "LFO 2", PID::lfo2Rate, PID::lfo2Depth, PID::lfo2Wave, PID::lfo2Mode, apvts);
 
     // ── Drift ──
-    initDrift(drift1, "DRIFT 1", "drift1_rate", "drift1_depth", "drift1_target", "drift1_wave", apvts);
-    initDrift(drift2, "DRIFT 2", "drift2_rate", "drift2_depth", "drift2_target", "drift2_wave", apvts);
-    initDrift(drift3, "DRIFT 3", "drift3_rate", "drift3_depth", "drift3_target", "drift3_wave", apvts);
+    initDrift(drift1, "DRIFT 1", PID::drift1Rate, PID::drift1Depth, PID::drift1Target, PID::drift1Wave, apvts);
+    initDrift(drift2, "DRIFT 2", PID::drift2Rate, PID::drift2Depth, PID::drift2Target, PID::drift2Wave, apvts);
+    initDrift(drift3, "DRIFT 3", PID::drift3Rate, PID::drift3Depth, PID::drift3Target, PID::drift3Wave, apvts);
 
     // Regenerate mode switchbox
     paintSectionHeader(regenHeader, "DRIFT + REGENERATE", kDriftCol);
@@ -634,12 +632,12 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         regenBtns[i].onClick = [this, i] { regenHidden.setSelectedId(i + 1); };
         addAndMakeVisible(regenBtns[i]);
     }
-    driftRegenA = std::make_unique<CA>(apvts, "drift_regen", regenHidden);
+    driftRegenA = std::make_unique<CA>(apvts, PID::driftRegen, regenHidden);
 
     // Crossfade slider for drift regeneration
     crossfadeRegenRow = std::make_unique<SliderRow>("XFade", fmtMs, kDriftCol);
     addAndMakeVisible(*crossfadeRegenRow);
-    crossfadeRegenA = std::make_unique<SA>(apvts, "drift_crossfade", crossfadeRegenRow->getSlider());
+    crossfadeRegenA = std::make_unique<SA>(apvts, PID::driftCrossfade, crossfadeRegenRow->getSlider());
     crossfadeRegenRow->updateValue();
 
     // All components are now set up — enable callbacks and trigger initial state
@@ -647,10 +645,10 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     // Deferred APVTS attachments for target ComboBoxes
     // (must come after initialized=true so onChange → updateVisibility works)
-    mod1TargetA = std::make_unique<CA>(apvts, "mod1_target", mod1Env.targetBox);
-    mod2TargetA = std::make_unique<CA>(apvts, "mod2_target", mod2Env.targetBox);
-    lfo1TargetA = std::make_unique<CA>(apvts, "lfo1_target", lfo1.targetBox);
-    lfo2TargetA = std::make_unique<CA>(apvts, "lfo2_target", lfo2.targetBox);
+    mod1TargetA = std::make_unique<CA>(apvts, PID::mod1Target, mod1Env.targetBox);
+    mod2TargetA = std::make_unique<CA>(apvts, PID::mod2Target, mod2Env.targetBox);
+    lfo1TargetA = std::make_unique<CA>(apvts, PID::lfo1Target, lfo1.targetBox);
+    lfo2TargetA = std::make_unique<CA>(apvts, PID::lfo2Target, lfo2.targetBox);
 
     updateVisibility();
     startTimerHz(30);

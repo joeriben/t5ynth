@@ -72,10 +72,9 @@ void EffectsPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.targetBox.onChange = [this] { resized(); };
     addAndMakeVisible(lfo.targetBox);
 
-    // NOTE: short-form labels ("Sin"/"Sq") kept as inline literal to stay in
-    // sync with SynthPanel; both diverge from APVTS LfoWave labels. Label
-    // reconciliation is a follow-up. Entry count must match LfoWave::kEntries.
-    lfo.waveBox.addItemList({"Sin", "Tri", "Saw", "Sq", "S&H"}, 1);
+    juce::StringArray lfoWaveItems;
+    for (const auto& e : LfoWave::kEntries) lfoWaveItems.add(e.label);
+    lfo.waveBox.addItemList(lfoWaveItems, 1);
     addAndMakeVisible(lfo.waveBox);
 
     for (auto* knob : { &lfo.rate, &lfo.depth })
@@ -102,12 +101,12 @@ void EffectsPanel::initLfo(LfoSection& lfo, const juce::String& name,
 
 EffectsPanel::EffectsPanel(juce::AudioProcessorValueTreeState& apvts)
 {
-    initEnv(ampEnv, "AMP", "amp_attack", "amp_decay", "amp_sustain", "amp_release", apvts);
-    initEnv(mod1Env, "MOD 1", "mod1_attack", "mod1_decay", "mod1_sustain", "mod1_release", apvts);
-    initEnv(mod2Env, "MOD 2", "mod2_attack", "mod2_decay", "mod2_sustain", "mod2_release", apvts);
+    initEnv(ampEnv, "AMP", PID::ampAttack, PID::ampDecay, PID::ampSustain, PID::ampRelease, apvts);
+    initEnv(mod1Env, "MOD 1", PID::mod1Attack, PID::mod1Decay, PID::mod1Sustain, PID::mod1Release, apvts);
+    initEnv(mod2Env, "MOD 2", PID::mod2Attack, PID::mod2Decay, PID::mod2Sustain, PID::mod2Release, apvts);
 
-    initLfo(lfo1, "LFO 1", "lfo1_rate", "lfo1_depth", "lfo1_wave", apvts);
-    initLfo(lfo2, "LFO 2", "lfo2_rate", "lfo2_depth", "lfo2_wave", apvts);
+    initLfo(lfo1, "LFO 1", PID::lfo1Rate, PID::lfo1Depth, PID::lfo1Wave, apvts);
+    initLfo(lfo2, "LFO 2", PID::lfo2Rate, PID::lfo2Depth, PID::lfo2Wave, apvts);
 
     // Drift
     driftToggle.setColour(juce::ToggleButton::textColourId, kDim);
@@ -123,13 +122,13 @@ EffectsPanel::EffectsPanel(juce::AudioProcessorValueTreeState& apvts)
         addAndMakeVisible(*s);
     }
 
-    driftEnableA = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, "drift_enabled", driftToggle);
-    d1RA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "drift1_rate", d1Rate);
-    d1DA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "drift1_depth", d1Depth);
-    d2RA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "drift2_rate", d2Rate);
-    d2DA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "drift2_depth", d2Depth);
-    d3RA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "drift3_rate", d3Rate);
-    d3DA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, "drift3_depth", d3Depth);
+    driftEnableA = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, PID::driftEnabled, driftToggle);
+    d1RA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, PID::drift1Rate, d1Rate);
+    d1DA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, PID::drift1Depth, d1Depth);
+    d2RA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, PID::drift2Rate, d2Rate);
+    d2DA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, PID::drift2Depth, d2Depth);
+    d3RA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, PID::drift3Rate, d3Rate);
+    d3DA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(apvts, PID::drift3Depth, d3Depth);
 }
 
 float EffectsPanel::fs() const

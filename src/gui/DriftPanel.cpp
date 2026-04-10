@@ -1,4 +1,5 @@
 #include "DriftPanel.h"
+#include "../dsp/BlockParams.h"
 
 static const auto kGreen = juce::Colour(0xff4a9eff);
 static const auto kDim   = juce::Colour(0xff888888);
@@ -46,12 +47,12 @@ DriftPanel::DriftPanel(juce::AudioProcessorValueTreeState& apvts)
     makeVSlider(limRelease, limReleaseL, "Rel", this);
 
     // APVTS
-    delayTimeA = std::make_unique<SA>(apvts, "delay_time", delayTime);
-    delayFbA   = std::make_unique<SA>(apvts, "delay_feedback", delayFb);
-    delayMixA  = std::make_unique<SA>(apvts, "delay_mix", delayMix);
-    reverbMixA = std::make_unique<SA>(apvts, "reverb_mix", reverbMix);
-    limThreshA = std::make_unique<SA>(apvts, "limiter_thresh", limThresh);
-    limReleaseA= std::make_unique<SA>(apvts, "limiter_release", limRelease);
+    delayTimeA = std::make_unique<SA>(apvts, PID::delayTime, delayTime);
+    delayFbA   = std::make_unique<SA>(apvts, PID::delayFeedback, delayFb);
+    delayMixA  = std::make_unique<SA>(apvts, PID::delayMix, delayMix);
+    reverbMixA = std::make_unique<SA>(apvts, PID::reverbMix, reverbMix);
+    limThreshA = std::make_unique<SA>(apvts, PID::limiterThresh, limThresh);
+    limReleaseA= std::make_unique<SA>(apvts, PID::limiterRelease, limRelease);
 }
 
 float DriftPanel::fs() const

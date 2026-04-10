@@ -1,6 +1,7 @@
 #include "PromptPanel.h"
 #include "GuiHelpers.h"
 #include "../PluginProcessor.h"
+#include "../dsp/BlockParams.h"
 #include <thread>
 #include <cmath>
 
@@ -201,10 +202,10 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
                 bool isAudioLDM2 = model.containsIgnoreCase("audioldm");
                 float defaultSteps = isSmall ? 8.0f : (isAudioLDM2 ? 50.0f : 20.0f);
                 float defaultCfg   = isSmall ? 1.0f : (isAudioLDM2 ? 3.5f : 7.0f);
-                apvts.getParameter("inf_steps")->setValueNotifyingHost(
-                    apvts.getParameter("inf_steps")->convertTo0to1(defaultSteps));
-                apvts.getParameter("gen_cfg")->setValueNotifyingHost(
-                    apvts.getParameter("gen_cfg")->convertTo0to1(defaultCfg));
+                apvts.getParameter(PID::infSteps)->setValueNotifyingHost(
+                    apvts.getParameter(PID::infSteps)->convertTo0to1(defaultSteps));
+                apvts.getParameter(PID::genCfg)->setValueNotifyingHost(
+                    apvts.getParameter(PID::genCfg)->convertTo0to1(defaultCfg));
 
                 // Preload model in background so first generate is instant
                 if (onStatusChanged) onStatusChanged("Loading " + model + "...", true);
@@ -235,13 +236,13 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
 
     // APVTS
     auto& apvts = processor.getValueTreeState();
-    alphaA  = std::make_unique<Attachment>(apvts, "gen_alpha", alphaSlider);
-    magA    = std::make_unique<Attachment>(apvts, "gen_magnitude", magnitudeSlider);
-    noiseA  = std::make_unique<Attachment>(apvts, "gen_noise", noiseSlider);
-    durA    = std::make_unique<Attachment>(apvts, "gen_duration", durationSlider);
-    startA  = std::make_unique<Attachment>(apvts, "gen_start", startSlider);
-    stepsA  = std::make_unique<Attachment>(apvts, "inf_steps", stepsSlider);
-    cfgA    = std::make_unique<Attachment>(apvts, "gen_cfg", cfgSlider);
+    alphaA  = std::make_unique<Attachment>(apvts, PID::genAlpha, alphaSlider);
+    magA    = std::make_unique<Attachment>(apvts, PID::genMagnitude, magnitudeSlider);
+    noiseA  = std::make_unique<Attachment>(apvts, PID::genNoise, noiseSlider);
+    durA    = std::make_unique<Attachment>(apvts, PID::genDuration, durationSlider);
+    startA  = std::make_unique<Attachment>(apvts, PID::genStart, startSlider);
+    stepsA  = std::make_unique<Attachment>(apvts, PID::infSteps, stepsSlider);
+    cfgA    = std::make_unique<Attachment>(apvts, PID::genCfg, cfgSlider);
 
     startTimerHz(10);  // poll for device availability + drift regen + ghost
 }
@@ -586,18 +587,18 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
 {
     auto& apvts = processorRef.getValueTreeState();
     float alpha = std::isnan(alphaOverride)
-                      ? apvts.getRawParameterValue("gen_alpha")->load()
+                      ? apvts.getRawParameterValue(PID::genAlpha)->load()
                       : alphaOverride;
     float magnitude = std::isnan(magnitudeOverride)
-                          ? apvts.getRawParameterValue("gen_magnitude")->load()
+                          ? apvts.getRawParameterValue(PID::genMagnitude)->load()
                           : magnitudeOverride;
     float noiseSigma = std::isnan(noiseOverride)
-                           ? apvts.getRawParameterValue("gen_noise")->load()
+                           ? apvts.getRawParameterValue(PID::genNoise)->load()
                            : noiseOverride;
-    float duration = apvts.getRawParameterValue("gen_duration")->load();
-    float startPos = apvts.getRawParameterValue("gen_start")->load();
-    int steps = static_cast<int>(apvts.getRawParameterValue("inf_steps")->load());
-    float cfgScale = apvts.getRawParameterValue("gen_cfg")->load();
+    float duration = apvts.getRawParameterValue(PID::genDuration)->load();
+    float startPos = apvts.getRawParameterValue(PID::genStart)->load();
+    int steps = static_cast<int>(apvts.getRawParameterValue(PID::infSteps)->load());
+    float cfgScale = apvts.getRawParameterValue(PID::genCfg)->load();
     int seed = randomSeedToggle.getToggleState() ? -1 : seedEditor.getText().getIntValue();
 
     PipeInference::Request req;
@@ -726,7 +727,7 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
                 // Crossfade two RAW signals, then single load (Rumble→HF→Norm once)
                 auto newAudio = result.audio; // mutable copy
                 float xfadeMs = processor->getValueTreeState()
-                    .getRawParameterValue("drift_crossfade")->load();
+                    .getRawParameterValue(PID::driftCrossfade)->load();
                 int xfadeSamples = juce::roundToInt(xfadeMs * 0.001f * 44100.0f);
                 if (xfadeSamples > 0)
                 {
@@ -823,11 +824,11 @@ void PromptPanel::pollDriftRegen()
 
     auto& apvts = processorRef.getValueTreeState();
     float genAlpha = std::isnan(effAlpha)
-        ? apvts.getRawParameterValue("gen_alpha")->load() : effAlpha;
+        ? apvts.getRawParameterValue(PID::genAlpha)->load() : effAlpha;
     float genNoise = std::isnan(effNoise)
-        ? apvts.getRawParameterValue("gen_noise")->load() : effNoise;
+        ? apvts.getRawParameterValue(PID::genNoise)->load() : effNoise;
     float genMag = std::isnan(effMag)
-        ? apvts.getRawParameterValue("gen_magnitude")->load() : effMag;
+        ? apvts.getRawParameterValue(PID::genMagnitude)->load() : effMag;
 
     lastRegenTimeMs_ = juce::Time::getMillisecondCounterHiRes();
     triggerDriftRegeneration(genAlpha, effAxes, genNoise, genMag, false);

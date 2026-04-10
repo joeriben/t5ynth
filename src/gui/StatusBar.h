@@ -30,7 +30,7 @@ private:
     juce::String presetName;
     bool backendConnected = false;
 
-    juce::TextButton newBtn  { "New" };
+    juce::TextButton newBtn  { "Init" };
     juce::TextButton saveBtn { "Save" };
     juce::TextButton loadBtn { "Load" };
     juce::TextButton exportBtn { "Export" };

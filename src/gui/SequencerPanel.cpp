@@ -181,7 +181,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     transportBtn.setColour(juce::TextButton::buttonColourId, kSurface);
     transportBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff4caf50));
     transportBtn.onClick = [this] {
-        auto* par = processorRef.getValueTreeState().getParameter("seq_running");
+        auto* par = processorRef.getValueTreeState().getParameter(PID::seqRunning);
         if (!par) return;
         bool playing = par->getValue() > 0.5f;
         par->setValueNotifyingHost(playing ? 0.0f : 1.0f);
@@ -198,7 +198,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     stepCountBox.onChange = [this] {
         int steps = stepCountBox.getSelectedId();
         if (steps < 2) return;
-        if (auto* par = processorRef.getValueTreeState().getParameter("seq_steps"))
+        if (auto* par = processorRef.getValueTreeState().getParameter(PID::seqSteps))
         {
             auto range = par->getNormalisableRange();
             par->setValueNotifyingHost(range.convertTo0to1(static_cast<float>(steps)));
@@ -229,12 +229,12 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         divBtns[i].onClick = [this, i] { divisionHidden.setSelectedId(i + 1); };
         addAndMakeVisible(divBtns[i]);
     }
-    divA = std::make_unique<CA>(apvts, "seq_division", divisionHidden);
+    divA = std::make_unique<CA>(apvts, PID::seqDivision, divisionHidden);
 
     // ── BPM ──
     bpmRow = std::make_unique<SliderRow>("BPM", [](double v) { return juce::String(juce::roundToInt(v)); }, kSeqCol);
     addAndMakeVisible(*bpmRow);
-    bpmA = std::make_unique<SA>(apvts, "seq_bpm", bpmRow->getSlider());
+    bpmA = std::make_unique<SA>(apvts, PID::seqBpm, bpmRow->getSlider());
     bpmRow->getSlider().onValueChange = [this] { bpmRow->updateValue(); };
     bpmRow->updateValue();
 
@@ -248,7 +248,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     for (const auto& e : SeqPreset::kEntries) seqPresetItems.add(e.label);
     presetBox.addItemList(seqPresetItems, 1);
     addAndMakeVisible(presetBox);
-    presetA = std::make_unique<CA>(apvts, "seq_preset", presetBox);
+    presetA = std::make_unique<CA>(apvts, PID::seqPreset, presetBox);
 
     // Save/Load buttons for sequencer patterns (icon-based)
     for (auto* btn : { &seqSaveBtn, &seqLoadBtn })
@@ -292,14 +292,14 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             juce::var root(new juce::DynamicObject());
             auto* obj = root.getDynamicObject();
             obj->setProperty("numSteps", seq.getNumSteps());
-            obj->setProperty("division", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("seq_division")->load()));
-            obj->setProperty("gate", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue("seq_gate")->load()));
-            obj->setProperty("bpm", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue("seq_bpm")->load()));
+            obj->setProperty("division", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::seqDivision)->load()));
+            obj->setProperty("gate", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue(PID::seqGate)->load()));
+            obj->setProperty("bpm", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue(PID::seqBpm)->load()));
             // Arp settings
-            obj->setProperty("arpMode", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_mode")->load()));
-            obj->setProperty("arpRate", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_rate")->load()));
-            obj->setProperty("arpOctaves", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("arp_octaves")->load()));
-            obj->setProperty("octave", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue("seq_octave")->load()));
+            obj->setProperty("arpMode", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::arpMode)->load()));
+            obj->setProperty("arpRate", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::arpRate)->load()));
+            obj->setProperty("arpOctaves", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::arpOctaves)->load()));
+            obj->setProperty("octave", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::seqOctave)->load()));
             juce::Array<juce::var> steps;
             for (int i = 0; i < seq.getNumSteps(); ++i)
             {
@@ -328,27 +328,27 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             if (root.hasProperty("numSteps"))
                 seq.setNumSteps(static_cast<int>(root["numSteps"]));
             if (root.hasProperty("division"))
-                apvts.getParameter("seq_division")->setValueNotifyingHost(
-                    apvts.getParameter("seq_division")->convertTo0to1(static_cast<float>(static_cast<int>(root["division"]))));
+                apvts.getParameter(PID::seqDivision)->setValueNotifyingHost(
+                    apvts.getParameter(PID::seqDivision)->convertTo0to1(static_cast<float>(static_cast<int>(root["division"]))));
             if (root.hasProperty("gate"))
-                apvts.getParameter("seq_gate")->setValueNotifyingHost(
-                    apvts.getParameter("seq_gate")->convertTo0to1(static_cast<float>(root["gate"])));
+                apvts.getParameter(PID::seqGate)->setValueNotifyingHost(
+                    apvts.getParameter(PID::seqGate)->convertTo0to1(static_cast<float>(root["gate"])));
             if (root.hasProperty("bpm"))
-                apvts.getParameter("seq_bpm")->setValueNotifyingHost(
-                    apvts.getParameter("seq_bpm")->convertTo0to1(static_cast<float>(root["bpm"])));
+                apvts.getParameter(PID::seqBpm)->setValueNotifyingHost(
+                    apvts.getParameter(PID::seqBpm)->convertTo0to1(static_cast<float>(root["bpm"])));
             if (root.hasProperty("arpMode"))
-                apvts.getParameter("arp_mode")->setValueNotifyingHost(
-                    apvts.getParameter("arp_mode")->convertTo0to1(static_cast<float>(static_cast<int>(root["arpMode"]))));
+                apvts.getParameter(PID::arpMode)->setValueNotifyingHost(
+                    apvts.getParameter(PID::arpMode)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpMode"]))));
             if (root.hasProperty("arpRate"))
-                apvts.getParameter("arp_rate")->setValueNotifyingHost(
-                    apvts.getParameter("arp_rate")->convertTo0to1(static_cast<float>(static_cast<int>(root["arpRate"]))));
+                apvts.getParameter(PID::arpRate)->setValueNotifyingHost(
+                    apvts.getParameter(PID::arpRate)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpRate"]))));
             if (root.hasProperty("arpOctaves"))
-                apvts.getParameter("arp_octaves")->setValueNotifyingHost(
-                    apvts.getParameter("arp_octaves")->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
+                apvts.getParameter(PID::arpOctaves)->setValueNotifyingHost(
+                    apvts.getParameter(PID::arpOctaves)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
             // arpGate removed — old files silently ignored
             if (root.hasProperty("octave"))
-                apvts.getParameter("seq_octave")->setValueNotifyingHost(
-                    apvts.getParameter("seq_octave")->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
+                apvts.getParameter(PID::seqOctave)->setValueNotifyingHost(
+                    apvts.getParameter(PID::seqOctave)->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
             auto* stepsArr = root["steps"].getArray();
             if (stepsArr)
             {
@@ -370,7 +370,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     // ── Gate ──
     gateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; }, kSeqCol);
     addAndMakeVisible(*gateRow);
-    gateA = std::make_unique<SA>(apvts, "seq_gate", gateRow->getSlider());
+    gateA = std::make_unique<SA>(apvts, PID::seqGate, gateRow->getSlider());
     gateRow->getSlider().onValueChange = [this] { gateRow->updateValue(); };
     gateRow->updateValue();
 
@@ -395,7 +395,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         octShiftBtns[i].onClick = [this, i] { octShiftHidden.setSelectedId(i + 1); };
         addAndMakeVisible(octShiftBtns[i]);
     }
-    octShiftA = std::make_unique<CA>(apvts, "seq_octave", octShiftHidden);
+    octShiftA = std::make_unique<CA>(apvts, PID::seqOctave, octShiftHidden);
 
     // ── Generative sequencer controls ──
     genTransportBtn.setColour(juce::TextButton::buttonColourId, kSurface);
@@ -405,24 +405,24 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genTransportBtn.setClickingTogglesState(true);
     // No onClick needed — ButtonAttachment handles parameter sync
     addAndMakeVisible(genTransportBtn);
-    genRunningA = std::make_unique<BA>(apvts, "gen_seq_running", genTransportBtn);
+    genRunningA = std::make_unique<BA>(apvts, PID::genSeqRunning, genTransportBtn);
 
     auto intFmt = [](double v) { return juce::String(juce::roundToInt(v)); };
     genStepsRow = std::make_unique<SliderRow>("Steps", intFmt, kSeqCol);
     addAndMakeVisible(*genStepsRow);
-    genStepsA = std::make_unique<SA>(apvts, "gen_steps", genStepsRow->getSlider());
+    genStepsA = std::make_unique<SA>(apvts, PID::genSteps, genStepsRow->getSlider());
     genStepsRow->getSlider().onValueChange = [this] { genStepsRow->updateValue(); };
     genStepsRow->updateValue();
 
     genPulsesRow = std::make_unique<SliderRow>("Pulses", intFmt, kSeqCol);
     addAndMakeVisible(*genPulsesRow);
-    genPulsesA = std::make_unique<SA>(apvts, "gen_pulses", genPulsesRow->getSlider());
+    genPulsesA = std::make_unique<SA>(apvts, PID::genPulses, genPulsesRow->getSlider());
     genPulsesRow->getSlider().onValueChange = [this] { genPulsesRow->updateValue(); };
     genPulsesRow->updateValue();
 
     genRotationRow = std::make_unique<SliderRow>("Rotation", intFmt, kSeqCol);
     addAndMakeVisible(*genRotationRow);
-    genRotationA = std::make_unique<SA>(apvts, "gen_rotation", genRotationRow->getSlider());
+    genRotationA = std::make_unique<SA>(apvts, PID::genRotation, genRotationRow->getSlider());
     genRotationRow->getSlider().onValueChange = [this] { genRotationRow->updateValue(); };
     genRotationRow->updateValue();
 
@@ -447,7 +447,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         genRangeBtns[i].onClick = [this, i] { genRangeHidden.setSelectedId(i + 1); };
         addAndMakeVisible(genRangeBtns[i]);
     }
-    genRangeA = std::make_unique<CA>(apvts, "gen_range", genRangeHidden);
+    genRangeA = std::make_unique<CA>(apvts, PID::genRange, genRangeHidden);
     genRangeLabel.setText("Range", juce::dontSendNotification);
     genRangeLabel.setColour(juce::Label::textColourId, kDim);
     genRangeLabel.setJustificationType(juce::Justification::centredRight);
@@ -456,7 +456,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genMutationRow = std::make_unique<SliderRow>("Evolve",
         [](double v) { return juce::String(juce::roundToInt(v * 100)) + "%"; }, kSeqCol);
     addAndMakeVisible(*genMutationRow);
-    genMutationA = std::make_unique<SA>(apvts, "gen_mutation", genMutationRow->getSlider());
+    genMutationA = std::make_unique<SA>(apvts, PID::genMutation, genMutationRow->getSlider());
     genMutationRow->getSlider().onValueChange = [this] { genMutationRow->updateValue(); };
     genMutationRow->updateValue();
 
@@ -476,10 +476,10 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     setupFixBtn(genFixPulsesBtn,   "Lock Pulses against drift");
     setupFixBtn(genFixRotationBtn, "Lock Rotation against drift");
     setupFixBtn(genFixMutationBtn, "Lock Evolve against drift");
-    genFixStepsA    = std::make_unique<BA>(apvts, "gen_fix_steps",    genFixStepsBtn);
-    genFixPulsesA   = std::make_unique<BA>(apvts, "gen_fix_pulses",   genFixPulsesBtn);
-    genFixRotationA = std::make_unique<BA>(apvts, "gen_fix_rotation", genFixRotationBtn);
-    genFixMutationA = std::make_unique<BA>(apvts, "gen_fix_mutation", genFixMutationBtn);
+    genFixStepsA    = std::make_unique<BA>(apvts, PID::genFixSteps,    genFixStepsBtn);
+    genFixPulsesA   = std::make_unique<BA>(apvts, PID::genFixPulses,   genFixPulsesBtn);
+    genFixRotationA = std::make_unique<BA>(apvts, PID::genFixRotation, genFixRotationBtn);
+    genFixMutationA = std::make_unique<BA>(apvts, PID::genFixMutation, genFixMutationBtn);
 
     juce::StringArray scaleRootItems;
     for (const auto& e : ScaleRoot::kEntries) scaleRootItems.add(e.label);
@@ -488,7 +488,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genScaleRootBox.setColour(juce::ComboBox::textColourId, kSeqCol);
     genScaleRootBox.setColour(juce::ComboBox::outlineColourId, kBorder);
     addAndMakeVisible(genScaleRootBox);
-    genScaleRootA = std::make_unique<CA>(apvts, "scale_root", genScaleRootBox);
+    genScaleRootA = std::make_unique<CA>(apvts, PID::scaleRoot, genScaleRootBox);
 
     juce::StringArray scaleTypeItems;
     for (const auto& e : ScaleType::kEntries) scaleTypeItems.add(e.label);
@@ -497,7 +497,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genScaleTypeBox.setColour(juce::ComboBox::textColourId, kSeqCol);
     genScaleTypeBox.setColour(juce::ComboBox::outlineColourId, kBorder);
     addAndMakeVisible(genScaleTypeBox);
-    genScaleTypeA = std::make_unique<CA>(apvts, "scale_type", genScaleTypeBox);
+    genScaleTypeA = std::make_unique<CA>(apvts, PID::scaleType, genScaleTypeBox);
 
     // ── Arp controls (SwitchBox: OFF/Up/Dn/U-D/Rnd) ──
     juce::StringArray arpModeItems;
@@ -521,13 +521,13 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         arpModeBtns[i].onClick = [this, i] { arpModeBox.setSelectedId(i + 1); };
         addAndMakeVisible(arpModeBtns[i]);
     }
-    arpModeA = std::make_unique<CA>(apvts, "arp_mode", arpModeBox);
+    arpModeA = std::make_unique<CA>(apvts, PID::arpMode, arpModeBox);
 
     juce::StringArray arpRateItems;
     for (const auto& e : ArpRate::kEntries) arpRateItems.add(e.label);
     arpRateBox.addItemList(arpRateItems, 1);
     addAndMakeVisible(arpRateBox);
-    arpRateA = std::make_unique<CA>(apvts, "arp_rate", arpRateBox);
+    arpRateA = std::make_unique<CA>(apvts, PID::arpRate, arpRateBox);
 
     // Oct label
     arpOctLabel.setText("Oct", juce::dontSendNotification);
@@ -554,7 +554,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         arpOctBtns[i].onClick = [this, i] { arpOctHidden.setSelectedId(i + 1); };
         addAndMakeVisible(arpOctBtns[i]);
     }
-    arpOctA = std::make_unique<CA>(apvts, "arp_octaves", arpOctHidden);
+    arpOctA = std::make_unique<CA>(apvts, PID::arpOctaves, arpOctHidden);
 
     // ── Step columns ──
     for (int i = 0; i < MAX_COLS; ++i)
@@ -582,7 +582,7 @@ SequencerPanel::~SequencerPanel()
 void SequencerPanel::syncStepCount()
 {
     int steps = static_cast<int>(processorRef.getValueTreeState()
-                    .getRawParameterValue("seq_steps")->load());
+                    .getRawParameterValue(PID::seqSteps)->load());
     numVisibleSteps = juce::jlimit(2, MAX_COLS, steps);
 
     for (int i = 0; i < MAX_COLS; ++i)
@@ -595,9 +595,9 @@ void SequencerPanel::syncStepCount()
 void SequencerPanel::timerCallback()
 {
     bool genRunning = processorRef.getValueTreeState()
-        .getRawParameterValue("gen_seq_running")->load() > 0.5f;
+        .getRawParameterValue(PID::genSeqRunning)->load() > 0.5f;
     bool seqRunning = processorRef.getValueTreeState()
-        .getRawParameterValue("seq_running")->load() > 0.5f;
+        .getRawParameterValue(PID::seqRunning)->load() > 0.5f;
 
     // Skip expensive updates when audio is idle and neither sequencer runs
     bool seqIdle = processorRef.audioIdle.load(std::memory_order_relaxed)
@@ -659,7 +659,7 @@ void SequencerPanel::timerCallback()
     if (!genRunning)
     {
         int steps = static_cast<int>(processorRef.getValueTreeState()
-                        .getRawParameterValue("seq_steps")->load());
+                        .getRawParameterValue(PID::seqSteps)->load());
         if (steps != numVisibleSteps)
             syncStepCount();
     }
@@ -862,7 +862,7 @@ void SequencerPanel::resized()
 
     // ═══ Determine mode ═══
     genModeActive = processorRef.getValueTreeState()
-        .getRawParameterValue("gen_seq_running")->load() > 0.5f;
+        .getRawParameterValue(PID::genSeqRunning)->load() > 0.5f;
 
     // Visibility: step grid vs gen controls (Row 1 stays ALWAYS visible)
     for (int i = 0; i < MAX_COLS; ++i)

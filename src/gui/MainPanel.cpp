@@ -1,5 +1,6 @@
 #include "MainPanel.h"
 #include "../PluginProcessor.h"
+#include "../dsp/BlockParams.h"
 #include "GuiHelpers.h"
 #include "BinaryData.h"
 #include <thread>
@@ -81,7 +82,7 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     addAndMakeVisible(masterVolLabel);
 
     masterVolA = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        processor.getValueTreeState(), "master_vol", masterVolKnob);
+        processor.getValueTreeState(), PID::masterVol, masterVolKnob);
 
     // Main Generate button at bottom of left column
     mainGenerateBtn.setColour(juce::TextButton::buttonColourId, kOscCol);
