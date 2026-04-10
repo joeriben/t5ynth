@@ -16,7 +16,7 @@ class MainPanel : public juce::Component, private juce::Timer
 {
 public:
     explicit MainPanel(T5ynthProcessor& processor);
-    ~MainPanel() override = default;
+    ~MainPanel() override;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -73,10 +73,6 @@ private:
     void loadPreset();
     void exportWav();
     void loadDefaultPreset();
-    // Load the bundled INIT preset (sensible synth-typical starting point
-    // with no audio sample — the user generates fresh material via the
-    // prompt panel). Invoked from a future "New" / "Init" button; also
-    // available as a fallback if the DEMO preset fails to load.
     void loadInitPreset();
     // Shared implementation used by loadDefaultPreset / loadInitPreset:
     // writes the embedded binary to a temp file and routes it through the

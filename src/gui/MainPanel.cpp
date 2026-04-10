@@ -401,6 +401,38 @@ void MainPanel::tryLoadInferenceModels()
     }
 }
 
+// ── Buffer preset: persist full state on Standalone quit ──
+static juce::File getBufferPresetFile()
+{
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+               .getChildFile("T5ynth")
+               .getChildFile("_buffer.t5p");
+}
+
+MainPanel::~MainPanel()
+{
+    if (!juce::JUCEApplicationBase::isStandaloneApp())
+        return;
+
+    // Sync GUI-only state into processor before saving
+    processorRef.setLastPrompts(promptPanel.getPromptA(), promptPanel.getPromptB());
+    processorRef.setLastSeed(promptPanel.getSeed());
+    {
+        auto axStates = axesPanel.getSlotStates();
+        std::array<T5ynthProcessor::AxisSlotState, 3> procAxes;
+        for (int i = 0; i < 3; ++i)
+        {
+            procAxes[static_cast<size_t>(i)].dropdownId = axStates[static_cast<size_t>(i)].dropdownId;
+            procAxes[static_cast<size_t>(i)].value      = axStates[static_cast<size_t>(i)].value;
+        }
+        processorRef.setLastAxes(procAxes);
+    }
+
+    auto bufFile = getBufferPresetFile();
+    bufFile.getParentDirectory().createDirectory();
+    PresetFormat::saveToFile(bufFile, processorRef);
+}
+
 void MainPanel::paint(juce::Graphics& g)
 {
     g.fillAll(kBg);
@@ -662,6 +694,45 @@ void MainPanel::loadDefaultPreset()
     if (processorRef.getGeneratedAudio().getNumSamples() > 0)
         return;
 
+    // Standalone: restore previous session state if available
+    if (juce::JUCEApplicationBase::isStandaloneApp())
+    {
+        auto bufFile = getBufferPresetFile();
+        if (bufFile.existsAsFile())
+        {
+            auto result = PresetFormat::loadFromFile(bufFile, processorRef);
+            if (result.success)
+            {
+                promptPanel.loadPresetData(result.promptA, result.promptB,
+                                           result.seed, result.randomSeed, result.device, result.model);
+                if (result.hasAxes)
+                {
+                    std::array<AxesPanel::SlotState, 3> states;
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        states[static_cast<size_t>(i)].dropdownId = result.axes[static_cast<size_t>(i)].dropdownId;
+                        states[static_cast<size_t>(i)].value      = result.axes[static_cast<size_t>(i)].value;
+                    }
+                    axesPanel.setSlotStates(states);
+                }
+                if (result.hasAudio)
+                {
+                    processorRef.loadGeneratedAudio(result.audio, result.sampleRate);
+                    processorRef.setLastSeed(result.seed);
+                    processorRef.setLastPrompts(result.promptA, result.promptB);
+                }
+                if (!result.embeddingA.empty())
+                {
+                    processorRef.setLastEmbeddings(result.embeddingA, result.embeddingB);
+                    dimensionExplorer.setEmbeddings(result.embeddingA, result.embeddingB);
+                }
+                statusBar.setPresetName(result.presetName);
+                return;
+            }
+        }
+    }
+
+    // First launch or DAW: load bundled DEMO
     loadBundledPreset(BinaryData::DEMO_T5OscillatorDrift_t5p,
                       BinaryData::DEMO_T5OscillatorDrift_t5pSize,
                       "t5ynth_default.t5p");
