@@ -207,6 +207,15 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
                 apvts.getParameter(PID::genCfg)->setValueNotifyingHost(
                     apvts.getParameter(PID::genCfg)->convertTo0to1(defaultCfg));
 
+                // Start position only supported by SA 1.0 (seconds_start)
+                bool startSupported = !isSmall && !isAudioLDM2;
+                startSlider.setEnabled(startSupported);
+                startSlider.setAlpha(startSupported ? 1.0f : 0.3f);
+                if (!startSupported)
+                {
+                    apvts.getParameter(PID::genStart)->setValueNotifyingHost(0.0f);
+                }
+
                 // Preload model in background so first generate is instant
                 if (onStatusChanged) onStatusChanged("Loading " + model + "...", true);
                 generateButton.setEnabled(false);

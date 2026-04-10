@@ -22,21 +22,21 @@ public:
     {
         TgtNone = 0,
         TgtAlpha,      // 1
-        TgtAxis1,      // 2
-        TgtAxis2,      // 3
-        TgtAxis3,      // 4
-        TgtWtScan,     // 5
-        TgtFilter,     // 6
-        TgtPitch,      // 7
-        TgtDelayTime,  // 8
-        TgtDelayFb,    // 9
-        TgtDelayMix,   // 10
-        TgtReverbMix,  // 11
-        TgtEnv1Amt,    // 12
-        TgtEnv2Amt,    // 13
-        TgtEnv3Amt,    // 14
-        TgtNoise,      // 15
-        TgtMagnitude,  // 16
+        TgtNoise,      // 2
+        TgtMagnitude,  // 3
+        TgtAxis1,      // 4
+        TgtAxis2,      // 5
+        TgtAxis3,      // 6
+        TgtWtScan,     // 7
+        TgtFilter,     // 8
+        TgtPitch,      // 9
+        TgtDelayTime,  // 10
+        TgtDelayFb,    // 11
+        TgtDelayMix,   // 12
+        TgtReverbMix,  // 13
+        TgtEnv1Amt,    // 14
+        TgtEnv2Amt,    // 15
+        TgtEnv3Amt,    // 16
         NumTargets
     };
 

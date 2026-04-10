@@ -192,7 +192,7 @@ void T5ynthGenerativeSequencer::rebuildPattern()
             float gapFrac = (gapCount > 0)
                 ? static_cast<float>(gaps[pulseIdx % gapCount]) / static_cast<float>(numSteps)
                 : 0.5f;
-            velocityPattern[static_cast<size_t>(i)] = juce::jlimit(0.4f, 1.0f, 0.55f + gapFrac * 0.6f);
+            velocityPattern[static_cast<size_t>(i)] = juce::jlimit(0.7f, 1.0f, 0.75f + gapFrac * 0.3f);
             pulseIdx++;
         }
     }
@@ -641,8 +641,8 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
             int note = notePattern[static_cast<size_t>(stepIdx)];
             float vel = velocityPattern[static_cast<size_t>(stepIdx)];
 
-            // Ghost notes are quieter
-            if (!isPulse) vel *= 0.4f;
+            // Ghost notes are slightly quieter
+            if (!isPulse) vel *= 0.75f;
 
             int velInt = juce::jlimit(1, 127, juce::roundToInt(vel * 127.0f));
             midi.addEvent(juce::MidiMessage::noteOn(1, note,

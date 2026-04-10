@@ -18,10 +18,10 @@ public:
     void processBlock(juce::AudioBuffer<float>& buffer);
     void reset();
 
-    /** Set delay time in milliseconds. */
+    /** Set delay time in milliseconds (smoothed per-sample). */
     void setTime(float ms);
 
-    /** Set feedback amount (0-0.95). */
+    /** Set feedback amount (0-0.95, smoothed per-sample). */
     void setFeedback(float fb);
 
     /** Set dry/wet mix (0=dry, 1=wet). Send amount, not crossfade. */
@@ -41,7 +41,10 @@ private:
 
     double sr = 44100.0;
     float delayTimeMs = 250.0f;     // Reference default
+    float targetDelaySamples = 0.0f; // smoothing target
+    float currentDelaySamples = 0.0f; // smoothed current
     float feedback = 0.35f;          // Reference default
+    float targetFeedback = 0.35f;    // smoothing target
     float wetMix = 0.3f;            // Reference default (send amount)
     float dampFreq = 4000.0f;       // Default at damp=0.5
     bool prepared = false;

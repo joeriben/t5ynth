@@ -10,7 +10,10 @@ void T5ynthDelayLine::prepare(double sampleRate, int samplesPerBlock)
     spec.numChannels = 2;
 
     delayLine.prepare(spec);
-    delayLine.setDelay(static_cast<float>(delayTimeMs * 0.001 * sr));
+    currentDelaySamples = static_cast<float>(delayTimeMs * 0.001 * sr);
+    targetDelaySamples = currentDelaySamples;
+    delayLine.setDelay(currentDelaySamples);
+    targetFeedback = feedback;
 
     // Initialize damping filters (Butterworth LP, Q ~= 0.707)
     updateDampCoeffs();
@@ -38,6 +41,9 @@ void T5ynthDelayLine::processBlock(juce::AudioBuffer<float>& buffer)
     // Limiter at end of chain is the final safety net.
     const float dryGain = 1.0f - wetMix * 0.3f;
 
+    // Per-sample smoothing coefficient (~5ms ramp at current SR)
+    const float smoothCoeff = 1.0f - std::exp(-1.0f / static_cast<float>(sr * 0.005));
+
     for (int ch = 0; ch < numChannels; ++ch)
     {
         auto* data = buffer.getWritePointer(ch);
@@ -45,8 +51,15 @@ void T5ynthDelayLine::processBlock(juce::AudioBuffer<float>& buffer)
 
         for (int i = 0; i < numSamples; ++i)
         {
+            // Smooth delay time and feedback per-sample to avoid clicks
+            if (ch == 0) // advance smoothing once per sample, not per channel
+            {
+                currentDelaySamples += (targetDelaySamples - currentDelaySamples) * smoothCoeff;
+                feedback += (targetFeedback - feedback) * smoothCoeff;
+            }
+
             float drySample = data[i];
-            float delayed = delayLine.popSample(ch);
+            float delayed = delayLine.popSample(ch, currentDelaySamples, true);
 
             // Feedback path with damping LP filter
             float fbSample = delayed * feedback;
@@ -77,12 +90,12 @@ void T5ynthDelayLine::setTime(float ms)
 {
     delayTimeMs = ms;
     if (prepared)
-        delayLine.setDelay(static_cast<float>(ms * 0.001 * sr));
+        targetDelaySamples = static_cast<float>(ms * 0.001 * sr);
 }
 
 void T5ynthDelayLine::setFeedback(float fb)
 {
-    feedback = juce::jlimit(0.0f, 0.95f, fb);
+    targetFeedback = juce::jlimit(0.0f, 0.95f, fb);
 }
 
 void T5ynthDelayLine::setMix(float mix)

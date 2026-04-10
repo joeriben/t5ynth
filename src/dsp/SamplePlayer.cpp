@@ -635,35 +635,55 @@ void SamplePlayer::applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopSta
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Peak normalize to 0.95 (from useSamplePlayer.ts)
+// RMS normalize to -12 dBFS, then peak-limit to 0.95
 // ═══════════════════════════════════════════════════════════════════
 
 void SamplePlayer::normalizeBuffer(juce::AudioBuffer<float>& buf, int regionStart, int regionEnd) const
 {
-    // Find peak only within the play region (avoid spikes outside brackets)
     int rs = juce::jlimit(0, buf.getNumSamples(), regionStart);
     int re = juce::jlimit(rs, buf.getNumSamples(), regionEnd);
     if (re <= rs) return;
 
-    float peak = 0.0f;
+    // Compute RMS over the play region (all channels)
+    double sumSq = 0.0;
+    int totalSamples = 0;
     for (int ch = 0; ch < buf.getNumChannels(); ++ch)
     {
         const float* d = buf.getReadPointer(ch);
         for (int i = rs; i < re; ++i)
         {
-            float a = std::abs(d[i]);
-            if (a > peak) peak = a;
+            double s = static_cast<double>(d[i]);
+            sumSq += s * s;
         }
+        totalSamples += (re - rs);
     }
 
-    if (peak < 0.001f) return;
+    if (totalSamples == 0) return;
+    float rms = static_cast<float>(std::sqrt(sumSq / totalSamples));
+    if (rms < 1e-6f) return; // silence
 
-    float gain = 0.95f / peak;
+    // Target: -12 dBFS RMS ≈ 0.25
+    static constexpr float kTargetRms = 0.25f;
+    float gain = kTargetRms / rms;
+
+    // Apply gain to entire buffer
     for (int ch = 0; ch < buf.getNumChannels(); ++ch)
     {
         float* d = buf.getWritePointer(ch);
         for (int i = 0; i < buf.getNumSamples(); ++i)
             d[i] *= gain;
+    }
+
+    // Soft-clip peaks above 0.95 to prevent clipping without crushing dynamics
+    static constexpr float kCeiling = 0.95f;
+    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+    {
+        float* d = buf.getWritePointer(ch);
+        for (int i = 0; i < buf.getNumSamples(); ++i)
+        {
+            if (d[i] > kCeiling)       d[i] = kCeiling;
+            else if (d[i] < -kCeiling) d[i] = -kCeiling;
+        }
     }
 }
 

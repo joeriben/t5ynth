@@ -280,7 +280,6 @@ void SettingsPage::browseForModel()
 static const char* kSaSmallRequired[] = {
     "model.safetensors",
     "model_config.json",
-    "LICENSE",
 };
 static constexpr int kNumSaSmallRequired =
     sizeof(kSaSmallRequired) / sizeof(kSaSmallRequired[0]);
@@ -436,20 +435,18 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
                     + wrongFound.joinIntoString("\n  ")
                     + "\n\nThe files T5ynth actually needs are:\n"
                       "  \xe2\x80\xa2 model.safetensors (NOT model.ckpt, NOT base_model.*)\n"
-                      "  \xe2\x80\xa2 model_config.json\n"
-                      "  \xe2\x80\xa2 LICENSE\n\n"
+                      "  \xe2\x80\xa2 model_config.json\n\n"
                       "Click 'Open Model Page' above, go to 'Files and versions', "
-                      "and download exactly those three files.");
+                      "and download exactly those two files.");
         }
         else
         {
             juce::AlertWindow::showMessageBoxAsync(
                 juce::MessageBoxIconType::InfoIcon,
                 "No model files found",
-                "This folder does not contain the three files T5ynth needs:\n"
+                "This folder does not contain the two files T5ynth needs:\n"
                 "  \xe2\x80\xa2 model.safetensors\n"
-                "  \xe2\x80\xa2 model_config.json\n"
-                "  \xe2\x80\xa2 LICENSE\n\n"
+                "  \xe2\x80\xa2 model_config.json\n\n"
                 "Click 'Open Model Page' above to fetch them from HuggingFace.");
         }
     }
@@ -656,7 +653,6 @@ void SettingsPage::downloadGhReleaseInThread()
     static const GhFile kFiles[] = {
         { "model.safetensors", 1677000000 },
         { "model_config.json", 6000 },
-        { "LICENSE",           12000 },
     };
     static constexpr int kNumFiles = sizeof(kFiles) / sizeof(kFiles[0]);
 
@@ -1027,12 +1023,11 @@ void SettingsPage::updateStatus()
                 "  2. On that page, sign up or log in (top-right corner).\n"
                 "  3. Click 'Agree and access repository' to accept the license.\n"
                 "  4. On the same page, click the 'Files and versions' tab.\n"
-                "  5. Download exactly these three files to your usual Downloads\n"
+                "  5. Download exactly these two files to your usual Downloads\n"
                 "     folder (one click each on the filename, then the download\n"
                 "     icon on the right):\n"
                 "        model.safetensors\n"
                 "        model_config.json\n"
-                "        LICENSE\n"
                 "     Do not download model.ckpt, base_model.ckpt,\n"
                 "     base_model.safetensors, or base_model_config.json \xe2\x80\x94\n"
                 "     they are alternative formats T5ynth does not use.\n"

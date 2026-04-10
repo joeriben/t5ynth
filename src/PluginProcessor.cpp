@@ -1149,7 +1149,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         float baseDelayMix = parameters.getRawParameterValue(PID::delayMix)->load();
         // Apply modulation offsets to delay params
         delay.setTime(juce::jlimit(1.0f, 5000.0f, baseDelayTime * (1.0f + modDelayTime)));
-        delay.setFeedback(juce::jlimit(0.0f, 0.95f, baseDelayFb + modDelayFb * baseDelayFb));
+        delay.setFeedback(juce::jlimit(0.0f, 0.95f, baseDelayFb + modDelayFb));
         delay.setMix(juce::jlimit(0.0f, 1.0f, baseDelayMix + modDelayMix));
         delay.setDamp(parameters.getRawParameterValue(PID::delayDamp)->load());
     }
