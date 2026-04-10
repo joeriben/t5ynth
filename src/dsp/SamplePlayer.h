@@ -80,6 +80,16 @@ public:
     bool  getPointsLocked() const { return pointsLocked_; }
     void  setPointsLocked(bool v) { pointsLocked_ = v; }
 
+    // ─── Wavetable extraction region (independent of Sampler P2/P3) ───
+    void  setWtExtractStart(float frac) { wtExtractStartFrac_ = juce::jlimit(0.0f, 1.0f, frac); }
+    void  setWtExtractEnd(float frac)   { wtExtractEndFrac_   = juce::jlimit(0.0f, 1.0f, frac); }
+    float getWtExtractStart() const { return wtExtractStartFrac_; }
+    float getWtExtractEnd()   const { return wtExtractEndFrac_; }
+
+    // ─── Start position modulation offset (Scan→P1 in Sampler mode) ───
+    void  setStartPosOffset(float v) { startPosOffset_ = v; }
+    float getStartPosOffset() const  { return startPosOffset_; }
+
     /** Share playback buffer from a master player (for polyphonic voices).
      *  Shared-mode players have their own read position but read from the
      *  master's prepared buffer. loadBuffer/preparePlaybackBuffer are no-ops. */
@@ -126,7 +136,14 @@ private:
     float startPosFrac  = 0.0f;   // P1: playback start position
     float loopStartFrac = 0.0f;   // P2: loop begin
     float loopEndFrac   = 1.0f;   // P3: loop end
-    bool  pointsLocked_ = false; // true → Generate never touches P1/P2/P3
+    bool  pointsLocked_ = false;  // true → Generate never touches P1/P2/P3
+
+    // WT extraction region (independent of Sampler P2/P3)
+    float wtExtractStartFrac_ = 0.0f;
+    float wtExtractEndFrac_   = 1.0f;
+
+    // Modulation offset for P1 (Scan→StartPos in Sampler mode)
+    float startPosOffset_ = 0.0f;
 
     // Playback bounds in samples (within playBuffer)
     int playStart  = 0;

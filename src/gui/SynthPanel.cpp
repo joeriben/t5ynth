@@ -241,14 +241,22 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     addAndMakeVisible(waveformDisplay);
 
-    // Wire bracket handles to sampler + wavetable extraction
+    // Wire bracket handles: WT mode → extraction region, Sampler → P2/P3
     waveformDisplay.onLoopRegionChanged = [this](float start, float end) {
-        processorRef.getSampler().setLoopStart(start);
-        processorRef.getSampler().setLoopEnd(end);
+        if (processorRef.isWavetableMode())
+        {
+            processorRef.getSampler().setWtExtractStart(start);
+            processorRef.getSampler().setWtExtractEnd(end);
+        }
+        else
+        {
+            processorRef.getSampler().setLoopStart(start);
+            processorRef.getSampler().setLoopEnd(end);
+        }
         processorRef.getSampler().setPointsLocked(true);
         waveformDisplay.getLockButton().setLocked(true);
 
-        // In wavetable mode, re-extract frames from the new region
+        // Re-extract wavetable frames from the updated region
         if (processorRef.isWavetableMode())
             processorRef.reextractWavetable();
     };
@@ -699,9 +707,13 @@ void SynthPanel::timerCallback()
             waveformDisplay.setBufferDuration(static_cast<float>(numSamples / sr));
 
         // Sync brackets + start position + lock state from processor
+        // WT mode shows its own extraction region, Sampler shows P2/P3
         {
-            float s = processorRef.getSampler().getLoopStart();
-            float e = processorRef.getSampler().getLoopEnd();
+            bool isWT = processorRef.isWavetableMode();
+            float s  = isWT ? processorRef.getSampler().getWtExtractStart()
+                            : processorRef.getSampler().getLoopStart();
+            float e  = isWT ? processorRef.getSampler().getWtExtractEnd()
+                            : processorRef.getSampler().getLoopEnd();
             float p1 = processorRef.getSampler().getStartPos();
             waveformDisplay.setLoopStart(s);
             waveformDisplay.setLoopEnd(e);

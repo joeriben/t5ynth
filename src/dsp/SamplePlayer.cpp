@@ -44,6 +44,9 @@ void SamplePlayer::shareBufferFrom(const SamplePlayer& master)
     startPosFrac = master.startPosFrac;
     loopStartFrac = master.loopStartFrac;
     loopEndFrac = master.loopEndFrac;
+    wtExtractStartFrac_ = master.wtExtractStartFrac_;
+    wtExtractEndFrac_ = master.wtExtractEndFrac_;
+    startPosOffset_ = master.startPosOffset_;
     audioLoaded = master.audioLoaded;
     // Only reset read position on first share, not on subsequent syncs
     if (!wasShared)
@@ -74,13 +77,16 @@ void SamplePlayer::retrigger()
     const int bufLen = buf.getNumSamples();
     if (bufLen == 0) return;
 
+    // Effective P1 = base + modulation offset (Scan→P1 in Sampler mode)
+    float effectiveP1 = juce::jlimit(0.0f, 1.0f, startPosFrac + startPosOffset_);
+
     // Determine direction based on P1 vs P3
-    bool reversed = (startPosFrac > loopEndFrac);
+    bool reversed = (effectiveP1 > loopEndFrac);
     playDirection_ = reversed ? -1 : 1;
     inFirstPass_ = true;
 
     // Convert P1 fraction to sample position
-    int startSample = static_cast<int>(std::floor(startPosFrac * bufLen));
+    int startSample = static_cast<int>(std::floor(effectiveP1 * bufLen));
 
     // In Loop mode, skip crossfade zone if P1 falls in it
     if (loopMode == LoopMode::Loop && startSample >= playStart && startSample < coldStart)

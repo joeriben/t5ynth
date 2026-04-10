@@ -1014,6 +1014,21 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             if (bp.lfo2Target == LfoTarget::Env3Amt) bp.mod2Amount = juce::jlimit(0.0f, 1.0f, bp.mod2Amount * (1.0f + l2End));
         }
 
+        // Scan → P1 modulation offset (Sampler mode: retrigger uses it)
+        if (!bp.engineIsWavetable)
+        {
+            float p1Mod = bp.driftScanOffset;
+            float l1 = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
+            float l2 = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
+            if (bp.lfo1Target == LfoTarget::Scan) p1Mod += l1;
+            if (bp.lfo2Target == LfoTarget::Scan) p1Mod += l2;
+            masterSampler.setStartPosOffset(p1Mod);
+        }
+        else
+        {
+            masterSampler.setStartPosOffset(0.0f);
+        }
+
         // ── Sample-accurate rendering: split block at MIDI event boundaries ──
         {
             auto midiIter = midiMessages.cbegin();
@@ -1458,9 +1473,18 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     // correct P2/P3, so normalization targets the right region.
     masterSampler.loadBuffer(feedBuffer, sr);
 
-    // Extract frames for the wavetable oscillator (both modes use it now)
-    float extractStart = masterSampler.getLoopStart();
-    float extractEnd   = masterSampler.getLoopEnd();
+    // Sync WT extraction region from P2/P3 when not locked (first load)
+    if (!masterSampler.getPointsLocked())
+    {
+        masterSampler.setWtExtractStart(masterSampler.getLoopStart());
+        masterSampler.setWtExtractEnd(masterSampler.getLoopEnd());
+    }
+
+    // Extract frames: WT uses its own region, Sampler uses P2/P3
+    float extractStart = isWavetableMode() ? masterSampler.getWtExtractStart()
+                                           : masterSampler.getLoopStart();
+    float extractEnd   = isWavetableMode() ? masterSampler.getWtExtractEnd()
+                                           : masterSampler.getLoopEnd();
 
     // WT frame count: 0=32, 1=64, 2=128, 3=256
     constexpr int frameCounts[] = {32, 64, 128, 256};
@@ -1539,8 +1563,10 @@ void T5ynthProcessor::reextractWavetable()
 {
     if (waveformSnapshot.getNumSamples() > 0)
     {
-        float start = masterSampler.getLoopStart();
-        float end   = masterSampler.getLoopEnd();
+        float start = isWavetableMode() ? masterSampler.getWtExtractStart()
+                                        : masterSampler.getLoopStart();
+        float end   = isWavetableMode() ? masterSampler.getWtExtractEnd()
+                                        : masterSampler.getLoopEnd();
 
         constexpr int frameCounts[] = {32, 64, 128, 256};
         int fcIdx = static_cast<int>(parameters.getRawParameterValue(PID::wtFrames)->load());
@@ -1760,6 +1786,8 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     engine->setProperty("loopStartFrac", static_cast<double>(masterSampler.getLoopStart()));
     engine->setProperty("loopEndFrac", static_cast<double>(masterSampler.getLoopEnd()));
     engine->setProperty("startPosFrac", static_cast<double>(masterSampler.getStartPos()));
+    engine->setProperty("wtExtractStart", static_cast<double>(masterSampler.getWtExtractStart()));
+    engine->setProperty("wtExtractEnd", static_cast<double>(masterSampler.getWtExtractEnd()));
     engine->setProperty("pointsLocked", masterSampler.getPointsLocked());
     engine->setProperty("crossfadeMs", get(PID::crossfadeMs));
     engine->setProperty(PID::normalize, get(PID::normalize) > 0.5f);
@@ -1952,6 +1980,17 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         masterSampler.setLoopStart(static_cast<float>(engine->getProperty("loopStartFrac")));
         masterSampler.setLoopEnd(static_cast<float>(engine->getProperty("loopEndFrac")));
         masterSampler.setStartPos(static_cast<float>(engine->getProperty("startPosFrac")));
+        // WT extraction region (fallback to P2/P3 for presets without it)
+        if (engine->hasProperty("wtExtractStart"))
+        {
+            masterSampler.setWtExtractStart(static_cast<float>(engine->getProperty("wtExtractStart")));
+            masterSampler.setWtExtractEnd(static_cast<float>(engine->getProperty("wtExtractEnd")));
+        }
+        else
+        {
+            masterSampler.setWtExtractStart(masterSampler.getLoopStart());
+            masterSampler.setWtExtractEnd(masterSampler.getLoopEnd());
+        }
         masterSampler.setPointsLocked(static_cast<bool>(engine->getProperty("pointsLocked")));
         setParam(parameters, PID::crossfadeMs, static_cast<float>(engine->getProperty("crossfadeMs")));
         setParam(parameters, PID::normalize, static_cast<bool>(engine->getProperty(PID::normalize)) ? 1.0f : 0.0f);
