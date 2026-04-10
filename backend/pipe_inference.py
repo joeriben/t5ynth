@@ -75,8 +75,13 @@ _model_formats = {}
 
 def find_models():
     """Discover all model directories (diffusers or native). Returns {name: Path}."""
-    base_dirs = [
-        Path.home() / "Library" / "T5ynth" / "models",       # macOS
+    import sys
+    base_dirs = []
+    if sys.platform == "darwin":
+        base_dirs.append(Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg)
+    base_dirs += [
+        Path.home() / "Library" / "Application Support" / "T5ynth" / "models",  # per-user macOS
+        Path.home() / "Library" / "T5ynth" / "models",       # legacy macOS
         Path.home() / ".local" / "share" / "T5ynth" / "models",  # Linux
         Path.home() / "t5ynth" / "models",                    # Legacy
     ]

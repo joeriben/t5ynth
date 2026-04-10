@@ -31,23 +31,27 @@ import sys
 
 def _default_model_dir() -> Path:
     """Return the first existing model directory, or the platform-standard one."""
+    candidates = []
     if sys.platform == "darwin":
-        app_support = Path.home() / "Library" / "T5ynth" / "models"
+        candidates.append(Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg)
+        candidates.append(Path.home() / "Library" / "Application Support" / "T5ynth" / "models")
+        candidates.append(Path.home() / "Library" / "T5ynth" / "models")  # legacy
     elif sys.platform == "win32":
-        app_support = Path(os.environ.get("APPDATA", "")) / "T5ynth" / "models"
+        candidates.append(Path(os.environ.get("APPDATA", "")) / "T5ynth" / "models")
     else:  # Linux
-        app_support = Path.home() / ".local" / "share" / "T5ynth" / "models"
+        candidates.append(Path.home() / ".local" / "share" / "T5ynth" / "models")
+    candidates.append(Path.home() / "t5ynth" / "models")  # legacy
 
-    legacy = Path.home() / "t5ynth" / "models"
+    # Return first candidate that contains any model
+    for d in candidates:
+        if d.is_dir() and any(
+            (child / "model_index.json").is_file() or (child / "model_config.json").is_file()
+            for child in d.iterdir() if child.is_dir()
+        ):
+            return d
 
-    # Prefer app support if the model exists there
-    if (app_support / "stable-audio-open-1.0" / "model_index.json").is_file():
-        return app_support
-    if (legacy / "stable-audio-open-1.0" / "model_index.json").is_file():
-        return legacy
-
-    # Default to app support (will be created by the GUI download)
-    return app_support
+    # Default to system-wide on macOS, else first candidate
+    return candidates[0]
 
 MODEL_DIR = Path(os.environ.get("T5YNTH_MODEL_DIR", str(_default_model_dir())))
 

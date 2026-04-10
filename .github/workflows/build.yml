@@ -111,6 +111,23 @@ jobs:
           name: T5ynth-macOS-AU
           path: archives/T5ynth-macOS-AU.tar.xz
 
+      - name: Build macOS installer (.pkg)
+        run: |
+          chmod +x installer/macos/build_pkg.sh
+          installer/macos/build_pkg.sh \
+            --app   build/T5ynth_artefacts/Release/Standalone/T5ynth.app \
+            --vst3  build/T5ynth_artefacts/Release/VST3/T5ynth.vst3 \
+            --au    build/T5ynth_artefacts/Release/AU/T5ynth.component \
+            --presets resources/presets \
+            --version "${{ github.ref_name || '0.0.0-dev' }}" \
+            --output archives/T5ynth-macOS.pkg
+
+      - name: Upload macOS Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: T5ynth-macOS-Installer
+          path: archives/T5ynth-macOS.pkg
+
   # ── Windows ─────────────────────────────────────────────────────
   windows:
     runs-on: windows-latest
@@ -267,6 +284,7 @@ jobs:
         run: |
           mkdir -p release
           find artifacts -name '*.tar.xz' -exec mv {} release/ \;
+          find artifacts -name '*.pkg' -exec mv {} release/ \;
           ls -lh release/
 
       - name: Generate release notes
@@ -287,7 +305,7 @@ jobs:
             *-rc*|*-alpha*|*-beta*) PRERELEASE="--prerelease" ;;
           esac
           gh release create "${{ github.ref_name }}" \
-            release/*.tar.xz \
+            release/*.tar.xz release/*.pkg \
             --title "T5ynth ${{ github.ref_name }}" \
             --notes-file release_notes.md \
             $PRERELEASE

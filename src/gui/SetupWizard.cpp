@@ -81,11 +81,18 @@ juce::File SettingsPage::getAppSupportModelDir()
 
 juce::File SettingsPage::getAppSupportModelDir(const juce::String& modelId)
 {
-    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
-   #if JUCE_LINUX
-    appData = appData.getChildFile("share");
-   #endif
+   #if JUCE_MAC
+    // /Library/Application Support/T5ynth/models/ — the visible, system-wide
+    // Library folder (Macintosh HD > Library). NOT ~/Library/ which is hidden.
+    return juce::File("/Library/Application Support/T5ynth/models/" + modelId);
+   #elif JUCE_LINUX
+    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                       .getChildFile("share");
     return appData.getChildFile("T5ynth/models/" + modelId);
+   #else
+    auto appData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
+    return appData.getChildFile("T5ynth/models/" + modelId);
+   #endif
 }
 
 juce::String SettingsPage::selectedModelId()
@@ -201,8 +208,10 @@ static juce::File scanForModelById(const juce::String& id, const juce::String& h
     auto hfCacheDir = "models--" + hfRepo.replace("/", "--");
 
     auto home = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
+    auto oldAppData = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory);
     std::vector<juce::File> candidates = {
-        SettingsPage::getAppSupportModelDir(id),
+        SettingsPage::getAppSupportModelDir(id),               // /Library/Application Support/T5ynth/models/
+        oldAppData.getChildFile("T5ynth/models/" + id),        // ~/Library/Application Support/ (legacy)
         home.getChildFile("t5ynth/models/" + id),
         home.getChildFile(".cache/huggingface/hub/" + hfCacheDir),
     };

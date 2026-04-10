@@ -262,9 +262,51 @@ PresetFormat::LoadResult PresetFormat::loadFromFile(const juce::File& file, T5yn
 
 juce::File PresetFormat::getPresetsDirectory()
 {
+    return getUserPresetsDirectory();
+}
+
+juce::File PresetFormat::getFactoryPresetsDirectory()
+{
+   #if JUCE_MAC
+    return juce::File("/Library/Application Support/T5ynth/presets");
+   #elif JUCE_LINUX
+    return juce::File("/usr/local/share/T5ynth/presets");
+   #else
+    // Windows: no factory/user split yet
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("T5ynth").getChildFile("presets");
+   #endif
+}
+
+juce::File PresetFormat::getUserPresetsDirectory()
+{
     auto dir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
         .getChildFile("T5ynth")
         .getChildFile("presets");
     dir.createDirectory();
     return dir;
+}
+
+juce::Array<juce::File> PresetFormat::getAllPresetFiles()
+{
+    juce::Array<juce::File> files;
+    juce::StringArray seen;
+
+    // Factory presets first
+    auto factoryDir = getFactoryPresetsDirectory();
+    if (factoryDir.isDirectory())
+        for (auto& f : factoryDir.findChildFiles(juce::File::findFiles, false, "*.t5p"))
+        {
+            files.add(f);
+            seen.add(f.getFileNameWithoutExtension());
+        }
+
+    // User presets (skip if same name as factory)
+    auto userDir = getUserPresetsDirectory();
+    if (userDir.isDirectory())
+        for (auto& f : userDir.findChildFiles(juce::File::findFiles, false, "*.t5p"))
+            if (!seen.contains(f.getFileNameWithoutExtension()))
+                files.add(f);
+
+    return files;
 }

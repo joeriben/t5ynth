@@ -60,8 +60,17 @@ public:
     /** Get the preset file extension. */
     static juce::String getFileExtension() { return ".t5p"; }
 
-    /** Get default preset directory (creates if needed). */
+    /** Get default preset directory (creates if needed). Alias for getUserPresetsDirectory(). */
     static juce::File getPresetsDirectory();
+
+    /** System-wide factory presets (read-only, installed by .pkg). */
+    static juce::File getFactoryPresetsDirectory();
+
+    /** Per-user presets directory (writable, creates if needed). */
+    static juce::File getUserPresetsDirectory();
+
+    /** All .t5p files from factory + user directories (factory first). */
+    static juce::Array<juce::File> getAllPresetFiles();
 
 private:
     static constexpr char kMagic[4] = { 'T', '5', 'Y', 'N' };
