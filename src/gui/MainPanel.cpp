@@ -9,7 +9,7 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     : processorRef(processor),
       promptPanel(processor),
       synthPanel(processor),
-      fxPanel(processor.getValueTreeState()),
+      fxPanel(processor.getValueTreeState(), processor),
       sequencerPanel(processor)
 {
     addAndMakeVisible(promptPanel);

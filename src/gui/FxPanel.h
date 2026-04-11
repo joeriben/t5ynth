@@ -7,18 +7,23 @@
  * Each section has a SwitchBox header (OFF + variants) and slider rows.
  * Limiter is internal only — no GUI controls.
  */
-class FxPanel : public juce::Component
+class T5ynthProcessor; // forward decl
+
+class FxPanel : public juce::Component,
+                private juce::Timer
 {
 public:
-    explicit FxPanel(juce::AudioProcessorValueTreeState& apvts);
+    FxPanel(juce::AudioProcessorValueTreeState& apvts, T5ynthProcessor& processor);
     ~FxPanel() override = default;
 
     void paint(juce::Graphics& g) override;
     void resized() override;
 
 private:
+    void timerCallback() override;
     float fs() const;
     void updateVisibility();
+    T5ynthProcessor& processorRef;
 
     // Delay section
     juce::Label delayHeader;

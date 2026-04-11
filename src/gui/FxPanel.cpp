@@ -1,5 +1,6 @@
 #include "FxPanel.h"
 #include "../dsp/BlockParams.h"
+#include "../PluginProcessor.h"
 
 static juce::String fmtMs(double v)
 {
@@ -19,7 +20,8 @@ static juce::String fmtDampHz(double v)
     return juce::String(juce::roundToInt(hz)) + "Hz";
 }
 
-FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
+FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts, T5ynthProcessor& processor)
+    : processorRef(processor)
 {
     // ══════════ DELAY section ══════════
     paintSectionHeader(delayHeader, "DELAY", kFxCol);
@@ -120,6 +122,21 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts)
 
     // Attach APVTS AFTER buttons are set up
     reverbTypeA = std::make_unique<CA>(apvts, PID::reverbType, reverbTypeHidden);
+
+    startTimerHz(30); // ghost slider updates
+}
+
+void FxPanel::timerCallback()
+{
+    if (processorRef.audioIdle.load(std::memory_order_relaxed)) return;
+    auto& mv = processorRef.modulatedValues;
+    delayTimeRow->setGhostValue(mv.delayTime.load(std::memory_order_relaxed));
+    delayFbRow->setGhostValue(mv.delayFeedback.load(std::memory_order_relaxed));
+    delayMixRow->setGhostValue(mv.delayMix.load(std::memory_order_relaxed));
+    reverbMixRow->setGhostValue(mv.reverbMix.load(std::memory_order_relaxed));
+
+    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayMixRow.get(), reverbMixRow.get() })
+        r->tickGhost();
 }
 
 void FxPanel::updateVisibility()
