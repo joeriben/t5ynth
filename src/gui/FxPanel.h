@@ -14,7 +14,7 @@ class FxPanel : public juce::Component,
 {
 public:
     FxPanel(juce::AudioProcessorValueTreeState& apvts, T5ynthProcessor& processor);
-    ~FxPanel() override = default;
+    ~FxPanel() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
