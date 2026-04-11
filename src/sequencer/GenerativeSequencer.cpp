@@ -629,16 +629,31 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
             ? (0.90f + 0.10f * (1.0f - mutationRate))   // pulse: high probability
             : (mutationRate * 0.15f);                     // rest: ghost note probability
 
-        bool shouldFire = (probDist(rng) < fireProb)
-                       && notePattern[static_cast<size_t>(stepIdx)] > 0;
+        // For ghost notes on rest positions, find the nearest pulse's note
+        int stepNote = notePattern[static_cast<size_t>(stepIdx)];
+        if (!isPulse && stepNote == 0)
+        {
+            for (int off = 1; off <= numSteps; ++off)
+            {
+                int prev = ((stepIdx - off) % numSteps + numSteps) % numSteps;
+                if (notePattern[static_cast<size_t>(prev)] > 0)
+                    { stepNote = notePattern[static_cast<size_t>(prev)]; break; }
+                int next = (stepIdx + off) % numSteps;
+                if (notePattern[static_cast<size_t>(next)] > 0)
+                    { stepNote = notePattern[static_cast<size_t>(next)]; break; }
+            }
+        }
+
+        bool shouldFire = (probDist(rng) < fireProb) && stepNote > 0;
 
         if (shouldFire)
         {
-            int note = notePattern[static_cast<size_t>(stepIdx)];
+            int note = stepNote;
             float vel = velocityPattern[static_cast<size_t>(stepIdx)];
+            if (vel <= 0.0f) vel = 90.0f / 127.0f; // rest positions have vel 0
 
-            // Ghost notes are slightly quieter
-            if (!isPulse) vel *= 0.75f;
+            // Ghost notes are quieter and shorter
+            if (!isPulse) vel *= 0.6f;
 
             // Small random velocity variation (±10)
             std::uniform_int_distribution<int> velJitter(-10, 10);
