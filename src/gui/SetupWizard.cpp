@@ -988,17 +988,21 @@ void SettingsPage::updateStatus()
     downloadButton.setVisible(downloadable);
 
     if (modelPath.exists() && hasModelMarker(modelPath)) {
-        modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
-        modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
         modelPathLabel.setText(modelPath.getFullPathName(), juce::dontSendNotification);
         if (backendConnected) {
+            modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
+            modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
             instructionsLabel.setText("Ready to generate audio.", false);
         } else if (backendFailReason.isNotEmpty()) {
+            modelStatusLabel.setText(id + ": Model found -- backend failed", juce::dontSendNotification);
+            modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xfffbbf24));  // amber
             instructionsLabel.setText(
-                "Model files found, but the Python backend is not available.\n\n"
-                "Make sure the backend is included in the app bundle\n"
-                "and all Python dependencies are installed.", false);
+                "The model files are installed, but the Python backend failed to start.\n\n"
+                "Error: " + backendFailReason + "\n\n"
+                "Check the application log for details.", false);
         } else {
+            modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
+            modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
             instructionsLabel.setText("Model files found. Starting backend...", false);
         }
     } else {
