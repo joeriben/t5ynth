@@ -634,7 +634,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
 // ──────────────────────────────────────────────────────────────────────────────
 void PromptPanel::triggerGeneration()
 {
-    if (generating) return;
+    // No guard — manual generation always proceeds, even during auto-regen
     auto promptA = promptAEditor.getText().trim();
     if (promptA.isEmpty()) return;
 
