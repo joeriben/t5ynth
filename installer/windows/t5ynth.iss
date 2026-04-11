@@ -17,7 +17,7 @@
 [Setup]
 AppName=T5ynth
 AppVersion={#AppVersion}
-AppPublisher=AI4ArtsEd / UNESCO Chair DCAIAE
+AppPublisher=AI4ArtsEd / UNESCO Chair in Digital Culture and Arts in Education (UCDCAE)
 AppPublisherURL=https://github.com/joeriben/t5ynth
 DefaultDirName={autopf}\T5ynth
 DefaultGroupName=T5ynth
