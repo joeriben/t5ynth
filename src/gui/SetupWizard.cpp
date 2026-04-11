@@ -82,14 +82,8 @@ juce::File SettingsPage::getAppSupportModelDir()
 juce::File SettingsPage::getAppSupportModelDir(const juce::String& modelId)
 {
    #if JUCE_MAC
-    // Prefer system-wide path (.pkg installer sets 775/staff on models/).
-    // Fall back to per-user path if system dir is not writable (no installer).
-    auto sysDir = juce::File("/Library/Application Support/T5ynth/models");
-    if (sysDir.isDirectory() && sysDir.hasWriteAccess())
-        return sysDir.getChildFile(modelId);
-    // Also check if model already exists at system path (read-only is fine for loading)
-    if (sysDir.getChildFile(modelId).isDirectory())
-        return sysDir.getChildFile(modelId);
+    // Per-user path: model licenses are personal (each user accepts individually).
+    // System-wide path is scan-only (admin may pre-install models for all users).
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                .getChildFile("T5ynth/models/" + modelId);
    #elif JUCE_LINUX
@@ -97,13 +91,7 @@ juce::File SettingsPage::getAppSupportModelDir(const juce::String& modelId)
                        .getChildFile("share");
     return appData.getChildFile("T5ynth/models/" + modelId);
    #else
-    // Windows: prefer C:\ProgramData, fall back to %APPDATA%
-    auto sysDir = juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory)
-                      .getChildFile("T5ynth/models");
-    if (sysDir.isDirectory() && sysDir.hasWriteAccess())
-        return sysDir.getChildFile(modelId);
-    if (sysDir.getChildFile(modelId).isDirectory())
-        return sysDir.getChildFile(modelId);
+    // Windows: per-user %APPDATA% (same reasoning — licenses are personal)
     return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
                .getChildFile("T5ynth/models/" + modelId);
    #endif
