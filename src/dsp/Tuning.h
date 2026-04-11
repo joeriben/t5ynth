@@ -16,9 +16,10 @@ namespace Tuning
 enum Type
 {
     Equal = 0,       // 12-TET (standard)
-    Just,            // 5-limit just intonation
-    Pythagorean,     // pure fifths chain
-    Maqam,           // neutral 2nd/6th for Arabic maqam
+    Maqam,           // neutral 2nd/3rd/6th/7th for Arabic maqam
+    Shruti,          // Indian 22-shruti system (just ratios)
+    Pelog,           // Javanese gamelan (12-TET approximation)
+    Slendro,         // Javanese gamelan (near-equidistant 5-tone)
     COUNT
 };
 
@@ -28,15 +29,25 @@ static constexpr float kCentOffsets[COUNT][12] = {
     // Equal (12-TET): no deviations
     { 0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f },
 
-    // Just intonation (5-limit): 1/1 16/15 9/8 6/5 5/4 4/3 45/32 3/2 8/5 5/3 9/5 15/8
-    { 0.0f, 11.7f,  3.9f, 15.6f,-13.7f, -2.0f, -9.8f,  2.0f, 13.7f,-15.6f, 17.6f,-11.7f },
+    // Maqam: neutral 2nd, 3rd, 6th, 7th (quarter-tone positions)
+    // Covers Bayati (neutral 2nd), Rast (neutral 3rd), Sikah, Saba etc.
+    { 0.0f,  0.0f,-50.0f,-50.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,-50.0f,-50.0f,  0.0f },
 
-    // Pythagorean: circle of pure fifths (3:2)
-    { 0.0f, 13.7f,  3.9f, -5.9f,  7.8f, -2.0f, 11.7f,  2.0f, -7.8f,  5.9f, -3.9f,  9.8f },
+    // Shruti: Indian 22-shruti just intonation
+    // Pure ratios: 1/1 16/15 9/8 6/5 5/4 4/3 45/32 3/2 8/5 5/3 9/5 15/8
+    { 0.0f,+12.0f, +4.0f,+16.0f,-14.0f, -2.0f,-10.0f, +2.0f,-8.0f,-16.0f, -4.0f,-12.0f },
 
-    // Maqam: neutral 2nd (-50c on position 2) and neutral 6th (-50c on position 9)
-    // Creates the quarter-tone intervals essential for Bayati, Rast, Sikah etc.
-    { 0.0f,  0.0f,-50.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,  0.0f,-50.0f,  0.0f,  0.0f },
+    // Pelog: Javanese gamelan tuning (central Javanese average, Surjodiningrat 1972)
+    // Mapped to 12-TET keyboard: 1=C, 2=D, 3=E, 4=G, 5=A, 6=C, 7=D
+    // Actual cents from unison: 0, 120, 260, 540, 680, 800, 940 (approx)
+    // Deviations from 12-TET positions:
+    { 0.0f,  0.0f,+20.0f,-40.0f,  0.0f, +40.0f,  0.0f,-20.0f,  0.0f,  0.0f,  0.0f,-60.0f },
+
+    // Slendro: Javanese gamelan (near-equidistant 5-tone, ~240 cents apart)
+    // Mapped to 12-TET: 1=C, 2=D, 3=F, 4=G, 5=Bb
+    // Actual cents: 0, 240, 480, 720, 960 (ideal equidistant)
+    // Deviations from 12-TET: D+40, F-20, G+20, Bb-40
+    { 0.0f,  0.0f,+40.0f,  0.0f,  0.0f,-20.0f,  0.0f,+20.0f,  0.0f,  0.0f,-40.0f,  0.0f },
 };
 
 /** Convert MIDI note to frequency using the given tuning and root.

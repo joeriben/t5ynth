@@ -625,15 +625,16 @@ namespace ScaleType {
 
 // ── Tuning system ──
 namespace TuningType {
-    enum : int { Equal = 0, Just, Pyth, Maqm };
+    enum : int { Equal = 0, Maqm, Shru, Pelg, Slnd };
     static constexpr ChoiceEntry kEntries[] = {
         { "eq",   "12-TET"  },
-        { "just", "Just"    },
-        { "pyth", "Pythag"  },
         { "maqm", "Maqam"   },
+        { "shru", "Shruti"  },
+        { "pelg", "Pelog"   },
+        { "slnd", "Slendro" },
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
-    static_assert(Maqm + 1 == kCount, "TuningType out of sync.");
+    static_assert(Slnd + 1 == kCount, "TuningType out of sync.");
 }
 
 // ── Generative sequencer octave range ──
