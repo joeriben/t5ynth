@@ -46,13 +46,7 @@ private:
     juce::TextButton octShiftBtns[kNumOctShiftBtns];
     juce::ComboBox octShiftHidden;
 
-    // Row 2: Seq params
-    juce::ComboBox presetBox;
-    juce::TextButton seqSaveBtn { "S" };
-    juce::TextButton seqLoadBtn { "L" };
-    std::unique_ptr<SliderRow> gateRow;
-
-    // Icon LookAndFeel for save/load buttons
+    // Icon LookAndFeel for save/load buttons (declared before buttons — destroyed after)
     struct IconLnF : juce::LookAndFeel_V4
     {
         juce::Path icon;
@@ -60,6 +54,12 @@ private:
         void drawButtonText(juce::Graphics&, juce::TextButton&, bool, bool) override;
     };
     IconLnF saveLnf, loadLnf;
+
+    // Row 2: Seq params
+    juce::ComboBox presetBox;
+    juce::TextButton seqSaveBtn { "S" };
+    juce::TextButton seqLoadBtn { "L" };
+    std::unique_ptr<SliderRow> gateRow;
 
     // Row 3: Step grid
     struct StepColumn : public juce::Component

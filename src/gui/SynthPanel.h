@@ -15,7 +15,7 @@ class SynthPanel : public juce::Component, private juce::Timer
 {
 public:
     explicit SynthPanel(T5ynthProcessor& processor);
-    ~SynthPanel() override = default;
+    ~SynthPanel() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override;
     void paintOverChildren(juce::Graphics& g) override;

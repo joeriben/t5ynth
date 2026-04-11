@@ -31,7 +31,7 @@ public:
     };
 
     WaveformDisplay();
-    ~WaveformDisplay() override = default;
+    ~WaveformDisplay() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;

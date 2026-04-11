@@ -14,7 +14,7 @@ class SettingsPage : public juce::Component,
 {
 public:
     SettingsPage();
-    ~SettingsPage() override = default;
+    ~SettingsPage() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;

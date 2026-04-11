@@ -411,6 +411,8 @@ static juce::File getBufferPresetFile()
 
 MainPanel::~MainPanel()
 {
+    stopTimer();
+
     if (!juce::JUCEApplicationBase::isStandaloneApp())
         return;
 

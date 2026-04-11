@@ -16,7 +16,7 @@ class PromptPanel : public juce::Component, private juce::Timer
 {
 public:
     explicit PromptPanel(T5ynthProcessor& processor);
-    ~PromptPanel() override = default;
+    ~PromptPanel() override { stopTimer(); }
 
     void paint(juce::Graphics& g) override;
     void resized() override;

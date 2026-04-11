@@ -17,10 +17,7 @@ T5ynthEditor::T5ynthEditor(T5ynthProcessor& processor)
     getConstrainer()->setFixedAspectRatio(3.0 / 2.0);
 }
 
-T5ynthEditor::~T5ynthEditor()
-{
-    setLookAndFeel(nullptr);
-}
+T5ynthEditor::~T5ynthEditor() = default;
 
 void T5ynthEditor::paint(juce::Graphics&) {}
 

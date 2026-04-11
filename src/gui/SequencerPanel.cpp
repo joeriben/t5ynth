@@ -571,12 +571,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
 
 SequencerPanel::~SequencerPanel()
 {
-    seqSaveBtn.setLookAndFeel(nullptr);
-    seqLoadBtn.setLookAndFeel(nullptr);
-    genFixStepsBtn.setLookAndFeel(nullptr);
-    genFixPulsesBtn.setLookAndFeel(nullptr);
-    genFixRotationBtn.setLookAndFeel(nullptr);
-    genFixMutationBtn.setLookAndFeel(nullptr);
+    stopTimer();
 }
 
 void SequencerPanel::syncStepCount()
