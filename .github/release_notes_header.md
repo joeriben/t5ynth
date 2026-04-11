@@ -2,12 +2,13 @@
 
 ### macOS (recommended)
 1. Download **`T5ynth-macOS.pkg`**
-2. Double-click to run the installer
-3. Launch T5ynth from `/Applications/`
+2. Double-click the `.pkg` -- macOS will block it because T5ynth is not signed with an Apple Developer certificate.
+3. Open **System Settings > Privacy & Security**, scroll down, and click **"Open Anyway"** next to the T5ynth message.
+4. Enter your admin password when prompted.
+5. The installer runs and places the app, VST3, and AU plugins in their standard locations.
+6. Launch T5ynth from `/Applications/`
 
-The installer places the app, VST3, and AU plugins in their standard locations and removes the quarantine flag automatically.
-
-> **Note:** T5ynth is not signed with an Apple Developer certificate. You may need to right-click the `.pkg` and choose "Open" the first time, then confirm in the dialog.
+> **Note:** On older macOS versions (before Ventura), you can also right-click the `.pkg` and choose "Open" instead of steps 3-4.
 
 <details>
 <summary>Manual install (without .pkg)</summary>
