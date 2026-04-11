@@ -265,9 +265,13 @@ void PromptPanel::timerCallback()
         // Don't stop timer — continue for drift regen polling + ghost updates
     }
 
-    // Ghost indicator for alpha slider (drift modulation) — update every tick
+    // Ghost indicators for drift-modulated sliders — update every tick
     alphaGhostValue_ = processorRef.modulatedValues.driftAlpha.load(std::memory_order_relaxed);
+    magGhostValue_ = processorRef.modulatedValues.driftMagnitude.load(std::memory_order_relaxed);
+    noiseGhostValue_ = processorRef.modulatedValues.driftNoise.load(std::memory_order_relaxed);
     repaint(alphaSlider.getBounds().expanded(4));
+    repaint(magnitudeSlider.getBounds().expanded(4));
+    repaint(noiseSlider.getBounds().expanded(4));
 
     // Auto-regen polling
     pollDriftRegen();
@@ -281,22 +285,24 @@ void PromptPanel::paint(juce::Graphics& g)
 
 void PromptPanel::paintOverChildren(juce::Graphics& g)
 {
-    if (std::isnan(alphaGhostValue_)) return;
+    auto drawGhost = [&](juce::Slider& slider, float ghostVal) {
+        if (std::isnan(ghostVal)) return;
+        auto sb = slider.getBounds();
+        double norm = slider.valueToProportionOfLength(static_cast<double>(ghostVal));
+        norm = juce::jlimit(0.0, 1.0, norm);
+        int thumbW = slider.getLookAndFeel().getSliderThumbRadius(slider) * 2;
+        int trackX = sb.getX() + thumbW / 2;
+        int trackW = sb.getWidth() - thumbW;
+        float gx = static_cast<float>(trackX) + static_cast<float>(trackW) * static_cast<float>(norm);
+        float gy = static_cast<float>(sb.getCentreY());
+        float r = static_cast<float>(sb.getHeight()) * 0.28f;
+        g.setColour(juce::Colour(0xccff9800)); // orange ghost
+        g.fillEllipse(gx - r, gy - r, r * 2.0f, r * 2.0f);
+    };
 
-    // Draw orange ghost circle on the alpha slider at the modulated position
-    auto sb = alphaSlider.getBounds();
-    double norm = alphaSlider.valueToProportionOfLength(static_cast<double>(alphaGhostValue_));
-    norm = juce::jlimit(0.0, 1.0, norm);
-
-    int thumbW = alphaSlider.getLookAndFeel().getSliderThumbRadius(alphaSlider) * 2;
-    int trackX = sb.getX() + thumbW / 2;
-    int trackW = sb.getWidth() - thumbW;
-    float gx = static_cast<float>(trackX) + static_cast<float>(trackW) * static_cast<float>(norm);
-    float gy = static_cast<float>(sb.getCentreY());
-    float r = static_cast<float>(sb.getHeight()) * 0.28f;
-
-    g.setColour(juce::Colour(0xccff9800)); // orange ghost
-    g.fillEllipse(gx - r, gy - r, r * 2.0f, r * 2.0f);
+    drawGhost(alphaSlider, alphaGhostValue_);
+    drawGhost(magnitudeSlider, magGhostValue_);
+    drawGhost(noiseSlider, noiseGhostValue_);
 }
 
 void PromptPanel::resized()

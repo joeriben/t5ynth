@@ -128,6 +128,8 @@ private:
     std::map<juce::String, float> lastGenAxes_;
     double lastRegenTimeMs_ = 0.0; // for beat-based cooldown
     float alphaGhostValue_ = std::numeric_limits<float>::quiet_NaN();
+    float magGhostValue_ = std::numeric_limits<float>::quiet_NaN();
+    float noiseGhostValue_ = std::numeric_limits<float>::quiet_NaN();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PromptPanel)
 };
