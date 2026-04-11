@@ -33,12 +33,12 @@ def _default_model_dir() -> Path:
     """Return the first existing model directory, or the platform-standard one."""
     candidates = []
     if sys.platform == "darwin":
-        candidates.append(Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg)
-        candidates.append(Path.home() / "Library" / "Application Support" / "T5ynth" / "models")
+        candidates.append(Path.home() / "Library" / "Application Support" / "T5ynth" / "models")  # per-user (primary)
+        candidates.append(Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg, scan-only)
         candidates.append(Path.home() / "Library" / "T5ynth" / "models")  # legacy
     elif sys.platform == "win32":
-        candidates.append(Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "T5ynth" / "models")
-        candidates.append(Path(os.environ.get("APPDATA", "")) / "T5ynth" / "models")  # legacy
+        candidates.append(Path(os.environ.get("APPDATA", "")) / "T5ynth" / "models")  # per-user (primary)
+        candidates.append(Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData")) / "T5ynth" / "models")  # system-wide (scan-only)
     else:  # Linux
         candidates.append(Path.home() / ".local" / "share" / "T5ynth" / "models")
     candidates.append(Path.home() / "t5ynth" / "models")  # legacy
@@ -51,7 +51,7 @@ def _default_model_dir() -> Path:
         ):
             return d
 
-    # Default to system-wide on macOS, else first candidate
+    # Default to per-user path
     return candidates[0]
 
 MODEL_DIR = Path(os.environ.get("T5YNTH_MODEL_DIR", str(_default_model_dir())))

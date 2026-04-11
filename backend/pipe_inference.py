@@ -76,17 +76,16 @@ _model_formats = {}
 def find_models():
     """Discover all model directories (diffusers or native). Returns {name: Path}."""
     import sys, os
-    base_dirs = []
-    if sys.platform == "darwin":
-        base_dirs.append(Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg)
-    elif sys.platform == "win32":
-        base_dirs.append(Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "T5ynth" / "models")
-    base_dirs += [
-        Path.home() / "Library" / "Application Support" / "T5ynth" / "models",  # per-user macOS
+    base_dirs = [
+        Path.home() / "Library" / "Application Support" / "T5ynth" / "models",  # per-user macOS (primary)
         Path.home() / "Library" / "T5ynth" / "models",       # legacy macOS
         Path.home() / ".local" / "share" / "T5ynth" / "models",  # Linux
-        Path.home() / "t5ynth" / "models",                    # Legacy
+        Path.home() / "t5ynth" / "models",                    # legacy
     ]
+    if sys.platform == "darwin":
+        base_dirs.insert(1, Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg, scan-only)
+    elif sys.platform == "win32":
+        base_dirs.insert(1, Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "T5ynth" / "models")  # system-wide (scan-only)
     models = {}
     for base in base_dirs:
         if not base.is_dir():
