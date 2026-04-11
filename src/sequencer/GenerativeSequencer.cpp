@@ -661,7 +661,8 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
             midi.addEvent(juce::MidiMessage::noteOn(1, note,
                           static_cast<juce::uint8>(velInt)), eventPos);
             lastPlayedNote = note;
-            samplesUntilGateOff = static_cast<double>(gate_) * stepDur;
+            float noteGate = isPulse ? gate_ : gate_ * 0.3f; // ghost notes: short tap
+            samplesUntilGateOff = static_cast<double>(noteGate) * stepDur;
         }
         else
         {
