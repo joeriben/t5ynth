@@ -168,7 +168,7 @@ void T5ynthGenerativeSequencer::rebuildPattern()
 
     int pulseIdx = 0;
     notePattern.fill(0);
-    velocityPattern.fill(0.0f);
+    accentPattern.fill(false);
     degreePattern.fill(0);
 
     // Triangle wave period: up totalDegrees-1 steps, then down totalDegrees-1 steps
@@ -188,8 +188,39 @@ void T5ynthGenerativeSequencer::rebuildPattern()
             notePattern[static_cast<size_t>(i)] = midiNote;
             degreePattern[static_cast<size_t>(i)] = degree;
 
-            velocityPattern[static_cast<size_t>(i)] = 90.0f / 127.0f;
             pulseIdx++;
+        }
+    }
+
+    // 5. Euclidean accents: pulse after longest gap = accented, step 0 = accented.
+    //    Binary per-step flag, translated to velocity at playback.
+    {
+        int maxGapBefore = 1;
+        for (int i = 0; i < numSteps; ++i)
+        {
+            if (!eucPattern[static_cast<size_t>(i)]) continue;
+            int gap = 0;
+            for (int j = 1; j <= numSteps; ++j)
+            {
+                int prev = ((i - j) % numSteps + numSteps) % numSteps;
+                if (eucPattern[static_cast<size_t>(prev)]) break;
+                gap++;
+            }
+            if (gap > maxGapBefore) maxGapBefore = gap;
+        }
+
+        for (int i = 0; i < numSteps; ++i)
+        {
+            if (!eucPattern[static_cast<size_t>(i)]) continue;
+            int gapBefore = 0;
+            for (int j = 1; j <= numSteps; ++j)
+            {
+                int prev = ((i - j) % numSteps + numSteps) % numSteps;
+                if (eucPattern[static_cast<size_t>(prev)]) break;
+                gapBefore++;
+            }
+            // Accent if: downbeat, or preceded by the longest gap
+            accentPattern[static_cast<size_t>(i)] = (i == 0) || (gapBefore >= maxGapBefore);
         }
     }
 
@@ -285,7 +316,7 @@ void T5ynthGenerativeSequencer::applyEuclideanDrift()
             };
             shiftLeft(eucPattern);
             shiftLeft(notePattern);
-            shiftLeft(velocityPattern);
+            shiftLeft(accentPattern);
             shiftLeft(degreePattern);
         }
     }
@@ -356,7 +387,7 @@ void T5ynthGenerativeSequencer::applyStepsDrift()
         {
             eucPattern[static_cast<size_t>(i)] = false;
             notePattern[static_cast<size_t>(i)] = 0;
-            velocityPattern[static_cast<size_t>(i)] = 0.0f;
+            accentPattern[static_cast<size_t>(i)] = false;
             degreePattern[static_cast<size_t>(i)] = 0;
         }
     }
@@ -438,7 +469,7 @@ void T5ynthGenerativeSequencer::addPulse()
     degreePattern[static_cast<size_t>(insertIdx)] = newDeg;
     notePattern[static_cast<size_t>(insertIdx)] =
         ScaleQuantizer::degreeToMidi(newDeg, scaleRoot, scale, baseNote);
-    velocityPattern[static_cast<size_t>(insertIdx)] = 90.0f / 127.0f;
+    accentPattern[static_cast<size_t>(insertIdx)] = false;
     numPulses++;
 }
 
@@ -470,7 +501,7 @@ void T5ynthGenerativeSequencer::removePulse()
     eucPattern[static_cast<size_t>(bestIdx)] = false;
     notePattern[static_cast<size_t>(bestIdx)] = 0;
     degreePattern[static_cast<size_t>(bestIdx)] = 0;
-    velocityPattern[static_cast<size_t>(bestIdx)] = 0.0f;
+    accentPattern[static_cast<size_t>(bestIdx)] = false;
     numPulses--;
 }
 
@@ -491,7 +522,7 @@ void T5ynthGenerativeSequencer::seedFromSteps(const int* midiNotes,
 
     eucPattern.fill(false);
     notePattern.fill(0);
-    velocityPattern.fill(0.0f);
+    accentPattern.fill(false);
     degreePattern.fill(0);
 
     auto scale = static_cast<ScaleQuantizer::Scale>(
@@ -505,7 +536,7 @@ void T5ynthGenerativeSequencer::seedFromSteps(const int* midiNotes,
         if (enabled[i] && midiNotes[i] > 0)
         {
             notePattern[static_cast<size_t>(i)] = midiNotes[i];
-            velocityPattern[static_cast<size_t>(i)] = 90.0f / 127.0f;
+            accentPattern[static_cast<size_t>(i)] = false;
 
             // Reverse-map MIDI → scale degree for mutation
             int rel = midiNotes[i] - baseNote - scaleRoot;
@@ -649,20 +680,23 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         if (shouldFire)
         {
             int note = stepNote;
-            float vel = velocityPattern[static_cast<size_t>(stepIdx)];
-            if (vel <= 0.0f) vel = 90.0f / 127.0f; // rest positions have vel 0
 
-            // Ghost notes are quieter and shorter
-            if (!isPulse) vel *= 0.6f;
+            // Three fixed velocity levels: accent / normal / ghost
+            // Accented pulse=100, normal pulse=85, ghost=55, ±5 jitter
+            int baseVel;
+            if (!isPulse)
+                baseVel = 55;   // ghost note
+            else if (accentPattern[static_cast<size_t>(stepIdx)])
+                baseVel = 100;  // accented pulse
+            else
+                baseVel = 85;   // normal pulse
 
-            // Small random velocity variation (±10)
-            std::uniform_int_distribution<int> velJitter(-10, 10);
-            int velInt = juce::jlimit(1, 127, juce::roundToInt(vel * 127.0f) + velJitter(rng));
+            std::uniform_int_distribution<int> velJitter(-5, 5);
+            int velInt = juce::jlimit(1, 127, baseVel + velJitter(rng));
             midi.addEvent(juce::MidiMessage::noteOn(1, note,
                           static_cast<juce::uint8>(velInt)), eventPos);
             lastPlayedNote = note;
-            float noteGate = isPulse ? gate_ : gate_ * 0.3f; // ghost notes: short tap
-            samplesUntilGateOff = static_cast<double>(noteGate) * stepDur;
+            samplesUntilGateOff = static_cast<double>(gate_) * stepDur;
         }
         else
         {

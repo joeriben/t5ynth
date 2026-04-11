@@ -125,7 +125,7 @@ private:
     // Pattern data
     std::array<bool, MAX_STEPS> eucPattern{};    // true = pulse position
     std::array<int, MAX_STEPS> notePattern{};    // MIDI note per step (0 = rest)
-    std::array<float, MAX_STEPS> velocityPattern{}; // velocity per step
+    std::array<bool, MAX_STEPS> accentPattern{}; // true = accented pulse
     std::array<int, MAX_STEPS> degreePattern{};  // scale degree index per pulse (for mutation)
     bool patternDirty = true;
     bool patternSeeded = false;  // prevents start() from overriding seed
