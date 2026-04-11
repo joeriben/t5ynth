@@ -409,10 +409,10 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
         setModelPath(targetDir);
         juce::AlertWindow::showMessageBoxAsync(
             juce::MessageBoxIconType::InfoIcon,
-            "Stable Audio Open Small \xe2\x80\x94 Installed",
+            "Stable Audio Open Small -- Installed",
             "T5ynth copied the model files from:\n  " + sourceFolder.getFullPathName()
                 + "\n\nto:\n  " + targetDir.getFullPathName()
-                + "\n\nThe originals are still in your Downloads folder \xe2\x80\x94 "
+                + "\n\nThe originals are still in your Downloads folder -- "
                   "you can delete them now if you want."
                 + wrongNote);
         return true;
@@ -423,14 +423,14 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
     {
         juce::String foundList;
         for (auto& f : foundRequired)
-            foundList += "  \xe2\x9c\x93 " + f.getFileName() + "\n";
+            foundList += "  [OK] " + f.getFileName() + "\n";
 
         juce::AlertWindow::showMessageBoxAsync(
             juce::MessageBoxIconType::InfoIcon,
             "Download incomplete",
             "Found in:\n  " + sourceFolder.getFullPathName() + "\n\n"
-                + foundList + "\nStill missing:\n  \xe2\x9c\x97 "
-                + missingNames.joinIntoString("\n  \xe2\x9c\x97 ")
+                + foundList + "\nStill missing:\n  [X] "
+                + missingNames.joinIntoString("\n  [X] ")
                 + "\n\nPlease download the missing files from the model page "
                   "(click 'Open Model Page' above) and click 'Auto-Scan' again."
                 + wrongNote);
@@ -449,8 +449,8 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
                 "but T5ynth does not need them:\n  "
                     + wrongFound.joinIntoString("\n  ")
                     + "\n\nThe files T5ynth actually needs are:\n"
-                      "  \xe2\x80\xa2 model.safetensors (NOT model.ckpt, NOT base_model.*)\n"
-                      "  \xe2\x80\xa2 model_config.json\n\n"
+                      "  * model.safetensors (NOT model.ckpt, NOT base_model.*)\n"
+                      "  * model_config.json\n\n"
                       "Click 'Open Model Page' above, go to 'Files and versions', "
                       "and download exactly those two files.");
         }
@@ -460,8 +460,8 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
                 juce::MessageBoxIconType::InfoIcon,
                 "No model files found",
                 "This folder does not contain the two files T5ynth needs:\n"
-                "  \xe2\x80\xa2 model.safetensors\n"
-                "  \xe2\x80\xa2 model_config.json\n\n"
+                "  * model.safetensors\n"
+                "  * model_config.json\n\n"
                 "Click 'Open Model Page' above to fetch them from HuggingFace.");
         }
     }
@@ -561,7 +561,7 @@ void SettingsPage::startDownload()
         auto licenseUrl = juce::String(km.licenseUrl);
         juce::AlertWindow::showOkCancelBox(
             juce::MessageBoxIconType::InfoIcon,
-            juce::String(km.displayName) + " \xe2\x80\x94 License",
+            juce::String(km.displayName) + " -- License",
             juce::String(km.licenseNotice) + "\n\nFull license:\n" + licenseUrl,
             "Accept & Download", "Cancel", this,
             juce::ModalCallbackFunction::create([this](int result) {
@@ -888,7 +888,7 @@ void SettingsPage::downloadAllFilesInThread()
                     onDownloadFinished(false,
                         "Transfer ended early for " + fileName + " (" + hfRepo + ")\n"
                         "Expected " + expectedStr + ", received " + gotStr + ".\n\n"
-                        "Retry the download, or use Browse\xe2\x80\xa6 to point at an "
+                        "Retry the download, or use Browse... to point at an "
                         "existing copy of the model.");
                 });
                 return;
@@ -1022,13 +1022,13 @@ void SettingsPage::updateStatus()
                 "above and wait for the download to finish.\n\n"
                 "  Source: https://huggingface.co/" + hfRepo + "\n"
                 "  Target: " + targetPath + "\n\n"
-                "License: CC BY-NC-SA 4.0 \xe2\x80\x94 non-commercial use only, no revenue "
+                "License: CC BY-NC-SA 4.0 -- non-commercial use only, no revenue "
                 "threshold, no exceptions.", false);
         } else if (id == "stable-audio-open-small") {
             instructionsLabel.setText(
                 "STABLE AUDIO OPEN SMALL\n"
                 "Licensed under the Stability AI Community License. Gated on "
-                "HuggingFace \xe2\x80\x94 a free HuggingFace account is required once to "
+                "HuggingFace -- a free HuggingFace account is required once to "
                 "accept the license and download the files. No terminal required.\n\n"
                 "  Source: https://huggingface.co/" + hfRepo + "\n"
                 "  Target: " + targetPath + "\n\n"
@@ -1044,7 +1044,7 @@ void SettingsPage::updateStatus()
                 "        model.safetensors\n"
                 "        model_config.json\n"
                 "     Do not download model.ckpt, base_model.ckpt,\n"
-                "     base_model.safetensors, or base_model_config.json \xe2\x80\x94\n"
+                "     base_model.safetensors, or base_model_config.json --\n"
                 "     they are alternative formats T5ynth does not use.\n"
                 "  6. Come back here and click 'Auto-Scan' above.\n"
                 "     T5ynth finds the files in your Downloads folder and copies\n"
@@ -1065,7 +1065,7 @@ void SettingsPage::updateStatus()
                 "       huggingface-cli login    # paste your HF access token\n"
                 "       huggingface-cli download " + hfRepo + " \\\n"
                 "         --local-dir \"" + targetPath + "\"\n"
-                "  3. Click 'Auto-Scan' above, or 'Browse\xe2\x80\xa6' and select that folder.", false);
+                "  3. Click 'Auto-Scan' above, or 'Browse...' and select that folder.", false);
         }
     }
 }
