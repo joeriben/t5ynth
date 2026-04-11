@@ -110,9 +110,9 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
         if (isGenerating)
         {
             mainGenerateBtn.setButtonText("generating...");
-            // mainGenerateBtn stays enabled — user can always click
+            mainGenerateBtn.setEnabled(false);
             dimApplyBtn.setButtonText("generating...");
-            // dimApplyBtn stays enabled
+            dimApplyBtn.setEnabled(false);
         }
         else
         {

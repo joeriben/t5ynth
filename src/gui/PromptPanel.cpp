@@ -218,7 +218,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
 
                 // Preload model in background so first generate is instant
                 if (onStatusChanged) onStatusChanged("Loading " + model + "...", true);
-                // generateButton stays enabled — user can always click
+                generateButton.setEnabled(false);
 
                 auto& pipeInf = processorRef.getPipeInference();
                 juce::String device = cpuBtn.getToggleState() ? "cpu" : gpuBackend_;
@@ -634,7 +634,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
 // ──────────────────────────────────────────────────────────────────────────────
 void PromptPanel::triggerGeneration()
 {
-    // No guard — manual generation always proceeds, even during auto-regen
+    if (generating) return;
     auto promptA = promptAEditor.getText().trim();
     if (promptA.isEmpty()) return;
 
@@ -657,7 +657,7 @@ void PromptPanel::triggerGeneration()
     }
 
     generating = true;
-    // generateButton stays enabled — user can always click
+    generateButton.setEnabled(false);
     if (onStatusChanged) onStatusChanged("generating...", true);
 
     auto req = buildInferenceRequest();
@@ -714,7 +714,7 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
     if (!processorRef.isPipeInferenceReady()) return;
 
     generating = true;
-    // generateButton stays enabled — user can always click
+    generateButton.setEnabled(false);
     if (onStatusChanged) onStatusChanged("drift regen...", true);
 
     lastGenAlpha_ = effectiveAlpha;
