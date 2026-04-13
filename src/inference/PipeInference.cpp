@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #endif
 
 PipeInference::~PipeInference()
@@ -128,7 +129,9 @@ bool PipeInference::launch(const juce::File& backendDir)
         auto script = backendDir.getChildFile("pipe_inference.py");
         if (!script.existsAsFile())
         {
-            juce::Logger::writeToLog("PipeInference: pipe_inference.py not found");
+            lastError_ = "Backend not found in " + backendDir.getFullPathName();
+            juce::Logger::writeToLog("PipeInference: " + lastError_);
+            launching_ = false;
             return false;
         }
         execPath = findPython(backendDir);
@@ -224,6 +227,15 @@ bool PipeInference::launch(const juce::File& backendDir)
         close(pipeOut[0]);
         dup2(pipeIn[0], STDIN_FILENO);
         dup2(pipeOut[1], STDOUT_FILENO);
+
+        // Redirect stderr to log file for post-mortem diagnosis
+        auto logDir = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                          .getChildFile("T5ynth/Logs");
+        logDir.createDirectory();
+        auto logPath = logDir.getChildFile("backend_stderr.log").getFullPathName().toStdString();
+        int logFd = open(logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (logFd >= 0) { dup2(logFd, STDERR_FILENO); close(logFd); }
+
         close(pipeIn[0]);
         close(pipeOut[1]);
 
@@ -250,7 +262,21 @@ bool PipeInference::launch(const juce::File& backendDir)
     char readyByte = 0;
     if (!readExact(&readyByte, 1, 120000))
     {
-        juce::Logger::writeToLog("PipeInference: timeout waiting for ready");
+        // Read stderr log for diagnosis
+        auto stderrLog = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                             .getChildFile("T5ynth/Logs/backend_stderr.log");
+        juce::String stderrContent;
+        if (stderrLog.existsAsFile())
+            stderrContent = stderrLog.loadFileAsString().trimEnd();
+
+        if (stderrContent.isNotEmpty())
+            lastError_ = stderrContent.fromLastOccurrenceOf("\n", false, false);
+        else if (!isChildAlive())
+            lastError_ = "Backend process crashed on startup";
+        else
+            lastError_ = "Timeout waiting for backend (120s)";
+
+        juce::Logger::writeToLog("PipeInference: " + lastError_);
         shutdown();
         launching_ = false;
         return false;
@@ -258,7 +284,8 @@ bool PipeInference::launch(const juce::File& backendDir)
 
     if (readyByte != '\x02')
     {
-        juce::Logger::writeToLog("PipeInference: unexpected ready byte: " + juce::String((int)readyByte));
+        lastError_ = "Backend protocol error (unexpected byte: " + juce::String((int)readyByte) + ")";
+        juce::Logger::writeToLog("PipeInference: " + lastError_);
         shutdown();
         launching_ = false;
         return false;

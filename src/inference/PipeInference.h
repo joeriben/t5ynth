@@ -34,6 +34,9 @@ public:
 
     bool isReady() const { return ready_.load(); }
 
+    /** Last error message from a failed launch(). */
+    const juce::String& getLastError() const { return lastError_; }
+
     /** Devices reported by Python at startup. */
     const juce::StringArray& getAvailableDevices() const { return availableDevices_; }
     const juce::String& getDefaultDevice() const { return defaultDevice_; }
@@ -103,6 +106,7 @@ private:
     juce::StringArray availableModels_;
     juce::String defaultModel_;
     juce::File backendDir_;   // remembered for auto-restart
+    juce::String lastError_;  // human-readable error from last failed launch
 
     juce::File findBundledBinary(const juce::File& backendDir) const;
     juce::String findPython(const juce::File& backendDir) const;

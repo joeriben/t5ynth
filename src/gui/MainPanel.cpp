@@ -373,7 +373,8 @@ void MainPanel::tryLoadInferenceModels()
         std::thread([this, processor, backendDir]()
         {
             bool ok = processor->launchPipeInference(backendDir);
-            juce::MessageManager::callAsync([this, ok]()
+            auto errorMsg = ok ? juce::String() : processor->getPipeInference().getLastError();
+            juce::MessageManager::callAsync([this, ok, errorMsg]()
             {
                 if (ok)
                 {
@@ -383,8 +384,8 @@ void MainPanel::tryLoadInferenceModels()
                 }
                 else
                 {
-                    statusBar.setStatusText("Python backend failed to start");
-                    settingsPage.setBackendFailed("Failed to start");
+                    statusBar.setStatusText("Backend: " + errorMsg);
+                    settingsPage.setBackendFailed(errorMsg);
                 }
             });
         }).detach();

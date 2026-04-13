@@ -36,8 +36,23 @@ jobs:
       - name: Verify bundled binary starts
         working-directory: backend
         run: |
-          # Quick smoke test — binary should print to stderr and wait for stdin
-          timeout 10 ./dist/pipe_inference/pipe_inference < /dev/null 2>&1 || true
+          # Smoke test: binary must start and produce output (not crash on import).
+          # No 'timeout' on macOS — run in background with kill fallback.
+          ./dist/pipe_inference/pipe_inference < /dev/null > /tmp/be_out.log 2>&1 &
+          PID=$!
+          for i in $(seq 30); do
+            if ! kill -0 $PID 2>/dev/null; then break; fi
+            sleep 1
+          done
+          kill $PID 2>/dev/null || true
+          wait $PID 2>/dev/null || true
+          if grep -q "Ready\|devices" /tmp/be_out.log; then
+            echo "Backend smoke test passed"
+          else
+            echo "::error::Backend binary failed to reach ready state"
+            cat /tmp/be_out.log
+            exit 1
+          fi
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -51,6 +66,8 @@ jobs:
           # Copy bundled backend into app Resources
           mkdir -p "$APP/Contents/Resources/backend"
           cp -R backend/dist/pipe_inference/* "$APP/Contents/Resources/backend/"
+          # Re-sign the entire bundle (adding backend invalidated the JUCE ad-hoc signature)
+          codesign --force --deep --sign - "$APP"
 
       - name: Smoke-test app bundle
         run: |
