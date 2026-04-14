@@ -12,6 +12,7 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
       fxPanel(processor.getValueTreeState(), processor),
       sequencerPanel(processor)
 {
+    setOpaque(true);
     addAndMakeVisible(promptPanel);
     addAndMakeVisible(axesPanel);
     addAndMakeVisible(synthPanel);
