@@ -74,6 +74,7 @@ private:
     void exportWav();
     void loadDefaultPreset();
     void loadInitPreset();
+    void ensureBundledPresetsExist();
     // Shared implementation used by loadDefaultPreset / loadInitPreset:
     // writes the embedded binary to a temp file and routes it through the
     // standard PresetFormat loader. Returns false on failure.

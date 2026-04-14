@@ -171,6 +171,9 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     dimResetBtn.setVisible(false);
     addChildComponent(dimResetBtn);
 
+    // Ensure bundled presets exist in user presets directory
+    ensureBundledPresetsExist();
+
     // Load default preset (if no audio loaded yet)
     loadDefaultPreset();
 
@@ -694,6 +697,25 @@ bool MainPanel::loadBundledPreset(const char* data, int size, const juce::String
 
     statusBar.setPresetName(result.presetName);
     return true;
+}
+
+void MainPanel::ensureBundledPresetsExist()
+{
+    auto userDir = PresetFormat::getUserPresetsDirectory();
+
+    struct BundledPreset { const char* data; int size; const char* fileName; };
+    const BundledPreset bundled[] = {
+        { BinaryData::DEMO_T5OscillatorDrift_t5p,
+          BinaryData::DEMO_T5OscillatorDrift_t5pSize,
+          "DEMO T5-Oscillator-Drift.t5p" },
+    };
+
+    for (auto& bp : bundled)
+    {
+        auto target = userDir.getChildFile(bp.fileName);
+        if (!target.existsAsFile())
+            target.replaceWithData(bp.data, static_cast<size_t>(bp.size));
+    }
 }
 
 void MainPanel::loadDefaultPreset()
