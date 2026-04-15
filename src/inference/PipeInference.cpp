@@ -282,6 +282,27 @@ bool PipeInference::launch(const juce::File& backendDir)
         return false;
     }
 
+    if (readyByte == '\x00')
+    {
+        // Backend sent an error message: \x00 + uint32 length + UTF-8 message
+        uint32_t errLen = 0;
+        if (readExact(&errLen, 4, 5000) && errLen > 0 && errLen < 100000)
+        {
+            std::vector<char> errBuf(errLen + 1, 0);
+            if (readExact(errBuf.data(), errLen, 5000))
+                lastError_ = juce::String::fromUTF8(errBuf.data(), static_cast<int>(errLen));
+            else
+                lastError_ = "Backend error (could not read message)";
+        }
+        else
+            lastError_ = "Backend error (no message)";
+
+        juce::Logger::writeToLog("PipeInference: " + lastError_);
+        shutdown();
+        launching_ = false;
+        return false;
+    }
+
     if (readyByte != '\x02')
     {
         lastError_ = "Backend protocol error (unexpected byte: " + juce::String((int)readyByte) + ")";
