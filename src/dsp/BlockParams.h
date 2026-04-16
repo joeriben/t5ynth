@@ -167,10 +167,11 @@ namespace EnvTarget {
         DelayFB = 6,
         DelayMix = 7,
         ReverbMix = 8,
-        LFO1Rate = 9,
-        LFO1Depth = 10,
-        LFO2Rate = 11,
-        LFO2Depth = 12
+        NoiseLevel = 9,
+        LFO1Rate = 10,
+        LFO1Depth = 11,
+        LFO2Rate = 12,
+        LFO2Depth = 13
     };
     static constexpr ChoiceEntry kEntries[] = {
         { "none",       "---"        },
@@ -182,6 +183,7 @@ namespace EnvTarget {
         { "delay_fb",   "Dly FB"     },
         { "delay_mix",  "Dly Mix"    },
         { "reverb_mix", "Rev Mix"    },
+        { "noise_level","Noise Lvl"  },
         { "lfo1_rate",  "LFO1 Rate"  },
         { "lfo1_depth", "LFO1 Depth" },
         { "lfo2_rate",  "LFO2 Rate"  },
@@ -203,9 +205,10 @@ namespace LfoTarget {
         DelayFB = 5,
         DelayMix = 6,
         ReverbMix = 7,
-        Env1Amt = 8,
-        Env2Amt = 9,
-        Env3Amt = 10
+        NoiseLevel = 8,
+        Env1Amt = 9,
+        Env2Amt = 10,
+        Env3Amt = 11
     };
     static constexpr ChoiceEntry kEntries[] = {
         { "none",       "---"       },
@@ -216,6 +219,7 @@ namespace LfoTarget {
         { "delay_fb",   "Dly FB"    },
         { "delay_mix",  "Dly Mix"   },
         { "reverb_mix", "Rev Mix"   },
+        { "noise_level","Noise Lvl" },
         { "env1_amt",   "ENV1 Amt"  },
         { "env2_amt",   "ENV2 Amt"  },
         { "env3_amt",   "ENV3 Amt"  }

@@ -66,6 +66,8 @@ public:
     /** Set pitch modulation factor (1.0 = no mod). Applied on top of transposeRatio
      *  in renderPitchedBlock. Use for envelope/LFO pitch modulation at block rate. */
     void setPitchModulation(float factor) { pitchModFactor = factor; }
+    void setSourceGain(float gain) { sourceGain_ = juce::jmax(0.0f, gain); }
+    float getSourceGain() const { return sourceGain_; }
 
     bool isPlaying() const { return playing; }
 
@@ -102,6 +104,10 @@ public:
      *  master's prepared buffer. loadBuffer/preparePlaybackBuffer are no-ops. */
     void shareBufferFrom(const SamplePlayer& master);
 
+    /** Detach from the shared master buffer and keep the current playback source
+     *  as a local snapshot for an already-running note. */
+    void freezeSharedBuffer();
+
     // ─── Modes and processing ───
     void setLoopMode(LoopMode mode);
     void setCrossfadeMs(float ms);
@@ -118,6 +124,13 @@ public:
     /** Re-build playBuffer from originalBuffer with current settings. */
     void preparePlaybackBuffer();
 
+    /** Estimate mono RMS/peak over the untransposed P1/P2/P3 playback path.
+     *  `gains` is typically a synthetic DCA envelope used only for analysis. */
+    float estimatePlaybackRms(const float* gains, int numSamples, float* outPeak = nullptr) const;
+
+    /** Estimated audible path length in output samples for one reference pass. */
+    int estimateReferenceLengthSamples() const;
+
     // ─── Pitch shift quality ───
     void setPitchShiftQuality(PitchShiftQuality quality);
     PitchShiftQuality getPitchShiftQuality() const { return pitchQuality; }
@@ -133,6 +146,7 @@ private:
     double readPosition       = 0.0;
     double transposeRatio     = 1.0;
     float  pitchModFactor     = 1.0f;  // block-rate pitch mod from envelopes/LFOs
+    float  sourceGain_        = 1.0f;  // constant per-voice gain applied before stretch
     double glideTargetRatio   = 1.0;
     double glideRatioIncr     = 0.0;  // per-sample increment
     int    glideSamplesLeft   = 0;

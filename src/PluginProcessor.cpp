@@ -1332,6 +1332,30 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             }
         }
 
+        // Noise level ghost
+        {
+            bool lfoModNoise = bp.lfo1Target == LfoTarget::NoiseLevel || bp.lfo2Target == LfoTarget::NoiseLevel;
+            bool envModNoise = bp.mod1Target == EnvTarget::NoiseLevel || bp.mod2Target == EnvTarget::NoiseLevel;
+
+            if (hasVoices && (lfoModNoise || envModNoise))
+            {
+                modulatedValues.noiseLevel.store(
+                    voiceOut.lastModulatedNoiseLevel, std::memory_order_relaxed);
+            }
+            else if (lfoModNoise)
+            {
+                float hypo = bp.noiseLevel;
+                if (bp.lfo1Target == LfoTarget::NoiseLevel) hypo += lastLfo1Val_;
+                if (bp.lfo2Target == LfoTarget::NoiseLevel) hypo += lastLfo2Val_;
+                modulatedValues.noiseLevel.store(
+                    juce::jlimit(0.0f, 1.0f, hypo), std::memory_order_relaxed);
+            }
+            else
+            {
+                modulatedValues.noiseLevel.store(NO_GHOST, std::memory_order_relaxed);
+            }
+        }
+
         // LFO1/2 Rate/Depth ghost (env → LFO modulation, requires active voices)
         if (!skipSynthesis)
         {
@@ -1388,6 +1412,9 @@ bool T5ynthProcessor::isSamplerMode() const
 
 void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBuffer, double sr)
 {
+    const bool hadPreviousGeneratedAudio = generatedAudioFull.getNumSamples() > 0
+        && generatedAudioFull.getNumChannels() > 0;
+
     // Store raw audio (unmodified) for preset embedding and re-apply on toggle
     if (&audioBuffer != &generatedAudioRaw)
         generatedAudioRaw.makeCopyOf(audioBuffer);
@@ -1407,15 +1434,24 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     // Keep generatedAudioFull in sync (used for waveform display + presets)
     generatedAudioFull.makeCopyOf(feedBuffer);
 
-    // ── Auto-trim P2/P3 BEFORE loadBuffer so that preparePlaybackBuffer
+    const bool samplerModeNow = !isWavetableMode();
+    const auto samplerLoopMode = masterSampler.getLoopMode();
+    const bool autoPositionSampler = !masterSampler.getPointsLocked()
+        && (!hadPreviousGeneratedAudio || samplerModeNow);
+    const bool autoPositionWt = !masterSampler.getPointsLocked()
+        && !hadPreviousGeneratedAudio;
+
+    // ── Auto-position P1/P2/P3 BEFORE loadBuffer so that preparePlaybackBuffer
     //    (which runs normalization) already sees the correct region. ──────
-    if (!masterSampler.getPointsLocked())
+    if (autoPositionSampler)
     {
         float prevP1 = masterSampler.getStartPos();
 
         const int numSamples = feedBuffer.getNumSamples();
-        float startFrac = 0.0f;
-        float endFrac   = 1.0f;
+        float activeStartFrac = 0.0f;
+        float activeEndFrac   = 1.0f;
+        float loopStartFrac   = 0.0f;
+        float loopEndFrac     = 1.0f;
 
         if (numSamples > 0)
         {
@@ -1466,30 +1502,83 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
             firstActive = juce::jmax(0, firstActive - windowSize);
             lastActive  = juce::jmin(numSamples, lastActive + windowSize);
 
-            startFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
-            endFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
+            activeStartFrac = static_cast<float>(firstActive) / static_cast<float>(numSamples);
+            activeEndFrac   = static_cast<float>(lastActive)  / static_cast<float>(numSamples);
 
-            if (endFrac - startFrac < 0.05f)
+            if (activeEndFrac - activeStartFrac < 0.05f)
             {
-                startFrac = 0.0f;
-                endFrac   = 1.0f;
+                activeStartFrac = 0.0f;
+                activeEndFrac   = 1.0f;
+                firstActive = 0;
+                lastActive = numSamples;
+            }
+
+            loopStartFrac = activeStartFrac;
+            loopEndFrac   = activeEndFrac;
+
+            // Sampler loops should prefer a stable sustain excerpt instead of
+            // the full generated evolution. Looping the entire active region of
+            // AI material often creates slow macro-dynamics that read like a
+            // "broken normalize" even when the gain is static.
+            if (samplerModeNow && samplerLoopMode != SamplePlayer::LoopMode::OneShot)
+            {
+                const int activeLen = lastActive - firstActive;
+                const int minLoopSamples = static_cast<int>(std::round(sr * 1.5));
+                const int maxLoopSamples = static_cast<int>(std::round(sr * 6.0));
+                int targetLoopSamples = juce::jlimit(minLoopSamples, maxLoopSamples, activeLen / 3);
+
+                if (activeLen > targetLoopSamples + windowSize)
+                {
+                    std::vector<double> powerPrefix(static_cast<size_t>(numSamples + 1), 0.0);
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        double s = static_cast<double>(data[i]);
+                        powerPrefix[static_cast<size_t>(i + 1)]
+                            = powerPrefix[static_cast<size_t>(i)] + s * s;
+                    }
+
+                    int bestStart = firstActive;
+                    double bestPower = -1.0;
+                    const int latestStart = lastActive - targetLoopSamples;
+                    for (int pos = firstActive; pos <= latestStart; pos += windowSize)
+                    {
+                        const int end = pos + targetLoopSamples;
+                        const double sumSq = powerPrefix[static_cast<size_t>(end)]
+                                           - powerPrefix[static_cast<size_t>(pos)];
+                        const double avgPower = sumSq / static_cast<double>(targetLoopSamples);
+                        if (avgPower > bestPower)
+                        {
+                            bestPower = avgPower;
+                            bestStart = pos;
+                        }
+                    }
+
+                    loopStartFrac = static_cast<float>(bestStart) / static_cast<float>(numSamples);
+                    loopEndFrac   = static_cast<float>(bestStart + targetLoopSamples)
+                                  / static_cast<float>(numSamples);
+                }
             }
         }
 
-        masterSampler.setLoopStart(startFrac);
-        masterSampler.setLoopEnd(endFrac);
+        masterSampler.setLoopStart(loopStartFrac);
+        masterSampler.setLoopEnd(loopEndFrac);
 
-        // P1: preserve user's aesthetic choice, but clamp into active region
-        if (prevP1 < startFrac || prevP1 > endFrac)
-            masterSampler.setStartPos(startFrac);
+        // P1: preserve the user's choice where possible, but clamp against the
+        // active audio region rather than the loop window.
+        if (prevP1 < activeStartFrac || prevP1 > activeEndFrac)
+            masterSampler.setStartPos(activeStartFrac);
     }
+
+    // Keep currently sounding sampler notes on their old snapshot so a
+    // regenerate only affects newly triggered notes.
+    voiceManager.freezeActiveSamplerVoices();
 
     // Feed the sampler/voice chain — preparePlaybackBuffer now sees the
     // correct P2/P3, so normalization targets the right region.
     masterSampler.loadBuffer(feedBuffer, sr);
 
     // Sync WT extraction region from P2/P3 when not locked (first load)
-    if (!masterSampler.getPointsLocked())
+    if (autoPositionWt)
     {
         masterSampler.setWtExtractStart(masterSampler.getLoopStart());
         masterSampler.setWtExtractEnd(masterSampler.getLoopEnd());
@@ -1563,6 +1652,7 @@ void T5ynthProcessor::reloadProcessedAudio(const juce::AudioBuffer<float>& proce
 {
     // Update stored audio and reload into sampler without Rumble/HF/Normalize
     generatedAudioFull.makeCopyOf(processed);
+    voiceManager.freezeActiveSamplerVoices();
     masterSampler.loadBuffer(processed, generatedSampleRate);
     voiceManager.distributeSamplerBuffer(masterSampler);
 

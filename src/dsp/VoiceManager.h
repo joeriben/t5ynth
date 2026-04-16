@@ -33,6 +33,7 @@ public:
         float lastMod2Val = 0.0f;
         float lastModulatedCutoff = 20000.0f;
         float lastModulatedScan = 0.0f;
+        float lastModulatedNoiseLevel = 0.0f;
         int   lastTriggeredNote = -1; // for pitch modulation
         bool  hasActiveVoices = false;
     };
@@ -46,6 +47,7 @@ public:
 
     // ── Engine data distribution ──
     void setEngineMode(SynthVoice::EngineMode mode);
+    void freezeActiveSamplerVoices();
     void distributeSamplerBuffer(const SamplePlayer& master);
     void distributeWavetableFrames(const WavetableOscillator& masterOsc);
 
@@ -80,6 +82,7 @@ private:
     int maxBlockSize = 512;
     int voiceLimit = 8; // runtime polyphony (1=mono)
     const float* tuningHz_ = nullptr;
+    const SamplePlayer* currentSamplerMaster_ = nullptr;
 
     // Pre-allocated per-voice scratch buffers
     std::array<std::vector<float>, MAX_VOICES> voiceScratch;

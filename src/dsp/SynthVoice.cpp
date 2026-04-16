@@ -27,6 +27,9 @@ void SynthVoice::reset()
     noteHeld = false;
     currentNote = -1;
     lastAmpEnvLevel = 0.0f;
+    samplerPreStretchNormGain_ = 1.0f;
+    samplerPreStretchNormDirty_ = true;
+    preStretchNormState_ = {};
 }
 
 void SynthVoice::noteOn(int note, float velocity, bool legato)
@@ -46,6 +49,7 @@ void SynthVoice::noteOn(int note, float velocity, bool legato)
         modEnv1.noteOn(mod1Vel);
         modEnv2.noteOn(mod2Vel);
     }
+    samplerPreStretchNormDirty_ = true;
 
     // Set pitch (cache base for modulation reference)
     int shiftedNote = note + octaveShift_ * 12;
@@ -124,6 +128,210 @@ void SynthVoice::configureForBlock(const BlockParams& p)
     modEnv2.setDecayCurve(static_cast<CurveShape>(p.mod2DecayCurve));
     modEnv2.setReleaseCurve(static_cast<CurveShape>(p.mod2ReleaseCurve));
     mod2VelSens_ = p.mod2VelSens;
+
+    updateSamplerPreStretchNorm(p);
+}
+
+bool SynthVoice::preStretchNormStateMatches(const BlockParams& p) const
+{
+    auto nearlyEqual = [] (float a, float b)
+    {
+        return std::abs(a - b) < 1.0e-5f;
+    };
+
+    return nearlyEqual(preStretchNormState_.ampAttack, p.ampAttack)
+        && nearlyEqual(preStretchNormState_.ampDecay, p.ampDecay)
+        && nearlyEqual(preStretchNormState_.ampSustain, p.ampSustain)
+        && nearlyEqual(preStretchNormState_.ampRelease, p.ampRelease)
+        && nearlyEqual(preStretchNormState_.ampAmount, p.ampAmount)
+        && nearlyEqual(preStretchNormState_.ampVelSens, p.ampVelSens)
+        && preStretchNormState_.ampLoop == p.ampLoop
+        && preStretchNormState_.ampAttackCurve == p.ampAttackCurve
+        && preStretchNormState_.ampDecayCurve == p.ampDecayCurve
+        && preStretchNormState_.ampReleaseCurve == p.ampReleaseCurve
+        && preStretchNormState_.mod1Target == p.mod1Target
+        && nearlyEqual(preStretchNormState_.mod1Attack, p.mod1Attack)
+        && nearlyEqual(preStretchNormState_.mod1Decay, p.mod1Decay)
+        && nearlyEqual(preStretchNormState_.mod1Sustain, p.mod1Sustain)
+        && nearlyEqual(preStretchNormState_.mod1Release, p.mod1Release)
+        && nearlyEqual(preStretchNormState_.mod1Amount, p.mod1Amount)
+        && nearlyEqual(preStretchNormState_.mod1VelSens, p.mod1VelSens)
+        && preStretchNormState_.mod1Loop == p.mod1Loop
+        && preStretchNormState_.mod1AttackCurve == p.mod1AttackCurve
+        && preStretchNormState_.mod1DecayCurve == p.mod1DecayCurve
+        && preStretchNormState_.mod1ReleaseCurve == p.mod1ReleaseCurve
+        && preStretchNormState_.mod2Target == p.mod2Target
+        && nearlyEqual(preStretchNormState_.mod2Attack, p.mod2Attack)
+        && nearlyEqual(preStretchNormState_.mod2Decay, p.mod2Decay)
+        && nearlyEqual(preStretchNormState_.mod2Sustain, p.mod2Sustain)
+        && nearlyEqual(preStretchNormState_.mod2Release, p.mod2Release)
+        && nearlyEqual(preStretchNormState_.mod2Amount, p.mod2Amount)
+        && nearlyEqual(preStretchNormState_.mod2VelSens, p.mod2VelSens)
+        && preStretchNormState_.mod2Loop == p.mod2Loop
+        && preStretchNormState_.mod2AttackCurve == p.mod2AttackCurve
+        && preStretchNormState_.mod2DecayCurve == p.mod2DecayCurve
+        && preStretchNormState_.mod2ReleaseCurve == p.mod2ReleaseCurve
+        && nearlyEqual(preStretchNormState_.velocity, currentVelocity)
+        && nearlyEqual(preStretchNormState_.startPos, sampler.getStartPos())
+        && nearlyEqual(preStretchNormState_.loopStart, sampler.getLoopStart())
+        && nearlyEqual(preStretchNormState_.loopEnd, sampler.getLoopEnd())
+        && nearlyEqual(preStretchNormState_.startPosOffset, sampler.getStartPosOffset())
+        && nearlyEqual(preStretchNormState_.crossfadeMs, sampler.getCrossfadeMs())
+        && preStretchNormState_.loopMode == static_cast<int>(sampler.getLoopMode())
+        && preStretchNormState_.normalizeOn == sampler.getNormalize();
+}
+
+void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
+{
+    if (engineMode != EngineMode::Sampler || !sampler.hasAudio() || !sampler.getNormalize())
+    {
+        samplerPreStretchNormGain_ = 1.0f;
+        samplerPreStretchNormDirty_ = false;
+        sampler.setSourceGain(1.0f);
+        preStretchNormState_.normalizeOn = sampler.getNormalize();
+        return;
+    }
+
+    if (!samplerPreStretchNormDirty_ && preStretchNormStateMatches(p))
+    {
+        sampler.setSourceGain(samplerPreStretchNormGain_);
+        return;
+    }
+
+    const int referencePathSamples = sampler.estimateReferenceLengthSamples();
+    auto envWindowMs = [] (float attackMs, float decayMs, float releaseMs, bool looping)
+    {
+        constexpr float kHoldMs = 120.0f;
+        float base = std::max(attackMs, 0.0f) + std::max(decayMs, 0.0f)
+                   + (looping ? 0.0f : kHoldMs) + std::max(releaseMs, 0.0f) * 0.1f;
+        return base;
+    };
+
+    float analysisMs = envWindowMs(p.ampAttack, p.ampDecay, p.ampRelease, p.ampLoop);
+    if (p.mod1Target == EnvTarget::DCA)
+        analysisMs = std::max(analysisMs, envWindowMs(p.mod1Attack, p.mod1Decay, p.mod1Release, p.mod1Loop));
+    if (p.mod2Target == EnvTarget::DCA)
+        analysisMs = std::max(analysisMs, envWindowMs(p.mod2Attack, p.mod2Decay, p.mod2Release, p.mod2Loop));
+
+    int analysisSamples = std::max(referencePathSamples,
+        static_cast<int>(std::ceil(sr * analysisMs * 0.001)));
+    analysisSamples = juce::jlimit(64, static_cast<int>(sr * 3.0), analysisSamples);
+
+    std::vector<float> dcaCurve(static_cast<size_t>(analysisSamples), 0.0f);
+
+    ADSREnvelope ampRef;
+    ADSREnvelope mod1Ref;
+    ADSREnvelope mod2Ref;
+    ampRef.prepare(sr);
+    mod1Ref.prepare(sr);
+    mod2Ref.prepare(sr);
+
+    ampRef.setAttack(p.ampAttack);
+    ampRef.setDecay(p.ampDecay);
+    ampRef.setSustain(p.ampSustain);
+    ampRef.setRelease(p.ampRelease);
+    ampRef.setLooping(p.ampLoop);
+    ampRef.setAttackCurve(static_cast<CurveShape>(p.ampAttackCurve));
+    ampRef.setDecayCurve(static_cast<CurveShape>(p.ampDecayCurve));
+    ampRef.setReleaseCurve(static_cast<CurveShape>(p.ampReleaseCurve));
+
+    mod1Ref.setAttack(p.mod1Attack);
+    mod1Ref.setDecay(p.mod1Decay);
+    mod1Ref.setSustain(p.mod1Sustain);
+    mod1Ref.setRelease(p.mod1Release);
+    mod1Ref.setLooping(p.mod1Loop);
+    mod1Ref.setAttackCurve(static_cast<CurveShape>(p.mod1AttackCurve));
+    mod1Ref.setDecayCurve(static_cast<CurveShape>(p.mod1DecayCurve));
+    mod1Ref.setReleaseCurve(static_cast<CurveShape>(p.mod1ReleaseCurve));
+
+    mod2Ref.setAttack(p.mod2Attack);
+    mod2Ref.setDecay(p.mod2Decay);
+    mod2Ref.setSustain(p.mod2Sustain);
+    mod2Ref.setRelease(p.mod2Release);
+    mod2Ref.setLooping(p.mod2Loop);
+    mod2Ref.setAttackCurve(static_cast<CurveShape>(p.mod2AttackCurve));
+    mod2Ref.setDecayCurve(static_cast<CurveShape>(p.mod2DecayCurve));
+    mod2Ref.setReleaseCurve(static_cast<CurveShape>(p.mod2ReleaseCurve));
+
+    const float ampVel  = (1.0f - ampVelSens_)  + ampVelSens_  * currentVelocity;
+    const float mod1Vel = (1.0f - mod1VelSens_) + mod1VelSens_ * currentVelocity;
+    const float mod2Vel = (1.0f - mod2VelSens_) + mod2VelSens_ * currentVelocity;
+
+    ampRef.noteOn(ampVel);
+    mod1Ref.noteOn(mod1Vel);
+    mod2Ref.noteOn(mod2Vel);
+
+    for (int i = 0; i < analysisSamples; ++i)
+    {
+        const float ampEnvVal = ampRef.processSample() * p.ampAmount;
+        const float mod1EnvVal = mod1Ref.processSample() * p.mod1Amount;
+        const float mod2EnvVal = mod2Ref.processSample() * p.mod2Amount;
+
+        float vca = ampEnvVal;
+        if (p.mod1Target == EnvTarget::DCA) vca *= (1.0f + mod1EnvVal);
+        if (p.mod2Target == EnvTarget::DCA) vca *= (1.0f + mod2EnvVal);
+        dcaCurve[static_cast<size_t>(i)] = std::max(0.0f, vca);
+    }
+
+    float analysisPeak = 0.0f;
+    const float analysisRms = sampler.estimatePlaybackRms(
+        dcaCurve.data(), analysisSamples, &analysisPeak);
+
+    static constexpr float kTargetPostDcaRms = 0.25f;
+    static constexpr float kCeiling = 0.95f;
+    samplerPreStretchNormGain_ = 1.0f;
+
+    if (analysisRms > 1.0e-6f)
+    {
+        float gain = kTargetPostDcaRms / analysisRms;
+        if (analysisPeak > 1.0e-6f)
+            gain = std::min(gain, kCeiling / analysisPeak);
+        samplerPreStretchNormGain_ = gain;
+    }
+
+    sampler.setSourceGain(samplerPreStretchNormGain_);
+
+    preStretchNormState_.ampAttack = p.ampAttack;
+    preStretchNormState_.ampDecay = p.ampDecay;
+    preStretchNormState_.ampSustain = p.ampSustain;
+    preStretchNormState_.ampRelease = p.ampRelease;
+    preStretchNormState_.ampAmount = p.ampAmount;
+    preStretchNormState_.ampVelSens = p.ampVelSens;
+    preStretchNormState_.ampLoop = p.ampLoop;
+    preStretchNormState_.ampAttackCurve = p.ampAttackCurve;
+    preStretchNormState_.ampDecayCurve = p.ampDecayCurve;
+    preStretchNormState_.ampReleaseCurve = p.ampReleaseCurve;
+    preStretchNormState_.mod1Target = p.mod1Target;
+    preStretchNormState_.mod1Attack = p.mod1Attack;
+    preStretchNormState_.mod1Decay = p.mod1Decay;
+    preStretchNormState_.mod1Sustain = p.mod1Sustain;
+    preStretchNormState_.mod1Release = p.mod1Release;
+    preStretchNormState_.mod1Amount = p.mod1Amount;
+    preStretchNormState_.mod1VelSens = p.mod1VelSens;
+    preStretchNormState_.mod1Loop = p.mod1Loop;
+    preStretchNormState_.mod1AttackCurve = p.mod1AttackCurve;
+    preStretchNormState_.mod1DecayCurve = p.mod1DecayCurve;
+    preStretchNormState_.mod1ReleaseCurve = p.mod1ReleaseCurve;
+    preStretchNormState_.mod2Target = p.mod2Target;
+    preStretchNormState_.mod2Attack = p.mod2Attack;
+    preStretchNormState_.mod2Decay = p.mod2Decay;
+    preStretchNormState_.mod2Sustain = p.mod2Sustain;
+    preStretchNormState_.mod2Release = p.mod2Release;
+    preStretchNormState_.mod2Amount = p.mod2Amount;
+    preStretchNormState_.mod2VelSens = p.mod2VelSens;
+    preStretchNormState_.mod2Loop = p.mod2Loop;
+    preStretchNormState_.mod2AttackCurve = p.mod2AttackCurve;
+    preStretchNormState_.mod2DecayCurve = p.mod2DecayCurve;
+    preStretchNormState_.mod2ReleaseCurve = p.mod2ReleaseCurve;
+    preStretchNormState_.velocity = currentVelocity;
+    preStretchNormState_.startPos = sampler.getStartPos();
+    preStretchNormState_.loopStart = sampler.getLoopStart();
+    preStretchNormState_.loopEnd = sampler.getLoopEnd();
+    preStretchNormState_.startPosOffset = sampler.getStartPosOffset();
+    preStretchNormState_.crossfadeMs = sampler.getCrossfadeMs();
+    preStretchNormState_.loopMode = static_cast<int>(sampler.getLoopMode());
+    preStretchNormState_.normalizeOn = sampler.getNormalize();
+    samplerPreStretchNormDirty_ = false;
 }
 
 SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float globalLfo1Val, float globalLfo2Val)
@@ -180,6 +388,15 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     {
         sample = sampler.processSample();
     }
+
+    float noiseLevel = p.noiseLevel;
+    if (p.mod1Target == EnvTarget::NoiseLevel) noiseLevel += mod1EnvVal;
+    if (p.mod2Target == EnvTarget::NoiseLevel) noiseLevel += mod2EnvVal;
+    if (p.lfo1Target == LfoTarget::NoiseLevel) noiseLevel += lfo1Val;
+    if (p.lfo2Target == LfoTarget::NoiseLevel) noiseLevel += lfo2Val;
+    noiseLevel = juce::jlimit(0.0f, 1.0f, noiseLevel);
+    result.modulatedNoiseLevel = noiseLevel;
+    lastModulatedNoiseLevel_ = noiseLevel;
 
     // DCA
     float vca = ampEnvVal;
@@ -350,10 +567,17 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             }
 
             // Mix noise oscillator (goes through VCA + filter with the main signal)
-            if (p.noiseLevel > 0.001f)
+            float noiseLevel = p.noiseLevel;
+            if (p.mod1Target == EnvTarget::NoiseLevel) noiseLevel += mod1EnvVal;
+            if (p.mod2Target == EnvTarget::NoiseLevel) noiseLevel += mod2EnvVal;
+            if (p.lfo1Target == LfoTarget::NoiseLevel) noiseLevel += lfo1Val;
+            if (p.lfo2Target == LfoTarget::NoiseLevel) noiseLevel += lfo2Val;
+            noiseLevel = juce::jlimit(0.0f, 1.0f, noiseLevel);
+            lastModulatedNoiseLevel_ = noiseLevel;
+            if (noiseLevel > 0.001f)
             {
                 noise.setType(static_cast<NoiseType>(p.noiseType));
-                sample += noise.processSample() * p.noiseLevel;
+                sample += noise.processSample() * noiseLevel;
             }
 
             // VCA
@@ -383,4 +607,3 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
         pos = subBlockEnd;
     }
 }
-

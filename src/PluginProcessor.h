@@ -202,6 +202,7 @@ public:
         static constexpr float NONE = std::numeric_limits<float>::quiet_NaN();
         std::atomic<float> filterCutoff { NONE };
         std::atomic<float> scanPosition { NONE };
+        std::atomic<float> noiseLevel { NONE };
         std::atomic<float> lfo1Rate { NONE };
         std::atomic<float> lfo1Depth { NONE };
         std::atomic<float> lfo2Rate { NONE };

@@ -21,6 +21,7 @@ void VoiceManager::reset()
     currentGain = 1.0f;
     targetGain = 1.0f;
     gainRampSamplesLeft = 0;
+    currentSamplerMaster_ = nullptr;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -49,6 +50,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
             return;
         }
         if (v.isActive()) v.noteOff();
+        if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && currentSamplerMaster_ != nullptr)
+            v.getSampler().shareBufferFrom(*currentSamplerMaster_);
         v.noteOn(note, velocity, false);
         v.noteOnTimestamp = ++noteOnCounter;
         if (lfo1TrigMode) v.getPerVoiceLfo1().reset();
@@ -100,6 +103,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
     if (v.isActive())
         v.noteOff();
 
+    if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && currentSamplerMaster_ != nullptr)
+        v.getSampler().shareBufferFrom(*currentSamplerMaster_);
     v.noteOn(note, velocity, false);
     v.noteOnTimestamp = ++noteOnCounter;
 
@@ -235,6 +240,7 @@ VoiceManager::VoiceOutput VoiceManager::renderBlock(
         out.lastMod2Val = nv.getLastMod2Val();
         out.lastModulatedCutoff = nv.getLastModulatedCutoff();
         out.lastModulatedScan = nv.getLastModulatedScan();
+        out.lastModulatedNoiseLevel = nv.getLastModulatedNoiseLevel();
         out.lastTriggeredNote = nv.getCurrentNote();
         out.hasActiveVoices = true;
     }
@@ -256,10 +262,25 @@ void VoiceManager::setEngineMode(SynthVoice::EngineMode mode)
         v.setEngineMode(mode);
 }
 
-void VoiceManager::distributeSamplerBuffer(const SamplePlayer& master)
+void VoiceManager::freezeActiveSamplerVoices()
 {
     for (auto& v : voices)
+    {
+        if (v.isActive() && v.getEngineMode() == SynthVoice::EngineMode::Sampler)
+            v.getSampler().freezeSharedBuffer();
+    }
+}
+
+void VoiceManager::distributeSamplerBuffer(const SamplePlayer& master)
+{
+    currentSamplerMaster_ = &master;
+    for (auto& v : voices)
+    {
+        if (v.isActive() && v.getEngineMode() == SynthVoice::EngineMode::Sampler)
+            continue;
+
         v.getSampler().shareBufferFrom(master);
+    }
 }
 
 void VoiceManager::distributeWavetableFrames(const WavetableOscillator& masterOsc)

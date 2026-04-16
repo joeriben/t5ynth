@@ -17,6 +17,7 @@ void SamplePlayer::reset()
     audioLoaded = false;
     playing = false;
     readPosition = 0.0;
+    sourceGain_ = 1.0f;
     stretcher.reset();
 }
 
@@ -47,10 +48,23 @@ void SamplePlayer::shareBufferFrom(const SamplePlayer& master)
     wtExtractStartFrac_ = master.wtExtractStartFrac_;
     wtExtractEndFrac_ = master.wtExtractEndFrac_;
     startPosOffset_ = master.startPosOffset_;
+    sourceGain_ = master.sourceGain_;
     audioLoaded = master.audioLoaded;
     // Only reset read position on first share, not on subsequent syncs
     if (!wasShared)
         readPosition = static_cast<double>(coldStart);
+    needsReprepareFlag = false;
+}
+
+void SamplePlayer::freezeSharedBuffer()
+{
+    if (!sharedMode || sharedPlayBuffer == nullptr)
+        return;
+
+    playBuffer.makeCopyOf(*sharedPlayBuffer);
+    sharedPlayBuffer = nullptr;
+    sharedMode = false;
+    audioLoaded = playBuffer.getNumSamples() > 0;
     needsReprepareFlag = false;
 }
 
@@ -204,16 +218,15 @@ void SamplePlayer::preparePlaybackBuffer()
     }
 
     // Normalize if enabled.
-    // Loop/PingPong: scan P2..P3 (the loop region determines sustained loudness).
-    // OneShot: scan P1..P3 (plays once from P1, no loop — P1 is the audible start).
+    // Important for note-triggered playback: every note retriggers from P1, so
+    // the normalization scan must always include the audible note start.
+    // Limiting Loop/PingPong to P2..P3 underestimates clips whose transient or
+    // pre-loop body carries substantial energy, which makes regenerated samples
+    // come out at very different apparent loudness despite "Norm" being on.
     if (normalizeOn)
     {
-        int normStart = playStart; // P2
-        if (loopMode == LoopMode::OneShot)
-        {
-            int p1 = static_cast<int>(std::floor(startPosFrac * bufLen));
-            normStart = std::min(p1, playStart);
-        }
+        int p1 = static_cast<int>(std::floor(startPosFrac * bufLen));
+        int normStart = std::min(p1, playStart); // always include P1 head
         normalizeBuffer(playBuffer, normStart, playEnd);
     }
 
@@ -357,7 +370,7 @@ float SamplePlayer::processSample()
     double speedRatio = srRatio * transposeRatio;
 
     // Read with cubic interpolation
-    float result = cubicSample(readPosition);
+    float result = cubicSample(readPosition) * sourceGain_;
 
     // Advance with 3-point logic (direction, first-pass, boundaries)
     advancePosition(std::abs(speedRatio));
@@ -382,7 +395,7 @@ void SamplePlayer::readRawSamples(float* output, int numSamples)
 
     for (int i = 0; i < numSamples; ++i)
     {
-        output[i] = cubicSample(readPosition);
+        output[i] = cubicSample(readPosition) * sourceGain_;
 
         if (!advancePosition(std::abs(srRatio)))
         {
@@ -466,6 +479,160 @@ void SamplePlayer::renderPitchedBlock(float* output, int numSamples)
     // Pitch-shift through Signalsmith Stretch (mono: 1 channel)
     float* inPtr = rawReadBuf.data();
     stretcher.process(&inPtr, numSamples, &output, numSamples);
+}
+
+int SamplePlayer::estimateReferenceLengthSamples() const
+{
+    const auto& buf = sharedMode ? *sharedPlayBuffer : playBuffer;
+    const int bufLen = buf.getNumSamples();
+    if (bufLen <= 0 || !audioLoaded)
+        return 0;
+
+    const double srRatio = bufferOriginalSR / playbackSampleRate;
+    if (srRatio <= 0.0)
+        return 0;
+
+    const float effectiveP1 = juce::jlimit(0.0f, 1.0f, startPosFrac + startPosOffset_);
+    int startSample = static_cast<int>(std::floor(effectiveP1 * static_cast<float>(bufLen)));
+    startSample = juce::jlimit(0, bufLen - 1, startSample);
+
+    if (loopMode == LoopMode::Loop && startSample >= playStart && startSample < coldStart)
+        startSample = coldStart;
+
+    const bool reversed = (effectiveP1 > loopEndFrac);
+    const int loopLen = juce::jmax(1, playEnd - playStart);
+    int sourceSamples = 0;
+
+    if (!reversed)
+        sourceSamples = juce::jmax(0, playEnd - startSample);
+    else
+        sourceSamples = juce::jmax(0, startSample - playStart);
+
+    if (loopMode == LoopMode::Loop)
+        sourceSamples += loopLen;
+    else if (loopMode == LoopMode::PingPong)
+        sourceSamples += loopLen * 2;
+
+    return juce::jmax(1, static_cast<int>(std::ceil(static_cast<double>(sourceSamples) / srRatio)));
+}
+
+float SamplePlayer::estimatePlaybackRms(const float* gains, int numSamples, float* outPeak) const
+{
+    const auto& buf = sharedMode ? *sharedPlayBuffer : playBuffer;
+    const int bufLen = buf.getNumSamples();
+    if (gains == nullptr || numSamples <= 0 || bufLen <= 0 || !audioLoaded)
+    {
+        if (outPeak != nullptr) *outPeak = 0.0f;
+        return 0.0f;
+    }
+
+    const double srRatio = bufferOriginalSR / playbackSampleRate;
+    const float effectiveP1 = juce::jlimit(0.0f, 1.0f, startPosFrac + startPosOffset_);
+
+    bool inFirstPass = true;
+    int playDirection = (effectiveP1 > loopEndFrac) ? -1 : 1;
+    double analysisReadPosition = static_cast<double>(
+        std::floor(effectiveP1 * static_cast<float>(bufLen)));
+
+    if (loopMode == LoopMode::Loop
+        && analysisReadPosition >= static_cast<double>(playStart)
+        && analysisReadPosition < static_cast<double>(coldStart))
+    {
+        analysisReadPosition = static_cast<double>(coldStart);
+    }
+
+    double sumSq = 0.0;
+    int renderedSamples = 0;
+    float peak = 0.0f;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        float sample = cubicSample(analysisReadPosition);
+        float weighted = sample * gains[i];
+        sumSq += static_cast<double>(weighted) * static_cast<double>(weighted);
+        peak = std::max(peak, std::abs(weighted));
+        ++renderedSamples;
+
+        analysisReadPosition += srRatio * static_cast<double>(playDirection);
+
+        const double pEnd = static_cast<double>(playEnd);
+        const double pStart = static_cast<double>(playStart);
+
+        if (inFirstPass)
+        {
+            if (playDirection > 0 && analysisReadPosition >= pEnd)
+            {
+                inFirstPass = false;
+                if (loopMode == LoopMode::OneShot)
+                    break;
+
+                const double overshoot = analysisReadPosition - pEnd;
+                if (loopMode == LoopMode::PingPong)
+                {
+                    analysisReadPosition = pEnd - overshoot;
+                    playDirection = -1;
+                }
+                else
+                {
+                    analysisReadPosition = pStart + overshoot;
+                }
+            }
+            else if (playDirection < 0 && analysisReadPosition < pStart)
+            {
+                inFirstPass = false;
+                if (loopMode == LoopMode::OneShot)
+                    break;
+
+                const double overshoot = pStart - analysisReadPosition;
+                if (loopMode == LoopMode::PingPong)
+                {
+                    analysisReadPosition = pStart + overshoot;
+                    playDirection = 1;
+                }
+                else
+                {
+                    analysisReadPosition = pEnd - overshoot;
+                }
+            }
+        }
+        else
+        {
+            if (analysisReadPosition >= pEnd)
+            {
+                const double overshoot = analysisReadPosition - pEnd;
+                if (loopMode == LoopMode::PingPong)
+                {
+                    analysisReadPosition = pEnd - overshoot;
+                    playDirection = -1;
+                }
+                else
+                {
+                    analysisReadPosition = pStart + overshoot;
+                }
+            }
+            else if (analysisReadPosition < pStart)
+            {
+                const double overshoot = pStart - analysisReadPosition;
+                if (loopMode == LoopMode::PingPong)
+                {
+                    analysisReadPosition = pStart + overshoot;
+                    playDirection = 1;
+                }
+                else
+                {
+                    analysisReadPosition = pEnd - overshoot;
+                }
+            }
+        }
+    }
+
+    if (outPeak != nullptr)
+        *outPeak = peak;
+
+    if (renderedSamples <= 0)
+        return 0.0f;
+
+    return static_cast<float>(std::sqrt(sumSq / static_cast<double>(renderedSamples)));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -656,11 +823,13 @@ void SamplePlayer::normalizeBuffer(juce::AudioBuffer<float>& buf, int regionStar
     int rs = juce::jlimit(0, buf.getNumSamples(), regionStart);
     int re = juce::jlimit(rs, buf.getNumSamples(), regionEnd);
     if (re <= rs) return;
+    const int numChannels = buf.getNumChannels();
+    if (numChannels <= 0) return;
 
     // Compute RMS over the play region (all channels)
     double sumSq = 0.0;
     int totalSamples = 0;
-    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+    for (int ch = 0; ch < numChannels; ++ch)
     {
         const float* d = buf.getReadPointer(ch);
         for (int i = rs; i < re; ++i)
@@ -680,7 +849,7 @@ void SamplePlayer::normalizeBuffer(juce::AudioBuffer<float>& buf, int regionStar
     float gain = kTargetRms / rms;
 
     // Apply gain to entire buffer
-    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+    for (int ch = 0; ch < numChannels; ++ch)
     {
         float* d = buf.getWritePointer(ch);
         for (int i = 0; i < buf.getNumSamples(); ++i)
@@ -689,7 +858,7 @@ void SamplePlayer::normalizeBuffer(juce::AudioBuffer<float>& buf, int regionStar
 
     // Soft-clip peaks above 0.95 to prevent clipping without crushing dynamics
     static constexpr float kCeiling = 0.95f;
-    for (int ch = 0; ch < buf.getNumChannels(); ++ch)
+    for (int ch = 0; ch < numChannels; ++ch)
     {
         float* d = buf.getWritePointer(ch);
         for (int i = 0; i < buf.getNumSamples(); ++i)

@@ -34,6 +34,7 @@ public:
         float mod2EnvVal;    // last mod2 envelope value
         float modulatedCutoff = 20000.0f;
         float modulatedScan = 0.0f;
+        float modulatedNoiseLevel = 0.0f;
     };
 
     /** Configure envelopes from block params. Call once per block before renderSample loop. */
@@ -53,6 +54,7 @@ public:
     float getLastMod2Val() const { return lastMod2Val_; }
     float getLastModulatedCutoff() const { return lastModulatedCutoff_; }
     float getLastModulatedScan() const { return lastModulatedScan_; }
+    float getLastModulatedNoiseLevel() const { return lastModulatedNoiseLevel_; }
 
     // ── State queries ──
     bool isActive() const { return active; }
@@ -123,8 +125,64 @@ private:
     float lastMod2Val_ = 0.0f;
     float lastModulatedCutoff_ = 20000.0f;
     float lastModulatedScan_ = 0.0f;
+    float lastModulatedNoiseLevel_ = 0.0f;
 
     // Pre-rendered sampler block (pitch-shifted via Signalsmith Stretch)
     int maxBlockSize_ = 512;
     std::vector<float> samplerBlockBuf_;
+
+    struct PreStretchNormState
+    {
+        float ampAttack = -1.0f;
+        float ampDecay = -1.0f;
+        float ampSustain = -1.0f;
+        float ampRelease = -1.0f;
+        float ampAmount = -1.0f;
+        float ampVelSens = -1.0f;
+        bool ampLoop = false;
+        int ampAttackCurve = -1;
+        int ampDecayCurve = -1;
+        int ampReleaseCurve = -1;
+
+        int mod1Target = EnvTarget::None;
+        float mod1Attack = -1.0f;
+        float mod1Decay = -1.0f;
+        float mod1Sustain = -1.0f;
+        float mod1Release = -1.0f;
+        float mod1Amount = -1.0f;
+        float mod1VelSens = -1.0f;
+        bool mod1Loop = false;
+        int mod1AttackCurve = -1;
+        int mod1DecayCurve = -1;
+        int mod1ReleaseCurve = -1;
+
+        int mod2Target = EnvTarget::None;
+        float mod2Attack = -1.0f;
+        float mod2Decay = -1.0f;
+        float mod2Sustain = -1.0f;
+        float mod2Release = -1.0f;
+        float mod2Amount = -1.0f;
+        float mod2VelSens = -1.0f;
+        bool mod2Loop = false;
+        int mod2AttackCurve = -1;
+        int mod2DecayCurve = -1;
+        int mod2ReleaseCurve = -1;
+
+        float velocity = -1.0f;
+        float startPos = -1.0f;
+        float loopStart = -1.0f;
+        float loopEnd = -1.0f;
+        float startPosOffset = -999.0f;
+        float crossfadeMs = -1.0f;
+        int loopMode = -1;
+        bool normalizeOn = false;
+    };
+
+    void updateSamplerPreStretchNorm(const BlockParams& p);
+    bool preStretchNormStateMatches(const BlockParams& p) const;
+
+    PreStretchNormState preStretchNormState_;
+    float samplerPreStretchNormGain_ = 1.0f;
+    bool samplerPreStretchNormDirty_ = true;
+
 };
