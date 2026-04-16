@@ -68,7 +68,19 @@ static bool shouldDownloadHfFile(const juce::String& remotePath,
 
     if (path.endsWith(".bin"))
     {
-        // Prefer safetensors when both formats exist for the same component.
+        auto slash = path.lastIndexOfChar('/');
+        auto dirPrefix = slash >= 0 ? path.substring(0, slash + 1) : juce::String();
+
+        // Prefer safetensors for the whole component directory, even when HF
+        // uses mixed naming like model.safetensors + pytorch_model.bin.
+        for (const auto& other : allPaths)
+        {
+            auto otherPath = juce::String(other).replaceCharacter('\\', '/');
+            if (otherPath.startsWith(dirPrefix) && otherPath.endsWith(".safetensors"))
+                return false;
+        }
+
+        // Fallback: same-basename pairing for repos that use matching names.
         auto safetensorsAlt = path.upToLastOccurrenceOf(".bin", false, false) + ".safetensors";
         return allPaths.find(safetensorsAlt.toStdString()) == allPaths.end();
     }
