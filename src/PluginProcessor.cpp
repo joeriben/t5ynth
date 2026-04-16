@@ -3,11 +3,32 @@
 #include "BinaryData.h"
 #include "dsp/Tuning.h"
 
+namespace
+{
+constexpr bool kSamplerDebugLogging = true;
+
+void samplerProcessorDebugLog(const juce::String& message)
+{
+    if constexpr (kSamplerDebugLogging)
+    {
+        juce::Logger::writeToLog("[SamplerDebug] " + message);
+        juce::FileOutputStream out(juce::File("/tmp/t5ynth_sampler_debug.log"));
+        if (out.openedOk())
+        {
+            out << "[SamplerDebug] " << message << juce::newLine;
+            out.flush();
+        }
+    }
+}
+}
+
 T5ynthProcessor::T5ynthProcessor()
     : AudioProcessor(BusesProperties()
                      .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "T5ynth", createParameterLayout())
 {
+    juce::File("/tmp/t5ynth_sampler_debug.log").deleteFile();
+    samplerProcessorDebugLog("session start");
 }
 
 T5ynthProcessor::~T5ynthProcessor() = default;
@@ -1001,7 +1022,10 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (masterSampler.hasAudio())
         {
             if (masterSampler.needsReprepare())
+            {
+                samplerProcessorDebugLog("processBlock preparePlaybackBuffer master={" + masterSampler.debugStateString() + "}");
                 masterSampler.preparePlaybackBuffer();
+            }
             voiceManager.distributeSamplerBuffer(masterSampler);
         }
 
@@ -1412,6 +1436,9 @@ bool T5ynthProcessor::isSamplerMode() const
 
 void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBuffer, double sr)
 {
+    samplerProcessorDebugLog("loadGeneratedAudio begin samples=" + juce::String(audioBuffer.getNumSamples())
+                             + " sr=" + juce::String(sr, 2)
+                             + " masterBefore={" + masterSampler.debugStateString() + "}");
     const bool hadPreviousGeneratedAudio = generatedAudioFull.getNumSamples() > 0
         && generatedAudioFull.getNumChannels() > 0;
 
@@ -1624,6 +1651,8 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
     voiceManager.distributeSamplerBuffer(masterSampler);
     voiceManager.distributeWavetableFrames(masterOsc);
 
+    samplerProcessorDebugLog("loadGeneratedAudio end masterAfter={" + masterSampler.debugStateString() + "}");
+
     // Snapshot channel 0 for waveform display
     if (feedBuffer.getNumChannels() > 0 && feedBuffer.getNumSamples() > 0)
     {
@@ -1650,11 +1679,15 @@ void T5ynthProcessor::loadGeneratedAudio(const juce::AudioBuffer<float>& audioBu
 
 void T5ynthProcessor::reloadProcessedAudio(const juce::AudioBuffer<float>& processed)
 {
+    samplerProcessorDebugLog("reloadProcessedAudio begin samples=" + juce::String(processed.getNumSamples())
+                             + " masterBefore={" + masterSampler.debugStateString() + "}");
     // Update stored audio and reload into sampler without Rumble/HF/Normalize
     generatedAudioFull.makeCopyOf(processed);
     voiceManager.freezeActiveSamplerVoices();
     masterSampler.loadBuffer(processed, generatedSampleRate);
     voiceManager.distributeSamplerBuffer(masterSampler);
+
+    samplerProcessorDebugLog("reloadProcessedAudio end masterAfter={" + masterSampler.debugStateString() + "}");
 
     if (processed.getNumChannels() > 0 && processed.getNumSamples() > 0)
     {

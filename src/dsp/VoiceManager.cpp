@@ -1,5 +1,34 @@
 #include "VoiceManager.h"
 
+namespace
+{
+constexpr bool kSamplerDebugLogging = true;
+
+void samplerVoiceDebugLog(const juce::String& message)
+{
+    if constexpr (kSamplerDebugLogging)
+    {
+        juce::Logger::writeToLog("[SamplerDebug] " + message);
+        juce::FileOutputStream out(juce::File("/tmp/t5ynth_sampler_debug.log"));
+        if (out.openedOk())
+        {
+            out << "[SamplerDebug] " << message << juce::newLine;
+            out.flush();
+        }
+    }
+}
+
+const char* engineModeName(SynthVoice::EngineMode mode)
+{
+    switch (mode)
+    {
+        case SynthVoice::EngineMode::Sampler:   return "Sampler";
+        case SynthVoice::EngineMode::Wavetable: return "Wavetable";
+    }
+    return "?";
+}
+}
+
 void VoiceManager::prepare(double sampleRate, int samplesPerBlock)
 {
     sr = sampleRate;
@@ -51,13 +80,23 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         }
         if (v.isActive()) v.noteOff();
         if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && currentSamplerMaster_ != nullptr)
+        {
             v.getSampler().shareBufferFrom(*currentSamplerMaster_);
+            samplerVoiceDebugLog("noteOn mono share voice=0 note=" + juce::String(note)
+                                 + " engine=" + juce::String(engineModeName(v.getEngineMode())));
+        }
         v.noteOn(note, velocity, false);
+        samplerVoiceDebugLog("noteOn mono trigger voice=0 note=" + juce::String(note)
+                             + " velocity=" + juce::String(velocity, 3)
+                             + " engine=" + juce::String(engineModeName(v.getEngineMode())));
         v.noteOnTimestamp = ++noteOnCounter;
         if (lfo1TrigMode) v.getPerVoiceLfo1().reset();
         if (lfo2TrigMode) v.getPerVoiceLfo2().reset();
         if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
+        {
             v.getSampler().retrigger();
+            samplerVoiceDebugLog("noteOn mono retrigger voice=0 note=" + juce::String(note));
+        }
         if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable)
         {
             v.getSampler().stop();
@@ -104,8 +143,17 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         v.noteOff();
 
     if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && currentSamplerMaster_ != nullptr)
+    {
         v.getSampler().shareBufferFrom(*currentSamplerMaster_);
+        samplerVoiceDebugLog("noteOn poly share voice=" + juce::String(idx)
+                             + " note=" + juce::String(note)
+                             + " engine=" + juce::String(engineModeName(v.getEngineMode())));
+    }
     v.noteOn(note, velocity, false);
+    samplerVoiceDebugLog("noteOn poly trigger voice=" + juce::String(idx)
+                         + " note=" + juce::String(note)
+                         + " velocity=" + juce::String(velocity, 3)
+                         + " engine=" + juce::String(engineModeName(v.getEngineMode())));
     v.noteOnTimestamp = ++noteOnCounter;
 
     // LFO trigger mode: reset per-voice LFO phase
@@ -116,7 +164,11 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
 
     // Retrigger sampler if in sampler mode
     if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
+    {
         v.getSampler().retrigger();
+        samplerVoiceDebugLog("noteOn poly retrigger voice=" + juce::String(idx)
+                             + " note=" + juce::String(note));
+    }
     if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable)
     {
         v.getSampler().stop();
@@ -264,11 +316,18 @@ void VoiceManager::setEngineMode(SynthVoice::EngineMode mode)
 
 void VoiceManager::freezeActiveSamplerVoices()
 {
+    int frozen = 0;
     for (auto& v : voices)
     {
         if (v.isActive() && v.getEngineMode() == SynthVoice::EngineMode::Sampler)
+        {
             v.getSampler().freezeSharedBuffer();
+            ++frozen;
+        }
     }
+
+    if (frozen > 0)
+        samplerVoiceDebugLog("freezeActiveSamplerVoices count=" + juce::String(frozen));
 }
 
 void VoiceManager::distributeSamplerBuffer(const SamplePlayer& master)

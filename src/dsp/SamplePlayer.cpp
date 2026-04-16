@@ -2,6 +2,41 @@
 #include <cmath>
 #include <cstring>
 
+namespace
+{
+constexpr bool kSamplerDebugLogging = true;
+
+juce::String samplerPtrTag(const void* ptr)
+{
+    return "0x" + juce::String::toHexString(static_cast<juce::int64>(reinterpret_cast<std::uintptr_t>(ptr)));
+}
+
+void samplerDebugLog(const juce::String& message)
+{
+    if constexpr (kSamplerDebugLogging)
+    {
+        juce::Logger::writeToLog("[SamplerDebug] " + message);
+        juce::FileOutputStream out(juce::File("/tmp/t5ynth_sampler_debug.log"));
+        if (out.openedOk())
+        {
+            out << "[SamplerDebug] " << message << juce::newLine;
+            out.flush();
+        }
+    }
+}
+
+const char* loopModeName(SamplePlayer::LoopMode mode)
+{
+    switch (mode)
+    {
+        case SamplePlayer::LoopMode::OneShot:  return "OneShot";
+        case SamplePlayer::LoopMode::Loop:     return "Loop";
+        case SamplePlayer::LoopMode::PingPong: return "PingPong";
+    }
+    return "?";
+}
+}
+
 void SamplePlayer::prepare(double sampleRate, int samplesPerBlock)
 {
     playbackSampleRate = sampleRate;
@@ -23,7 +58,15 @@ void SamplePlayer::reset()
 
 void SamplePlayer::loadBuffer(const juce::AudioBuffer<float>& buffer, double bufferSampleRate)
 {
-    if (sharedMode) return; // shared-mode players don't own audio
+    if (sharedMode)
+    {
+        samplerDebugLog("loadBuffer ignored sharedMode player=" + samplerPtrTag(this));
+        return; // shared-mode players don't own audio
+    }
+
+    samplerDebugLog("loadBuffer player=" + samplerPtrTag(this)
+                    + " samples=" + juce::String(buffer.getNumSamples())
+                    + " sr=" + juce::String(bufferSampleRate, 2));
     originalBuffer.makeCopyOf(buffer);
     bufferOriginalSR = bufferSampleRate;
     trimLeadingSilence();
@@ -54,6 +97,12 @@ void SamplePlayer::shareBufferFrom(const SamplePlayer& master)
     if (!wasShared)
         readPosition = static_cast<double>(coldStart);
     needsReprepareFlag = false;
+
+    samplerDebugLog("shareBufferFrom dst=" + samplerPtrTag(this)
+                    + " src=" + samplerPtrTag(&master)
+                    + " wasShared=" + juce::String(wasShared ? 1 : 0)
+                    + " readPos=" + juce::String(readPosition, 2)
+                    + " state={" + debugStateString() + "}");
 }
 
 void SamplePlayer::freezeSharedBuffer()
@@ -61,11 +110,15 @@ void SamplePlayer::freezeSharedBuffer()
     if (!sharedMode || sharedPlayBuffer == nullptr)
         return;
 
+    samplerDebugLog("freezeSharedBuffer player=" + samplerPtrTag(this)
+                    + " before={" + debugStateString() + "}");
     playBuffer.makeCopyOf(*sharedPlayBuffer);
     sharedPlayBuffer = nullptr;
     sharedMode = false;
     audioLoaded = playBuffer.getNumSamples() > 0;
     needsReprepareFlag = false;
+    samplerDebugLog("freezeSharedBuffer player=" + samplerPtrTag(this)
+                    + " after={" + debugStateString() + "}");
 }
 
 void SamplePlayer::setMidiNote(int note)
@@ -124,6 +177,11 @@ void SamplePlayer::retrigger()
         stretcher.reset();
         stretcherNeedsPriming = true;
     }
+
+    samplerDebugLog("retrigger player=" + samplerPtrTag(this)
+                    + " startSample=" + juce::String(startSample)
+                    + " effectiveP1=" + juce::String(effectiveP1, 4)
+                    + " state={" + debugStateString() + "}");
 }
 
 void SamplePlayer::setLoopStart(float frac)
@@ -233,6 +291,11 @@ void SamplePlayer::preparePlaybackBuffer()
     // Reset read position via retrigger (respects P1)
     readPosition = static_cast<double>(coldStart);
     needsReprepareFlag = false;
+
+    samplerDebugLog("preparePlaybackBuffer player=" + samplerPtrTag(this)
+                    + " bufLen=" + juce::String(bufLen)
+                    + " norm=" + juce::String(normalizeOn ? 1 : 0)
+                    + " state={" + debugStateString() + "}");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -514,6 +577,29 @@ int SamplePlayer::estimateReferenceLengthSamples() const
         sourceSamples += loopLen * 2;
 
     return juce::jmax(1, static_cast<int>(std::ceil(static_cast<double>(sourceSamples) / srRatio)));
+}
+
+juce::String SamplePlayer::debugStateString() const
+{
+    const auto& buf = sharedMode && sharedPlayBuffer != nullptr ? *sharedPlayBuffer : playBuffer;
+
+    return "shared=" + juce::String(sharedMode ? 1 : 0)
+        + " playing=" + juce::String(playing ? 1 : 0)
+        + " loaded=" + juce::String(audioLoaded ? 1 : 0)
+        + " read=" + juce::String(readPosition, 2)
+        + " playStart=" + juce::String(playStart)
+        + " coldStart=" + juce::String(coldStart)
+        + " playEnd=" + juce::String(playEnd)
+        + " len=" + juce::String(buf.getNumSamples())
+        + " p1=" + juce::String(startPosFrac, 4)
+        + " p2=" + juce::String(loopStartFrac, 4)
+        + " p3=" + juce::String(loopEndFrac, 4)
+        + " p1Off=" + juce::String(startPosOffset_, 4)
+        + " dir=" + juce::String(playDirection_)
+        + " firstPass=" + juce::String(inFirstPass_ ? 1 : 0)
+        + " mode=" + juce::String(loopModeName(loopMode))
+        + " sourceGain=" + juce::String(sourceGain_, 4)
+        + " needsReprepare=" + juce::String(needsReprepareFlag ? 1 : 0);
 }
 
 float SamplePlayer::estimatePlaybackRms(const float* gains, int numSamples, float* outPeak) const

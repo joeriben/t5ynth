@@ -131,6 +131,9 @@ public:
     /** Estimated audible path length in output samples for one reference pass. */
     int estimateReferenceLengthSamples() const;
 
+    /** One-line state dump for temporary diagnostics. */
+    juce::String debugStateString() const;
+
     // ─── Pitch shift quality ───
     void setPitchShiftQuality(PitchShiftQuality quality);
     PitchShiftQuality getPitchShiftQuality() const { return pitchQuality; }
