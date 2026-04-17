@@ -1,5 +1,6 @@
 #include "SynthPanel.h"
 #include "../PluginProcessor.h"
+#include <algorithm>
 
 // ── Helper: format ms (integer) ──
 static juce::String fmtMs(double v)  { return juce::String(juce::roundToInt(v)) + "ms"; }
@@ -896,6 +897,14 @@ float SynthPanel::fs() const
     return juce::jlimit(9.0f, 20.0f, maxF);
 }
 
+static int modulationForcedLabelWidthFor(SliderRow& row, int rowWidth, int curveButtonSize = 0)
+{
+    int width = row.getNaturalLabelWidthForAvailableWidth(rowWidth);
+    if (curveButtonSize > 0)
+        width += curveButtonSize + 8;
+    return width;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Layout helpers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -911,32 +920,27 @@ void SynthPanel::layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float f,
     env.loopToggle.setBounds(hdr.removeFromLeft(juce::roundToInt(hdr.getWidth() * 0.4f)));
 
     // Always allocate space — inactive sections are dimmed, not hidden
-    int colW = (area.getWidth() - 4) / 2;
     int btnSize = rowH - 2;  // square, slightly smaller than row height
-    // Match SliderRow's internal label width so button sits at its right edge,
-    // just before the slider track starts — never overlapping the slider.
-    int rowLabelW = juce::jlimit(30, 55, juce::roundToInt(static_cast<float>(colW) * 0.18f));
-    int btnX = rowLabelW - btnSize;  // flush with right edge of label area
-
     auto adRow = area.removeFromTop(rowH);
-    auto aArea = adRow.removeFromLeft(colW);
-    adRow.removeFromLeft(4);
-    env.aRow->setBounds(aArea);
-    env.aCurveBtn.setBounds(aArea.getX() + btnX, aArea.getY() + 1, btnSize, btnSize);
-    env.dRow->setBounds(adRow);
-    env.dCurveBtn.setBounds(adRow.getX() + btnX, adRow.getY() + 1, btnSize, btnSize);
+    auto adBounds = layoutSliderRowPairBounds(adRow, *env.aRow, *env.dRow, 4);
+    env.aRow->setBounds(adBounds[0]);
+    env.dRow->setBounds(adBounds[1]);
+    env.aCurveBtn.setBounds(adBounds[0].getX() + env.aRow->getLabelWidthForAvailableWidth(adBounds[0].getWidth()) - btnSize,
+                            adBounds[0].getY() + 1, btnSize, btnSize);
+    env.dCurveBtn.setBounds(adBounds[1].getX() + env.dRow->getLabelWidthForAvailableWidth(adBounds[1].getWidth()) - btnSize,
+                            adBounds[1].getY() + 1, btnSize, btnSize);
 
     auto srRow = area.removeFromTop(rowH);
-    auto sArea = srRow.removeFromLeft(colW);
-    srRow.removeFromLeft(4);
-    env.sRow->setBounds(sArea);
-    env.rRow->setBounds(srRow);
-    env.rCurveBtn.setBounds(srRow.getX() + btnX, srRow.getY() + 1, btnSize, btnSize);
+    auto srBounds = layoutSliderRowPairBounds(srRow, *env.sRow, *env.rRow, 4);
+    env.sRow->setBounds(srBounds[0]);
+    env.rRow->setBounds(srBounds[1]);
+    env.rCurveBtn.setBounds(srBounds[1].getX() + env.rRow->getLabelWidthForAvailableWidth(srBounds[1].getWidth()) - btnSize,
+                            srBounds[1].getY() + 1, btnSize, btnSize);
 
     auto amtRow = area.removeFromTop(rowH);
-    env.amtRow->setBounds(amtRow.removeFromLeft(colW));
-    amtRow.removeFromLeft(4);
-    env.velRow->setBounds(amtRow);
+    auto amtBounds = layoutSliderRowPairBounds(amtRow, *env.amtRow, *env.velRow, 4);
+    env.amtRow->setBounds(amtBounds[0]);
+    env.velRow->setBounds(amtBounds[1]);
 
     area.removeFromTop(gap);
 }
@@ -958,11 +962,10 @@ void SynthPanel::layoutLfo(LfoSection& lfo, juce::Rectangle<int>& area, float f,
     lfo.modeBox.setBounds(hdr.removeFromLeft(modeW));
 
     // Always allocate space
-    int colW = (area.getWidth() - 4) / 2;
     auto slRow = area.removeFromTop(rowH);
-    lfo.rateRow->setBounds(slRow.removeFromLeft(colW));
-    slRow.removeFromLeft(4);
-    lfo.depthRow->setBounds(slRow);
+    auto lfoBounds = layoutSliderRowPairBounds(slRow, *lfo.rateRow, *lfo.depthRow, 4);
+    lfo.rateRow->setBounds(lfoBounds[0]);
+    lfo.depthRow->setBounds(lfoBounds[1]);
 
     area.removeFromTop(gap);
 }
@@ -981,11 +984,10 @@ void SynthPanel::layoutDrift(DriftSection& drift, juce::Rectangle<int>& area, fl
     drift.waveBox.setBounds(hdr.removeFromLeft(waveW));
 
     // Always allocate space
-    int colW = (area.getWidth() - 4) / 2;
     auto slRow = area.removeFromTop(rowH);
-    drift.rateRow->setBounds(slRow.removeFromLeft(colW));
-    slRow.removeFromLeft(4);
-    drift.depthRow->setBounds(slRow);
+    auto driftBounds = layoutSliderRowPairBounds(slRow, *drift.rateRow, *drift.depthRow, 4);
+    drift.rateRow->setBounds(driftBounds[0]);
+    drift.depthRow->setBounds(driftBounds[1]);
 
     area.removeFromTop(gap);
 }
@@ -1334,16 +1336,15 @@ void SynthPanel::resized()
 
     {
         // Always allocate — dimmed when filter off
-        int colW = (area.getWidth() - 4) / 2;
         auto row1 = area.removeFromTop(rowH);
-        cutoffRow->setBounds(row1.removeFromLeft(colW));
-        row1.removeFromLeft(4);
-        resoRow->setBounds(row1);
+        auto filterBounds1 = layoutSliderRowPairBounds(row1, *cutoffRow, *resoRow, 4);
+        cutoffRow->setBounds(filterBounds1[0]);
+        resoRow->setBounds(filterBounds1[1]);
 
         auto row2 = area.removeFromTop(rowH);
-        filterMixRow->setBounds(row2.removeFromLeft(colW));
-        row2.removeFromLeft(4);
-        kbdTrackRow->setBounds(row2);
+        auto filterBounds2 = layoutSliderRowPairBounds(row2, *filterMixRow, *kbdTrackRow, 4);
+        filterMixRow->setBounds(filterBounds2[0]);
+        kbdTrackRow->setBounds(filterBounds2[1]);
         area.removeFromTop(gap);
     }
 
@@ -1356,6 +1357,44 @@ void SynthPanel::resized()
     area.removeFromTop(headerGap);
 
     // ── Envelopes ──
+    {
+        const int modPairGap = 4;
+        const int modColumnWidth = juce::jmax(0, (area.getWidth() - modPairGap) / 2);
+        const int curveLabelMin = rowH - 2;
+
+        const int leftLabelWidth = std::max({
+            modulationForcedLabelWidthFor(*ampEnv.aRow, modColumnWidth, curveLabelMin),
+            modulationForcedLabelWidthFor(*ampEnv.sRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*ampEnv.amtRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*lfo1.rateRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*drift1.rateRow, modColumnWidth)
+        });
+
+        const int rightLabelWidth = std::max({
+            modulationForcedLabelWidthFor(*ampEnv.dRow, modColumnWidth, curveLabelMin),
+            modulationForcedLabelWidthFor(*ampEnv.rRow, modColumnWidth, curveLabelMin),
+            modulationForcedLabelWidthFor(*ampEnv.velRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*lfo1.depthRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*drift1.depthRow, modColumnWidth)
+        });
+
+        for (auto* row : {
+                 ampEnv.aRow.get(), ampEnv.sRow.get(), ampEnv.amtRow.get(),
+                 mod1Env.aRow.get(), mod1Env.sRow.get(), mod1Env.amtRow.get(),
+                 mod2Env.aRow.get(), mod2Env.sRow.get(), mod2Env.amtRow.get(),
+                 lfo1.rateRow.get(), lfo2.rateRow.get(),
+                 drift1.rateRow.get(), drift2.rateRow.get(), drift3.rateRow.get() })
+            row->setForcedLabelWidth(leftLabelWidth);
+
+        for (auto* row : {
+                 ampEnv.dRow.get(), ampEnv.rRow.get(), ampEnv.velRow.get(),
+                 mod1Env.dRow.get(), mod1Env.rRow.get(), mod1Env.velRow.get(),
+                 mod2Env.dRow.get(), mod2Env.rRow.get(), mod2Env.velRow.get(),
+                 lfo1.depthRow.get(), lfo2.depthRow.get(),
+                 drift1.depthRow.get(), drift2.depthRow.get(), drift3.depthRow.get() })
+            row->setForcedLabelWidth(rightLabelWidth);
+    }
+
     layoutEnv(ampEnv,  area, f, rowH, gap);
     layoutEnv(mod1Env, area, f, rowH, gap);
     layoutEnv(mod2Env, area, f, rowH, gap);

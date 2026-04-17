@@ -91,6 +91,52 @@ jobs:
             exit 1
           fi
 
+      - name: Import Developer ID certificates
+        if: ${{ secrets.MACOS_APP_CERT_P12_BASE64 != '' && secrets.MACOS_APP_CERT_P12_PASSWORD != '' && secrets.MACOS_PKG_CERT_P12_BASE64 != '' && secrets.MACOS_PKG_CERT_P12_PASSWORD != '' && secrets.MACOS_KEYCHAIN_PASSWORD != '' }}
+        env:
+          APP_CERT_P12_BASE64: ${{ secrets.MACOS_APP_CERT_P12_BASE64 }}
+          APP_CERT_P12_PASSWORD: ${{ secrets.MACOS_APP_CERT_P12_PASSWORD }}
+          PKG_CERT_P12_BASE64: ${{ secrets.MACOS_PKG_CERT_P12_BASE64 }}
+          PKG_CERT_P12_PASSWORD: ${{ secrets.MACOS_PKG_CERT_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/t5ynth-signing.keychain-db"
+          APP_CERT="$RUNNER_TEMP/developer-id-application.p12"
+          PKG_CERT="$RUNNER_TEMP/developer-id-installer.p12"
+
+          printf '%s' "$APP_CERT_P12_BASE64" | base64 --decode > "$APP_CERT"
+          printf '%s' "$PKG_CERT_P12_BASE64" | base64 --decode > "$PKG_CERT"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          security default-keychain -s "$KEYCHAIN"
+
+          security import "$APP_CERT" -k "$KEYCHAIN" -P "$APP_CERT_P12_PASSWORD" -T /usr/bin/codesign
+          security import "$PKG_CERT" -k "$KEYCHAIN" -P "$PKG_CERT_P12_PASSWORD" -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          APP_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*\"\\(Developer ID Application:[^\"]*\\)\".*/\\1/p' | head -n 1)"
+          PKG_IDENTITY="$(security find-identity -v -p basic "$KEYCHAIN" | sed -n 's/.*\"\\(Developer ID Installer:[^\"]*\\)\".*/\\1/p' | head -n 1)"
+
+          test -n "$APP_IDENTITY"
+          test -n "$PKG_IDENTITY"
+
+          echo "MACOS_APP_SIGN_IDENTITY=$APP_IDENTITY" >> "$GITHUB_ENV"
+          echo "MACOS_PKG_SIGN_IDENTITY=$PKG_IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Prepare notary API key
+        if: ${{ secrets.MACOS_NOTARY_API_PRIVATE_KEY != '' && secrets.MACOS_NOTARY_API_KEY_ID != '' && secrets.MACOS_NOTARY_API_ISSUER != '' }}
+        env:
+          MACOS_NOTARY_API_PRIVATE_KEY: ${{ secrets.MACOS_NOTARY_API_PRIVATE_KEY }}
+          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${MACOS_NOTARY_API_KEY_ID}.p8"
+          printf '%s' "$MACOS_NOTARY_API_PRIVATE_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "MACOS_NOTARY_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
       # macOS releases are installer-only for now; just create the output dir
       # before building the .pkg.
       - name: Prepare macOS release staging
@@ -98,6 +144,16 @@ jobs:
           mkdir -p archives
 
       - name: Build macOS installer (.pkg)
+        env:
+          MACOS_APP_SIGN_IDENTITY: ${{ env.MACOS_APP_SIGN_IDENTITY }}
+          MACOS_PKG_SIGN_IDENTITY: ${{ env.MACOS_PKG_SIGN_IDENTITY }}
+          MACOS_NOTARY_KEYCHAIN_PROFILE: ${{ secrets.MACOS_NOTARY_KEYCHAIN_PROFILE }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+          MACOS_NOTARY_API_KEY_PATH: ${{ env.MACOS_NOTARY_API_KEY_PATH }}
+          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          MACOS_NOTARY_API_ISSUER: ${{ secrets.MACOS_NOTARY_API_ISSUER }}
         run: |
           chmod +x installer/macos/build_pkg.sh
           installer/macos/build_pkg.sh \

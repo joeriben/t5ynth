@@ -1,7 +1,9 @@
 #pragma once
 #include <JuceHeader.h>
+#include <array>
 #include <functional>
 #include <limits>
+#include <vector>
 
 // ── Color constants (shared across all GUI files) ──────────────────────────
 static const auto kAccent  = juce::Colour(0xffe91e63);  // C — Pink (engine accent)
@@ -63,6 +65,165 @@ inline void paintSwitchBoxBorder(juce::Graphics& g, juce::Rectangle<int> bounds)
     g.drawRect(bounds, 1);
 }
 
+inline int measureTextWidth(const juce::String& text, float fontSize)
+{
+    if (text.isEmpty())
+        return 0;
+
+    juce::GlyphArrangement glyphs;
+    glyphs.addLineOfText(juce::Font(juce::FontOptions(fontSize)), text, 0.0f, 0.0f);
+    return juce::roundToInt(std::ceil(glyphs.getBoundingBox(0, -1, true).getWidth()));
+}
+
+enum class ResponsiveStripFallback
+{
+    none,
+    overflow
+};
+
+struct ResponsiveStripItem
+{
+    int preferredWidth = 0;
+    int minimumWidth = 0;
+    int priorityTier = 0;
+    bool flexible = false;
+    ResponsiveStripFallback fallback = ResponsiveStripFallback::none;
+};
+
+struct ResponsiveStripResult
+{
+    std::vector<juce::Rectangle<int>> bounds;
+    juce::Rectangle<int> overflowBounds;
+    bool overflowUsed = false;
+};
+
+inline ResponsiveStripResult layoutResponsiveStrip(juce::Rectangle<int> area,
+                                                   const std::vector<ResponsiveStripItem>& items,
+                                                   int gap,
+                                                   int overflowButtonWidth = 28)
+{
+    struct PlacedItem
+    {
+        int originalIndex = -1;
+        int preferredWidth = 0;
+        int minimumWidth = 0;
+        bool isOverflow = false;
+    };
+
+    auto buildPlacedItems = [&](bool useOverflow) {
+        std::vector<PlacedItem> placed;
+        placed.reserve(items.size() + (useOverflow ? 1 : 0));
+
+        bool insertedOverflow = false;
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            const auto& item = items[i];
+            const bool isOverflowCandidate = item.fallback == ResponsiveStripFallback::overflow
+                                             && item.priorityTier > 0;
+
+            if (useOverflow && isOverflowCandidate)
+            {
+                if (!insertedOverflow)
+                {
+                    placed.push_back({ -1, overflowButtonWidth, overflowButtonWidth, true });
+                    insertedOverflow = true;
+                }
+                continue;
+            }
+
+            placed.push_back({ static_cast<int>(i), item.preferredWidth, item.minimumWidth, false });
+        }
+
+        return placed;
+    };
+
+    auto requiredWidthFor = [&](const std::vector<PlacedItem>& placed, bool preferred) {
+        if (placed.empty())
+            return 0;
+
+        int total = gap * static_cast<int>(juce::jmax<int>(0, static_cast<int>(placed.size()) - 1));
+        for (const auto& item : placed)
+            total += preferred ? item.preferredWidth : item.minimumWidth;
+        return total;
+    };
+
+    auto allItems = buildPlacedItems(false);
+    auto overflowItems = buildPlacedItems(true);
+
+    const bool canFitAll = requiredWidthFor(allItems, false) <= area.getWidth();
+    const bool canUseOverflow = requiredWidthFor(overflowItems, false) <= area.getWidth();
+    const bool useOverflow = !canFitAll && canUseOverflow && overflowItems.size() < allItems.size();
+
+    auto placed = useOverflow ? overflowItems : allItems;
+
+    ResponsiveStripResult result;
+    result.bounds.resize(items.size());
+    result.overflowUsed = useOverflow;
+
+    if (placed.empty())
+        return result;
+
+    const int gapCount = juce::jmax<int>(0, static_cast<int>(placed.size()) - 1);
+    const int totalGapWidth = gap * gapCount;
+
+    int totalMin = totalGapWidth;
+    int totalPreferred = totalGapWidth;
+    for (const auto& item : placed)
+    {
+        totalMin += item.minimumWidth;
+        totalPreferred += item.preferredWidth;
+    }
+
+    std::vector<int> widths;
+    widths.reserve(placed.size());
+    for (const auto& item : placed)
+        widths.push_back(item.minimumWidth);
+
+    int remaining = juce::jmax(0, area.getWidth() - totalMin);
+    const int expandable = juce::jmax(0, totalPreferred - totalMin);
+
+    if (remaining > 0 && expandable > 0)
+    {
+        std::vector<int> expansion(placed.size(), 0);
+        int granted = 0;
+        for (size_t i = 0; i < placed.size(); ++i)
+        {
+            const int delta = juce::jmax(0, placed[i].preferredWidth - placed[i].minimumWidth);
+            const int extra = static_cast<int>((static_cast<int64_t>(remaining) * delta) / expandable);
+            expansion[i] = extra;
+            granted += extra;
+        }
+
+        int leftover = remaining - granted;
+        for (size_t i = 0; i < placed.size() && leftover > 0; ++i)
+        {
+            const int delta = juce::jmax(0, placed[i].preferredWidth - placed[i].minimumWidth);
+            if (expansion[i] < delta)
+            {
+                ++expansion[i];
+                --leftover;
+            }
+        }
+
+        for (size_t i = 0; i < placed.size(); ++i)
+            widths[i] += expansion[i];
+    }
+
+    int x = area.getX();
+    for (size_t i = 0; i < placed.size(); ++i)
+    {
+        juce::Rectangle<int> bounds(x, area.getY(), widths[i], area.getHeight());
+        if (placed[i].isOverflow)
+            result.overflowBounds = bounds;
+        else
+            result.bounds[static_cast<size_t>(placed[i].originalIndex)] = bounds;
+
+        x += widths[i] + gap;
+    }
+
+    return result;
+}
+
 /**
  * Compact horizontal slider row:  Label [===slider===] Value+Unit
  * ~22px tall, used everywhere instead of rotary knobs.
@@ -96,6 +257,20 @@ public:
     juce::Slider& getSlider() { return slider; }
     juce::Label& getLabel() { return label; }
     juce::Label& getValueLabel() { return value; }
+    int getPreferredWidth() const { return getLayoutProfile(false).preferredWidth; }
+    int getMinimumWidth() const { return getLayoutProfile(true).minimumWidth; }
+    void setForcedLabelWidth(int width) { forcedLabelWidth = juce::jmax(0, width); }
+    void clearForcedLabelWidth() { forcedLabelWidth = -1; }
+    int getNaturalLabelWidthForAvailableWidth(int totalWidth) const
+    {
+        const int resolvedHeight = juce::jmax(18, getHeight() > 0 ? getHeight() : 22);
+        return chooseLayout(totalWidth, resolvedHeight, false).labelWidth;
+    }
+    int getLabelWidthForAvailableWidth(int totalWidth) const
+    {
+        const int resolvedHeight = juce::jmax(18, getHeight() > 0 ? getHeight() : 22);
+        return chooseLayout(totalWidth, resolvedHeight).labelWidth;
+    }
 
     void setTrackColor(juce::Colour c)
     {
@@ -152,41 +327,28 @@ public:
     void resized() override
     {
         auto b = getLocalBounds();
-        float f = static_cast<float>(b.getHeight());
+        const auto layout = chooseLayout(b.getWidth(), b.getHeight());
+        label.setFont(juce::FontOptions(layout.labelFontSize));
+        value.setFont(juce::FontOptions(layout.valueFontSize));
 
-        const int totalW = b.getWidth();
-        const bool compact = totalW < 120;
-        const int minSliderW = compact ? 22 : 34;
-
-        int labelW = compact
-            ? juce::jlimit(18, 34, juce::roundToInt(totalW * 0.22f))
-            : juce::jlimit(30, 55, juce::roundToInt(totalW * 0.18f));
-        int valueW = compact
-            ? juce::jlimit(16, 32, juce::roundToInt(totalW * 0.18f))
-            : juce::jlimit(22, 42, juce::roundToInt(totalW * 0.12f));
-
-        const int overflow = labelW + valueW + minSliderW - totalW;
-        if (overflow > 0)
-        {
-            const int labelShrink = juce::jmin(overflow / 2 + overflow % 2,
-                                               juce::jmax(0, labelW - 16));
-            labelW -= labelShrink;
-            valueW -= juce::jmin(overflow - labelShrink, juce::jmax(0, valueW - 14));
-        }
-
-        // Scale fonts to fit available width (prevents "Da...", "0...." truncation in narrow 2-col layouts)
-        float maxFs = f * 0.75f;
-        const float labelScale = compact ? 0.42f : 0.33f;
-        const float valueScale = compact ? 0.42f : 0.33f;
-        label.setFont(juce::FontOptions(juce::jmax(7.0f, juce::jmin(maxFs, static_cast<float>(labelW) * labelScale))));
-        value.setFont(juce::FontOptions(juce::jmax(7.0f, juce::jmin(maxFs, static_cast<float>(valueW) * valueScale))));
-
-        label.setBounds(b.removeFromLeft(labelW));
-        value.setBounds(b.removeFromRight(valueW));
+        label.setBounds(b.removeFromLeft(layout.labelWidth));
+        value.setBounds(b.removeFromRight(layout.valueWidth));
         slider.setBounds(b);
     }
 
 private:
+    struct SliderLayoutProfile
+    {
+        int labelWidth = 0;
+        int valueWidth = 0;
+        int minTrackWidth = 0;
+        int preferredTrackWidth = 0;
+        float labelFontSize = 9.0f;
+        float valueFontSize = 9.0f;
+        int minimumWidth = 0;
+        int preferredWidth = 0;
+    };
+
     juce::Label label, value;
     juce::Slider slider;
     std::function<juce::String(double)> valueFormatter;
@@ -198,6 +360,62 @@ private:
     float ghostTarget   = NaN_;
     float ghostSmoothed = NaN_;
     float lastGhostPx   = -100.0f;
+    int forcedLabelWidth = -1;
+
+    juce::String currentValueText() const
+    {
+        if (!value.getText().isEmpty())
+            return value.getText();
+        if (valueFormatter)
+            return valueFormatter(slider.getValue());
+        return {};
+    }
+
+    SliderLayoutProfile getLayoutProfile(bool compact, bool applyForcedLabelWidth = true) const
+    {
+        const int resolvedHeight = juce::jmax(18, getHeight() > 0 ? getHeight() : 22);
+        const float maxFs = static_cast<float>(resolvedHeight) * 0.75f;
+        const float labelFs = juce::jmax(7.0f, juce::jmin(maxFs, compact ? 9.0f : 10.5f));
+        const float valueFs = juce::jmax(7.0f, juce::jmin(maxFs, compact ? 9.0f : 10.5f));
+        const int labelPadding = compact ? 6 : 10;
+        const int valuePadding = compact ? 6 : 10;
+
+        SliderLayoutProfile profile;
+        profile.labelFontSize = labelFs;
+        profile.valueFontSize = valueFs;
+        profile.labelWidth = label.getText().isEmpty() ? 0 : measureTextWidth(label.getText(), labelFs) + labelPadding;
+        profile.valueWidth = currentValueText().isEmpty() ? 0 : measureTextWidth(currentValueText(), valueFs) + valuePadding;
+        if (applyForcedLabelWidth && forcedLabelWidth >= 0)
+            profile.labelWidth = forcedLabelWidth;
+        profile.minTrackWidth = compact ? 48 : 72;
+        profile.preferredTrackWidth = compact ? 72 : 112;
+        profile.minimumWidth = profile.labelWidth + profile.valueWidth + profile.minTrackWidth;
+        profile.preferredWidth = profile.labelWidth + profile.valueWidth + profile.preferredTrackWidth;
+        return profile;
+    }
+
+    SliderLayoutProfile chooseLayout(int totalWidth, int height, bool applyForcedLabelWidth = true) const
+    {
+        juce::ignoreUnused(height);
+
+        auto profile = getLayoutProfile(false, applyForcedLabelWidth);
+        if (totalWidth > 0 && totalWidth < profile.preferredWidth)
+            profile = getLayoutProfile(true, applyForcedLabelWidth);
+
+        int overflow = profile.minimumWidth - totalWidth;
+        if (overflow > 0)
+        {
+            const int minLabelWidth = label.getText().isEmpty() ? 0 : 8;
+            const int minValueWidth = currentValueText().isEmpty() ? 0 : 8;
+            const int labelShrink = juce::jmin(overflow / 2 + overflow % 2,
+                                               juce::jmax(0, profile.labelWidth - minLabelWidth));
+            profile.labelWidth -= labelShrink;
+            overflow -= labelShrink;
+            profile.valueWidth -= juce::jmin(overflow, juce::jmax(0, profile.valueWidth - minValueWidth));
+        }
+
+        return profile;
+    }
 
     float ghostToPixelX(float v)
     {
@@ -211,6 +429,36 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderRow)
 };
+
+inline std::array<juce::Rectangle<int>, 2> layoutSliderRowPairBounds(juce::Rectangle<int> area,
+                                                                      SliderRow& left,
+                                                                      SliderRow& right,
+                                                                      int gap = 4)
+{
+    const auto originalArea = area;
+    const int availableW = area.getWidth();
+    const int safeGap = juce::jmin(gap, juce::jmax(0, availableW / 8));
+    const int halfW = juce::jmax(0, (availableW - safeGap) / 2);
+
+    auto leftBounds = area.removeFromLeft(halfW);
+    area.removeFromLeft(safeGap);
+    auto rightBounds = area;
+
+    const int leftMin = left.getMinimumWidth();
+    const int rightMin = right.getMinimumWidth();
+    const bool bothFitEqual = leftBounds.getWidth() >= leftMin && rightBounds.getWidth() >= rightMin;
+
+    if (bothFitEqual || availableW <= leftMin + rightMin + safeGap)
+        return { leftBounds, rightBounds };
+
+    const std::vector<ResponsiveStripItem> items {
+        { left.getPreferredWidth(),  leftMin,  0, true, ResponsiveStripFallback::none },
+        { right.getPreferredWidth(), rightMin, 0, true, ResponsiveStripFallback::none }
+    };
+
+    auto result = layoutResponsiveStrip(originalArea, items, safeGap);
+    return { result.bounds[0], result.bounds[1] };
+}
 
 /**
  * Square button that displays a cached SVG curve icon and cycles on click.
@@ -297,12 +545,9 @@ public:
 
     void resized() override
     {
-        auto b = getLocalBounds();
-        int gap = juce::jmax(4, juce::roundToInt(b.getWidth() * 0.02f));
-        int colW = (b.getWidth() - gap) / 2;
-        left->setBounds(b.removeFromLeft(colW));
-        b.removeFromLeft(gap);
-        right->setBounds(b);
+        auto bounds = layoutSliderRowPairBounds(getLocalBounds(), *left, *right);
+        left->setBounds(bounds[0]);
+        right->setBounds(bounds[1]);
     }
 
 private:

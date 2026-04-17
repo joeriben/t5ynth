@@ -9,6 +9,16 @@ static juce::String noteName(int n)
     return juce::String(names[n % 12]) + juce::String(oct);
 }
 
+namespace
+{
+constexpr int kOverflowPresetBase = 1000;
+constexpr int kOverflowStepBase = 2000;
+constexpr int kOverflowDivisionBase = 3000;
+constexpr int kOverflowOctaveBase = 4000;
+constexpr int kOverflowSavePattern = 5001;
+constexpr int kOverflowLoadPattern = 5002;
+}
+
 // ─── IconLnF ──────────────────────────────────────────────────────
 void SequencerPanel::IconLnF::drawButtonBackground(juce::Graphics& g, juce::Button& b,
                                                      const juce::Colour&, bool over, bool down)
@@ -244,6 +254,11 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     midiMonitor.setJustificationType(juce::Justification::centredRight);
     addAndMakeVisible(midiMonitor);
 
+    headerOverflowBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    headerOverflowBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    headerOverflowBtn.onClick = [this] { showHeaderOverflowMenu(); };
+    addAndMakeVisible(headerOverflowBtn);
+
     // ── Preset ──
     juce::StringArray seqPresetItems;
     for (const auto& e : SeqPreset::kEntries) seqPresetItems.add(e.label);
@@ -283,95 +298,8 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     seqLoadBtn.setLookAndFeel(&loadLnf);
     seqSaveBtn.setTooltip("Save pattern");
     seqLoadBtn.setTooltip("Load pattern");
-    seqSaveBtn.onClick = [this] {
-        auto chooser = std::make_shared<juce::FileChooser>("Save Sequencer Pattern", juce::File(), "*.t5seq");
-        juce::Component::SafePointer<SequencerPanel> safeThis(this);
-        chooser->launchAsync(juce::FileBrowserComponent::saveMode, [safeThis, chooser](const juce::FileChooser& fc) {
-            if (!safeThis) return;
-            auto& processorRef = safeThis->processorRef;
-            auto f = fc.getResult();
-            if (f == juce::File()) return;
-            auto file = f.withFileExtension("t5seq");
-            auto& seq = processorRef.getStepSequencer();
-            juce::var root(new juce::DynamicObject());
-            auto* obj = root.getDynamicObject();
-            obj->setProperty("numSteps", seq.getNumSteps());
-            obj->setProperty("division", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::seqDivision)->load()));
-            obj->setProperty("gate", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue(PID::seqGate)->load()));
-            obj->setProperty("bpm", static_cast<double>(processorRef.getValueTreeState().getRawParameterValue(PID::seqBpm)->load()));
-            // Arp settings
-            obj->setProperty("arpMode", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::arpMode)->load()));
-            obj->setProperty("arpRate", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::arpRate)->load()));
-            obj->setProperty("arpOctaves", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::arpOctaves)->load()));
-            obj->setProperty("octave", static_cast<int>(processorRef.getValueTreeState().getRawParameterValue(PID::seqOctave)->load()));
-            juce::Array<juce::var> steps;
-            for (int i = 0; i < seq.getNumSteps(); ++i)
-            {
-                auto step = seq.getStep(i);
-                auto* s = new juce::DynamicObject();
-                s->setProperty("note", step.note);
-                s->setProperty("velocity", static_cast<double>(step.velocity));
-                s->setProperty("gate", static_cast<double>(step.gate));
-                s->setProperty("enabled", step.enabled);
-                s->setProperty("bind", step.bind);
-                steps.add(juce::var(s));
-            }
-            obj->setProperty("steps", steps);
-            file.replaceWithText(juce::JSON::toString(root));
-        });
-    };
-    seqLoadBtn.onClick = [this] {
-        auto chooser = std::make_shared<juce::FileChooser>("Load Sequencer Pattern", juce::File(), "*.t5seq");
-        juce::Component::SafePointer<SequencerPanel> safeThis(this);
-        chooser->launchAsync(juce::FileBrowserComponent::openMode, [safeThis, chooser](const juce::FileChooser& fc) {
-            if (!safeThis) return;
-            auto file = fc.getResult();
-            if (!file.existsAsFile()) return;
-            auto root = juce::JSON::parse(file.loadFileAsString());
-            if (!root.isObject()) return;
-            auto& apvts = safeThis->processorRef.getValueTreeState();
-            auto& seq = safeThis->processorRef.getStepSequencer();
-            if (root.hasProperty("numSteps"))
-                seq.setNumSteps(static_cast<int>(root["numSteps"]));
-            if (root.hasProperty("division"))
-                apvts.getParameter(PID::seqDivision)->setValueNotifyingHost(
-                    apvts.getParameter(PID::seqDivision)->convertTo0to1(static_cast<float>(static_cast<int>(root["division"]))));
-            if (root.hasProperty("gate"))
-                apvts.getParameter(PID::seqGate)->setValueNotifyingHost(
-                    apvts.getParameter(PID::seqGate)->convertTo0to1(static_cast<float>(root["gate"])));
-            if (root.hasProperty("bpm"))
-                apvts.getParameter(PID::seqBpm)->setValueNotifyingHost(
-                    apvts.getParameter(PID::seqBpm)->convertTo0to1(static_cast<float>(root["bpm"])));
-            if (root.hasProperty("arpMode"))
-                apvts.getParameter(PID::arpMode)->setValueNotifyingHost(
-                    apvts.getParameter(PID::arpMode)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpMode"]))));
-            if (root.hasProperty("arpRate"))
-                apvts.getParameter(PID::arpRate)->setValueNotifyingHost(
-                    apvts.getParameter(PID::arpRate)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpRate"]))));
-            if (root.hasProperty("arpOctaves"))
-                apvts.getParameter(PID::arpOctaves)->setValueNotifyingHost(
-                    apvts.getParameter(PID::arpOctaves)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
-            // arpGate removed — old files silently ignored
-            if (root.hasProperty("octave"))
-                apvts.getParameter(PID::seqOctave)->setValueNotifyingHost(
-                    apvts.getParameter(PID::seqOctave)->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
-            auto* stepsArr = root["steps"].getArray();
-            if (stepsArr)
-            {
-                for (int i = 0; i < stepsArr->size() && i < T5ynthStepSequencer::MAX_STEPS; ++i)
-                {
-                    const auto& s = (*stepsArr)[i];
-                    if (s.hasProperty("note")) seq.setStepNote(i, static_cast<int>(s["note"]));
-                    if (s.hasProperty("velocity")) seq.setStepVelocity(i, static_cast<float>(s["velocity"]));
-                    if (s.hasProperty("gate")) seq.setStepGate(i, static_cast<float>(s["gate"]));
-                    if (s.hasProperty("enabled")) seq.setStepEnabled(i, static_cast<bool>(s["enabled"]));
-                    if (s.hasProperty("bind")) seq.setStepBind(i, static_cast<bool>(s["bind"]));
-                }
-            }
-            safeThis->syncStepCount();
-            safeThis->repaint();
-        });
-    };
+    seqSaveBtn.onClick = [this] { savePatternAsync(); };
+    seqLoadBtn.onClick = [this] { loadPatternAsync(); };
 
     // ── Gate ──
     gateRow = std::make_unique<SliderRow>("Gate", [](double v) { return juce::String(juce::roundToInt(v*100)) + "%"; }, kSeqCol);
@@ -580,6 +508,162 @@ SequencerPanel::~SequencerPanel()
     stopTimer();
 }
 
+void SequencerPanel::savePatternAsync()
+{
+    auto chooser = std::make_shared<juce::FileChooser>("Save Sequencer Pattern", juce::File(), "*.t5seq");
+    juce::Component::SafePointer<SequencerPanel> safeThis(this);
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode, [safeThis, chooser](const juce::FileChooser& fc) {
+        if (!safeThis) return;
+        auto& processor = safeThis->processorRef;
+        auto f = fc.getResult();
+        if (f == juce::File()) return;
+
+        auto file = f.withFileExtension("t5seq");
+        auto& seq = processor.getStepSequencer();
+        juce::var root(new juce::DynamicObject());
+        auto* obj = root.getDynamicObject();
+        obj->setProperty("numSteps", seq.getNumSteps());
+        obj->setProperty("division", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::seqDivision)->load()));
+        obj->setProperty("gate", static_cast<double>(processor.getValueTreeState().getRawParameterValue(PID::seqGate)->load()));
+        obj->setProperty("bpm", static_cast<double>(processor.getValueTreeState().getRawParameterValue(PID::seqBpm)->load()));
+        obj->setProperty("arpMode", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::arpMode)->load()));
+        obj->setProperty("arpRate", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::arpRate)->load()));
+        obj->setProperty("arpOctaves", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::arpOctaves)->load()));
+        obj->setProperty("octave", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::seqOctave)->load()));
+
+        juce::Array<juce::var> steps;
+        for (int i = 0; i < seq.getNumSteps(); ++i)
+        {
+            auto step = seq.getStep(i);
+            auto* s = new juce::DynamicObject();
+            s->setProperty("note", step.note);
+            s->setProperty("velocity", static_cast<double>(step.velocity));
+            s->setProperty("gate", static_cast<double>(step.gate));
+            s->setProperty("enabled", step.enabled);
+            s->setProperty("bind", step.bind);
+            steps.add(juce::var(s));
+        }
+        obj->setProperty("steps", steps);
+        file.replaceWithText(juce::JSON::toString(root));
+    });
+}
+
+void SequencerPanel::loadPatternAsync()
+{
+    auto chooser = std::make_shared<juce::FileChooser>("Load Sequencer Pattern", juce::File(), "*.t5seq");
+    juce::Component::SafePointer<SequencerPanel> safeThis(this);
+    chooser->launchAsync(juce::FileBrowserComponent::openMode, [safeThis, chooser](const juce::FileChooser& fc) {
+        if (!safeThis) return;
+        auto file = fc.getResult();
+        if (!file.existsAsFile()) return;
+
+        auto root = juce::JSON::parse(file.loadFileAsString());
+        if (!root.isObject()) return;
+
+        auto& apvts = safeThis->processorRef.getValueTreeState();
+        auto& seq = safeThis->processorRef.getStepSequencer();
+        if (root.hasProperty("numSteps"))
+            seq.setNumSteps(static_cast<int>(root["numSteps"]));
+        if (root.hasProperty("division"))
+            apvts.getParameter(PID::seqDivision)->setValueNotifyingHost(
+                apvts.getParameter(PID::seqDivision)->convertTo0to1(static_cast<float>(static_cast<int>(root["division"]))));
+        if (root.hasProperty("gate"))
+            apvts.getParameter(PID::seqGate)->setValueNotifyingHost(
+                apvts.getParameter(PID::seqGate)->convertTo0to1(static_cast<float>(root["gate"])));
+        if (root.hasProperty("bpm"))
+            apvts.getParameter(PID::seqBpm)->setValueNotifyingHost(
+                apvts.getParameter(PID::seqBpm)->convertTo0to1(static_cast<float>(root["bpm"])));
+        if (root.hasProperty("arpMode"))
+            apvts.getParameter(PID::arpMode)->setValueNotifyingHost(
+                apvts.getParameter(PID::arpMode)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpMode"]))));
+        if (root.hasProperty("arpRate"))
+            apvts.getParameter(PID::arpRate)->setValueNotifyingHost(
+                apvts.getParameter(PID::arpRate)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpRate"]))));
+        if (root.hasProperty("arpOctaves"))
+            apvts.getParameter(PID::arpOctaves)->setValueNotifyingHost(
+                apvts.getParameter(PID::arpOctaves)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
+        if (root.hasProperty("octave"))
+            apvts.getParameter(PID::seqOctave)->setValueNotifyingHost(
+                apvts.getParameter(PID::seqOctave)->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
+
+        auto* stepsArr = root["steps"].getArray();
+        if (stepsArr)
+        {
+            for (int i = 0; i < stepsArr->size() && i < T5ynthStepSequencer::MAX_STEPS; ++i)
+            {
+                const auto& s = (*stepsArr)[i];
+                if (s.hasProperty("note")) seq.setStepNote(i, static_cast<int>(s["note"]));
+                if (s.hasProperty("velocity")) seq.setStepVelocity(i, static_cast<float>(s["velocity"]));
+                if (s.hasProperty("gate")) seq.setStepGate(i, static_cast<float>(s["gate"]));
+                if (s.hasProperty("enabled")) seq.setStepEnabled(i, static_cast<bool>(s["enabled"]));
+                if (s.hasProperty("bind")) seq.setStepBind(i, static_cast<bool>(s["bind"]));
+            }
+        }
+
+        safeThis->syncStepCount();
+        safeThis->repaint();
+    });
+}
+
+void SequencerPanel::showHeaderOverflowMenu()
+{
+    juce::PopupMenu menu;
+
+    juce::PopupMenu presetMenu;
+    for (int i = 0; i < presetBox.getNumItems(); ++i)
+        presetMenu.addItem(kOverflowPresetBase + i + 1, presetBox.getItemText(i), true,
+                           presetBox.getSelectedId() == i + 1);
+    menu.addSubMenu("Preset", presetMenu);
+
+    juce::PopupMenu stepMenu;
+    for (int steps = 2; steps <= 32; ++steps)
+        stepMenu.addItem(kOverflowStepBase + steps, juce::String(steps), true,
+                         stepCountBox.getSelectedId() == steps);
+    menu.addSubMenu("Steps", stepMenu);
+
+    juce::PopupMenu divisionMenu;
+    for (int i = 0; i < divisionHidden.getNumItems(); ++i)
+        divisionMenu.addItem(kOverflowDivisionBase + i + 1, divisionHidden.getItemText(i), true,
+                             divisionHidden.getSelectedId() == i + 1);
+    menu.addSubMenu("Division", divisionMenu);
+
+    juce::PopupMenu octaveMenu;
+    for (int i = 0; i < octShiftHidden.getNumItems(); ++i)
+        octaveMenu.addItem(kOverflowOctaveBase + i + 1, octShiftHidden.getItemText(i), true,
+                           octShiftHidden.getSelectedId() == i + 1);
+    menu.addSubMenu("Octave", octaveMenu);
+
+    menu.addSeparator();
+    menu.addItem(kOverflowSavePattern, "Save Pattern...");
+    menu.addItem(kOverflowLoadPattern, "Load Pattern...");
+
+    juce::Component::SafePointer<SequencerPanel> safeThis(this);
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&headerOverflowBtn),
+                       [safeThis](int result) {
+        if (!safeThis || result == 0) return;
+
+        if (result == kOverflowSavePattern) { safeThis->savePatternAsync(); return; }
+        if (result == kOverflowLoadPattern) { safeThis->loadPatternAsync(); return; }
+        if (result >= kOverflowPresetBase && result < kOverflowStepBase)
+        {
+            safeThis->presetBox.setSelectedId(result - kOverflowPresetBase, juce::sendNotificationSync);
+            return;
+        }
+        if (result >= kOverflowStepBase && result < kOverflowDivisionBase)
+        {
+            safeThis->stepCountBox.setSelectedId(result - kOverflowStepBase, juce::sendNotificationSync);
+            return;
+        }
+        if (result >= kOverflowDivisionBase && result < kOverflowOctaveBase)
+        {
+            safeThis->divisionHidden.setSelectedId(result - kOverflowDivisionBase, juce::sendNotificationSync);
+            return;
+        }
+        if (result >= kOverflowOctaveBase && result < kOverflowSavePattern)
+            safeThis->octShiftHidden.setSelectedId(result - kOverflowOctaveBase, juce::sendNotificationSync);
+    });
+}
+
 void SequencerPanel::syncStepCount()
 {
     int steps = static_cast<int>(processorRef.getValueTreeState()
@@ -786,14 +870,9 @@ void SequencerPanel::resized()
     int g = 3;
     const int panelW = getWidth();
     const bool compactTopRow = panelW < 760;
-    const bool sliderPriorityTopRow = panelW < 700;
-    const bool minimalTopRow = panelW < 560;
 
     // ═══ Row 1: ALWAYS the same — transport, GEN, preset, save/load, steps, division, etc. ═══
     auto r1 = area.removeFromTop(rH);
-    transportBtn.setBounds(r1.removeFromLeft(36));  r1.removeFromLeft(g);
-    genTransportBtn.setBounds(r1.removeFromLeft(36));  r1.removeFromLeft(g);
-
     auto setOctShiftVisible = [this](bool visible)
     {
         for (int i = 0; i < kNumOctShiftBtns; ++i)
@@ -813,15 +892,15 @@ void SequencerPanel::resized()
         }
     };
 
-    const int midiTextW = sliderPriorityTopRow ? (minimalTopRow ? 44 : 48)
-                                             : (compactTopRow ? 56 : 80);
+    const float midiFont = compactTopRow ? 10.0f : juce::jmax(9.0f, static_cast<float>(rH) * 0.6f);
+    const int midiTextW = measureTextWidth("D#4 v127", midiFont) + 8;
     const int midiLedW = compactTopRow ? 10 : 14;
     const int midiGap = compactTopRow ? 2 : 5;
 
-    auto layoutMidiCluster = [this, compactTopRow, midiTextW, midiLedW](juce::Rectangle<int> areaForMidi)
+    auto layoutMidiCluster = [this, compactTopRow, midiTextW, midiLedW, midiFont](juce::Rectangle<int> areaForMidi)
     {
         midiMonitor.setVisible(true);
-        midiMonitor.setFont(juce::FontOptions(compactTopRow ? 10.0f : juce::jmax(9.0f, 22.0f * 0.6f)));
+        midiMonitor.setFont(juce::FontOptions(midiFont));
         midiLedBounds = {};
         if (areaForMidi.getWidth() >= midiLedW + 8)
         {
@@ -842,109 +921,94 @@ void SequencerPanel::resized()
         }
     };
 
-    if (sliderPriorityTopRow)
+    enum HeaderSlot
     {
-        presetBox.setVisible(false);      presetBox.setBounds({});
-        stepCountBox.setVisible(false);   stepCountBox.setBounds({});
-        seqSaveBtn.setVisible(false);     seqSaveBtn.setBounds({});
-        seqLoadBtn.setVisible(false);     seqLoadBtn.setBounds({});
-        bpmRow->setVisible(true);
-        gateRow->setVisible(true);
-        setOctShiftVisible(false);
+        slotTransport,
+        slotGenTransport,
+        slotPreset,
+        slotSave,
+        slotLoad,
+        slotSteps,
+        slotDivision,
+        slotOctave,
+        slotBpm,
+        slotGate,
+        slotMidi
+    };
 
-        const int midiClusterW = midiTextW + midiLedW + midiGap;
-        auto midiArea = r1.removeFromRight(juce::jmin(midiClusterW, r1.getWidth()));
-        layoutMidiCluster(midiArea);
-        r1.removeFromRight(1);
+    const int transportW = 36;
+    const int compactTierWidth = compactTopRow ? 72 : 90;
+    const int compactStepWidth = compactTopRow ? 42 : 52;
+    const int iconW = compactTopRow ? 18 : rH;
+    const int divisionPrefW = kNumDivBtns * (compactTopRow ? 24 : 28);
+    const int divisionMinW = kNumDivBtns * (compactTopRow ? 21 : 24);
+    const int octavePrefW = kNumOctShiftBtns * (compactTopRow ? 20 : 24);
+    const int octaveMinW = kNumOctShiftBtns * (compactTopRow ? 18 : 20);
+    const int midiClusterW = midiTextW + midiLedW + midiGap;
 
-        const int sliderGap = 2;
-        const int minSliderW = minimalTopRow ? 88 : 96;
-        const int divBtnW = 20;
-        const int divTotalW = kNumDivBtns * divBtnW;
-        const int minSliderAreaW = minSliderW * 2 + sliderGap;
+    std::vector<ResponsiveStripItem> items {
+        { transportW, transportW, 0, false, ResponsiveStripFallback::none },
+        { transportW, transportW, 0, false, ResponsiveStripFallback::none },
+        { compactTierWidth, 72, 1, false, ResponsiveStripFallback::overflow },
+        { iconW, iconW, 1, false, ResponsiveStripFallback::overflow },
+        { iconW, iconW, 1, false, ResponsiveStripFallback::overflow },
+        { compactStepWidth, 38, 1, false, ResponsiveStripFallback::overflow },
+        { divisionPrefW, divisionMinW, 1, false, ResponsiveStripFallback::overflow },
+        { octavePrefW, octaveMinW, 1, false, ResponsiveStripFallback::overflow },
+        { bpmRow->getPreferredWidth(),  bpmRow->getMinimumWidth(),  0, true,  ResponsiveStripFallback::none },
+        { gateRow->getPreferredWidth(), gateRow->getMinimumWidth(), 0, true,  ResponsiveStripFallback::none },
+        { midiClusterW, midiClusterW, 0, false, ResponsiveStripFallback::none }
+    };
 
-        if (!minimalTopRow && r1.getWidth() >= divTotalW + g + minSliderAreaW)
-        {
-            setDivVisible(true);
-            for (int i = 0; i < kNumDivBtns; ++i)
-            {
-                int edges = 0;
-                if (i > 0) edges |= juce::Button::ConnectedOnLeft;
-                if (i < kNumDivBtns - 1) edges |= juce::Button::ConnectedOnRight;
-                divBtns[i].setConnectedEdges(edges);
-                divBtns[i].setBounds(r1.removeFromLeft(divBtnW));
-            }
-            r1.removeFromLeft(g);
-        }
-        else
-        {
-            setDivVisible(false);
-        }
+    auto headerLayout = layoutResponsiveStrip(r1, items, g, compactTopRow ? 24 : 28);
+    const auto hasBounds = [](juce::Rectangle<int> bounds) { return !bounds.isEmpty(); };
 
-        const int sliderAreaW = juce::jmax(0, r1.getWidth());
-        const int eachSliderW = juce::jmax(0, (sliderAreaW - sliderGap) / 2);
-        bpmRow->setBounds(r1.removeFromLeft(eachSliderW));
-        r1.removeFromLeft(sliderGap);
-        gateRow->setBounds(r1.removeFromLeft(eachSliderW));
-    }
-    else
+    transportBtn.setBounds(headerLayout.bounds[slotTransport]);
+    genTransportBtn.setBounds(headerLayout.bounds[slotGenTransport]);
+    bpmRow->setBounds(headerLayout.bounds[slotBpm]);
+    gateRow->setBounds(headerLayout.bounds[slotGate]);
+    layoutMidiCluster(headerLayout.bounds[slotMidi]);
+
+    headerOverflowBtn.setVisible(headerLayout.overflowUsed);
+    headerOverflowBtn.setBounds(headerLayout.overflowUsed ? headerLayout.overflowBounds : juce::Rectangle<int>{});
+
+    presetBox.setVisible(hasBounds(headerLayout.bounds[slotPreset]));
+    presetBox.setBounds(headerLayout.bounds[slotPreset]);
+    stepCountBox.setVisible(hasBounds(headerLayout.bounds[slotSteps]));
+    stepCountBox.setBounds(headerLayout.bounds[slotSteps]);
+    seqSaveBtn.setVisible(hasBounds(headerLayout.bounds[slotSave]));
+    seqSaveBtn.setBounds(headerLayout.bounds[slotSave]);
+    seqLoadBtn.setVisible(hasBounds(headerLayout.bounds[slotLoad]));
+    seqLoadBtn.setBounds(headerLayout.bounds[slotLoad]);
+
+    setDivVisible(hasBounds(headerLayout.bounds[slotDivision]));
+    if (hasBounds(headerLayout.bounds[slotDivision]))
     {
-        presetBox.setVisible(true);
-        stepCountBox.setVisible(true);
-        seqSaveBtn.setVisible(true);
-        seqLoadBtn.setVisible(true);
-        bpmRow->setVisible(true);
-        gateRow->setVisible(true);
-        setDivVisible(true);
-        setOctShiftVisible(true);
-
-        const int presetW = compactTopRow ? 72 : 90;
-        const int iconBtnW = compactTopRow ? 18 : rH;
-        const int stepCountW = compactTopRow ? 40 : 50;
-        const int divBtnW = compactTopRow ? 24 : 30;
-        const int octBtnW = compactTopRow ? 20 : 26;
-
-        presetBox.setBounds(r1.removeFromLeft(presetW)); r1.removeFromLeft(2);
-        seqSaveBtn.setBounds(r1.removeFromLeft(iconBtnW)); r1.removeFromLeft(1);
-        seqLoadBtn.setBounds(r1.removeFromLeft(iconBtnW)); r1.removeFromLeft(g);
-        stepCountBox.setBounds(r1.removeFromLeft(stepCountW)); r1.removeFromLeft(g);
-
+        auto divArea = headerLayout.bounds[slotDivision];
+        const int divBtnW = divArea.getWidth() / kNumDivBtns;
         for (int i = 0; i < kNumDivBtns; ++i)
         {
             int edges = 0;
             if (i > 0) edges |= juce::Button::ConnectedOnLeft;
             if (i < kNumDivBtns - 1) edges |= juce::Button::ConnectedOnRight;
             divBtns[i].setConnectedEdges(edges);
-            divBtns[i].setBounds(r1.removeFromLeft(divBtnW));
+            divBtns[i].setBounds(divArea.removeFromLeft(i == kNumDivBtns - 1 ? divArea.getWidth() : divBtnW));
         }
-        r1.removeFromLeft(g);
+    }
 
+    setOctShiftVisible(hasBounds(headerLayout.bounds[slotOctave]));
+    if (hasBounds(headerLayout.bounds[slotOctave]))
+    {
+        auto octArea = headerLayout.bounds[slotOctave];
+        const int octBtnW = octArea.getWidth() / kNumOctShiftBtns;
         for (int i = 0; i < kNumOctShiftBtns; ++i)
         {
             int edges = 0;
             if (i > 0) edges |= juce::Button::ConnectedOnLeft;
             if (i < kNumOctShiftBtns - 1) edges |= juce::Button::ConnectedOnRight;
             octShiftBtns[i].setConnectedEdges(edges);
-            octShiftBtns[i].setBounds(r1.removeFromLeft(octBtnW));
+            octShiftBtns[i].setBounds(octArea.removeFromLeft(i == kNumOctShiftBtns - 1 ? octArea.getWidth() : octBtnW));
         }
-        r1.removeFromLeft(g);
-
-        const int midiClusterW = midiTextW + midiLedW + midiGap;
-        auto midiArea = r1.removeFromRight(juce::jmin(midiClusterW, r1.getWidth()));
-        layoutMidiCluster(midiArea);
-        r1.removeFromRight(compactTopRow ? 1 : 2);
-
-        const int minGateW = compactTopRow ? 112 : 110;
-        const int gapAfterBpm = compactTopRow ? 1 : 2;
-        const int availableForSliders = juce::jmax(0, r1.getWidth());
-        const int bpmMinW = 60;
-        const int maxGateW = juce::jmax(0, availableForSliders - bpmMinW);
-        int gateW = juce::jlimit(juce::jmin(minGateW, maxGateW), maxGateW,
-                                 juce::jmax(minGateW, availableForSliders / 2));
-        int bpmW = juce::jmax(bpmMinW, r1.getWidth() - gateW - gapAfterBpm);
-        bpmRow->setBounds(r1.removeFromLeft(bpmW));
-        r1.removeFromLeft(gapAfterBpm);
-        gateRow->setBounds(r1.removeFromLeft(gateW));
     }
 
     area.removeFromTop(compactTopRow ? 5 : g);

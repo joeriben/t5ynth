@@ -26,6 +26,9 @@ public:
 private:
     void timerCallback() override;
     void syncStepCount();
+    void savePatternAsync();
+    void loadPatternAsync();
+    void showHeaderOverflowMenu();
 
     T5ynthProcessor& processorRef;
 
@@ -41,6 +44,7 @@ private:
     std::unique_ptr<SliderRow> bpmRow;
     juce::Label midiMonitor;
     juce::Rectangle<float> midiLedBounds;
+    juce::TextButton headerOverflowBtn { "..." };
 
     // Octave shift [-2][-1][0][+1][+2]
     static constexpr int kNumOctShiftBtns = 5;

@@ -276,17 +276,16 @@ void FxPanel::resized()
 
     // Delay params — always laid out, dimmed when OFF
     {
-        int colW = (area.getWidth() - 2) / 2;
         auto row1 = area.removeFromTop(rowH);
-        delayTimeRow->setBounds(row1.removeFromLeft(colW));
-        row1.removeFromLeft(2);
-        delayFbRow->setBounds(row1);
+        auto pair1 = layoutSliderRowPairBounds(row1, *delayTimeRow, *delayFbRow, 2);
+        delayTimeRow->setBounds(pair1[0]);
+        delayFbRow->setBounds(pair1[1]);
 
         area.removeFromTop(gap);
         auto row2 = area.removeFromTop(rowH);
-        delayDampRow->setBounds(row2.removeFromLeft(colW));
-        row2.removeFromLeft(2);
-        delayMixRow->setBounds(row2);
+        auto pair2 = layoutSliderRowPairBounds(row2, *delayDampRow, *delayMixRow, 2);
+        delayDampRow->setBounds(pair2[0]);
+        delayMixRow->setBounds(pair2[1]);
     }
 
     area.removeFromTop(gap * 2);
@@ -313,16 +312,15 @@ void FxPanel::resized()
 
     // Reverb params — always 2 rows: Room+Damp, Width+Mix (dimmed when inactive)
     {
-        int colW = (area.getWidth() - 2) / 2;
         auto row1 = area.removeFromTop(rowH);
-        algoRoomRow->setBounds(row1.removeFromLeft(colW));
-        row1.removeFromLeft(2);
-        algoDampRow->setBounds(row1);
+        auto pair1 = layoutSliderRowPairBounds(row1, *algoRoomRow, *algoDampRow, 2);
+        algoRoomRow->setBounds(pair1[0]);
+        algoDampRow->setBounds(pair1[1]);
 
         area.removeFromTop(gap);
         auto row2 = area.removeFromTop(rowH);
-        algoWidthRow->setBounds(row2.removeFromLeft(colW));
-        row2.removeFromLeft(2);
-        reverbMixRow->setBounds(row2);
+        auto pair2 = layoutSliderRowPairBounds(row2, *algoWidthRow, *reverbMixRow, 2);
+        algoWidthRow->setBounds(pair2[0]);
+        reverbMixRow->setBounds(pair2[1]);
     }
 }

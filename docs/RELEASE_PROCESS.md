@@ -129,6 +129,9 @@ Every job:
 ### macOS-specific notes
 
 - The `macos` job runs on `macos-14` (Apple Silicon).
+- End-user macOS releases should be both `Developer ID` signed and notarized.
+  The release pipeline now supports that directly in
+  `installer/macos/build_pkg.sh`.
 - `CMakeLists.txt` contains `POST_BUILD` re-signing commands for the VST3
   and AU bundles (`codesign --force --sign - --deep`). This works around
   two JUCE 8.0.6 issues:
@@ -143,6 +146,44 @@ Every job:
 - The macOS job also runs a smoke test that launches the built
   `T5ynth.app` for 5 seconds and fails the job if the process exits
   early.
+- `installer/macos/build_pkg.sh` accepts signing and notarization options
+  either as CLI flags or environment variables:
+  - `MACOS_APP_SIGN_IDENTITY` or `--sign-app-identity`
+  - `MACOS_PKG_SIGN_IDENTITY` or `--sign-pkg-identity`
+  - `MACOS_NOTARY_KEYCHAIN_PROFILE` or `--notary-keychain-profile`
+  - `MACOS_NOTARY_APPLE_ID` / `MACOS_NOTARY_PASSWORD` /
+    `MACOS_NOTARY_TEAM_ID`
+  - `MACOS_NOTARY_API_KEY_PATH` / `MACOS_NOTARY_API_KEY_ID` /
+    `MACOS_NOTARY_API_ISSUER`
+- The script signs the staged `T5ynth.app` with hardened runtime, signs
+  the final `.pkg` with `Developer ID Installer`, then submits the `.pkg`
+  with `xcrun notarytool`, waits for acceptance, and staples the ticket
+  before writing the final output archive.
+
+### Required macOS signing secrets in GitHub Actions
+
+The workflow stays unsigned when these secrets are absent. To produce a
+shipping macOS installer, add all of the following:
+
+- `MACOS_APP_CERT_P12_BASE64`
+- `MACOS_APP_CERT_P12_PASSWORD`
+- `MACOS_PKG_CERT_P12_BASE64`
+- `MACOS_PKG_CERT_P12_PASSWORD`
+- `MACOS_KEYCHAIN_PASSWORD`
+
+For notarization, provide one of these authentication sets:
+
+- Apple ID flow:
+  - `MACOS_NOTARY_APPLE_ID`
+  - `MACOS_NOTARY_PASSWORD`
+  - `MACOS_NOTARY_TEAM_ID`
+- App Store Connect API key flow:
+  - `MACOS_NOTARY_API_PRIVATE_KEY`
+  - `MACOS_NOTARY_API_KEY_ID`
+  - `MACOS_NOTARY_API_ISSUER`
+
+Local release builds can use the same environment variables directly
+without GitHub Actions.
 
 ---
 

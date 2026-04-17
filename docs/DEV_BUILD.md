@@ -84,6 +84,11 @@ Notes:
   ad-hoc signing automatically. The post-build step in `CMakeLists.txt`
   re-signs the VST3 bundle ad-hoc after JUCE generates `moduleinfo.json`
   (see section 11 for the rationale).
+- Release installers are different: `installer/macos/build_pkg.sh` now
+  supports `Developer ID Application` signing for the app bundle,
+  `Developer ID Installer` signing for the `.pkg`, and optional
+  notarization via `xcrun notarytool`. See `docs/RELEASE_PROCESS.md` for
+  the required credentials.
 - `WebKit.framework` is part of the base macOS install, so
   `JUCE_WEB_BROWSER=1` works out of the box with no extra packages.
 - Homebrew's CMake is fine. If you prefer the official CMake.app installer,

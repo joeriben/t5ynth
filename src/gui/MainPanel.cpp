@@ -573,16 +573,32 @@ void MainPanel::resized()
     // Footer
     auto footer = b.removeFromBottom(footerH);
     int volW = juce::jlimit(40, 60, juce::roundToInt(w * 0.05f));
-    int fxW = juce::jlimit(180, 400, juce::roundToInt(w * 0.28f));
     auto volArea = footer.removeFromRight(volW);
     masterVolLabel.setFont(juce::FontOptions(10.0f));
     masterVolLabel.setBounds(volArea.removeFromTop(14));
     masterVolKnob.setBounds(volArea);
     int footerGap = juce::jlimit(4, 8, juce::roundToInt(w * 0.005f));
     footer.removeFromRight(footerGap);  // gap Vol–FX
+
+    const int footerContentW = footer.getWidth() - footerGap;
+    const int fxPrefW = juce::jlimit(180, 400, juce::roundToInt(w * 0.28f));
+    const int fxMinW = 160;
+    const int seqMinW = 360;
+
+    int fxW = juce::jmin(fxPrefW, juce::jmax(fxMinW, footerContentW - seqMinW));
+    int seqW = footerContentW - fxW;
+    if (seqW < seqMinW)
+    {
+        fxW = juce::jmax(120, footerContentW - seqMinW);
+        seqW = footerContentW - fxW;
+    }
+
+    seqW = juce::jmax(280, seqW);
+    fxW = juce::jmax(120, footerContentW - seqW);
+
     fxPanel.setBounds(footer.removeFromRight(fxW));
     footer.removeFromRight(footerGap);  // gap FX–Seq
-    sequencerPanel.setBounds(footer);
+    sequencerPanel.setBounds(footer.removeFromRight(seqW));
 
     // ═══ Col 1: Three cards — OSCILLATOR, AXES, DIM EXPLORER ═══
     int col1W = juce::jlimit(240, 420, juce::roundToInt(w * 0.25f));
