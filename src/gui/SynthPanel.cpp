@@ -1362,6 +1362,13 @@ void SynthPanel::resized()
         const int modColumnWidth = juce::jmax(0, (area.getWidth() - modPairGap) / 2);
         const int curveLabelMin = rowH - 2;
 
+        // ENV/LFO/Drift share one left label column and one right label column so
+        // rows stay visually aligned across the whole modulation section. ENV
+        // curve buttons live inside that reserved label area, so their width plus
+        // a small buffer must be included when computing the forced label widths.
+        // Use natural text widths here; recomputing from already-forced widths
+        // causes resize feedback and can push sliders progressively to the right.
+
         const int leftLabelWidth = std::max({
             modulationForcedLabelWidthFor(*ampEnv.aRow, modColumnWidth, curveLabelMin),
             modulationForcedLabelWidthFor(*ampEnv.sRow, modColumnWidth),

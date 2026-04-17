@@ -259,6 +259,10 @@ public:
     juce::Label& getValueLabel() { return value; }
     int getPreferredWidth() const { return getLayoutProfile(false).preferredWidth; }
     int getMinimumWidth() const { return getLayoutProfile(true).minimumWidth; }
+    // Layout-only override for cross-row column alignment. Any code deriving a new
+    // forced width must start from getNaturalLabelWidthForAvailableWidth(), not
+    // from the currently forced width, otherwise resize passes can feed back into
+    // themselves and grow the reserved label column on each relayout.
     void setForcedLabelWidth(int width) { forcedLabelWidth = juce::jmax(0, width); }
     void clearForcedLabelWidth() { forcedLabelWidth = -1; }
     int getNaturalLabelWidthForAvailableWidth(int totalWidth) const
