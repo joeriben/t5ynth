@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(T5ynth VERSION 1.2.1)
+project(T5ynth VERSION 0.3.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,6 +30,19 @@ FetchContent_MakeAvailable(signalsmith_stretch)
 
 add_subdirectory(JUCE)
 
+set(T5YNTH_PLUGIN_FORMATS Standalone VST3)
+if(APPLE)
+    option(T5YNTH_MACOS_STANDALONE_ONLY
+        "Build only the macOS standalone app"
+        OFF)
+
+    if(T5YNTH_MACOS_STANDALONE_ONLY)
+        set(T5YNTH_PLUGIN_FORMATS Standalone)
+    else()
+        list(APPEND T5YNTH_PLUGIN_FORMATS AU)
+    endif()
+endif()
+
 juce_add_plugin(T5ynth
     COMPANY_NAME "UCDCAE AI Lab"
     IS_SYNTH TRUE
@@ -37,7 +50,7 @@ juce_add_plugin(T5ynth
     NEEDS_MIDI_OUTPUT FALSE
     PLUGIN_MANUFACTURER_CODE A4Ae
     PLUGIN_CODE T5yn
-    FORMATS Standalone VST3 AU
+    FORMATS ${T5YNTH_PLUGIN_FORMATS}
     PRODUCT_NAME "T5ynth"
     BUNDLE_ID "org.ai4artsed.t5ynth"
     DESCRIPTION "Text-to-Sound Synthesizer — T5 Embedding Space Navigation"
@@ -67,13 +80,15 @@ juce_add_plugin(T5ynth
 # Fix for both: re-sign ad-hoc after all JUCE POST_BUILD steps have run.
 # POST_BUILD commands run in the order they are added to a target, so this
 # runs *after* JUCE's own manifest / sign steps.
-if(APPLE)
+if(APPLE AND TARGET T5ynth_VST3)
     add_custom_command(TARGET T5ynth_VST3 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "re-signing VST3 bundle after moduleinfo.json generation"
         COMMAND codesign --force --sign - --deep
             "$<TARGET_BUNDLE_DIR:T5ynth_VST3>"
         VERBATIM)
+endif()
 
+if(APPLE AND TARGET T5ynth_AU)
     add_custom_command(TARGET T5ynth_AU POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "ad-hoc signing AU component bundle"
         COMMAND codesign --force --sign - --deep

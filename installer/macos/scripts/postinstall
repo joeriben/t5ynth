@@ -1,8 +1,20 @@
 #!/bin/bash
 # Post-install script for T5ynth .pkg installer
-# Runs as root after all component packages are installed.
+# Runs after all component packages are installed.
 
-APP_SUPPORT="/Library/Application Support/T5ynth"
+TARGET_VOLUME="${2:-/}"
+
+target_path() {
+    local path="$1"
+    if [[ "$TARGET_VOLUME" == "/" ]]; then
+        printf '%s\n' "$path"
+    else
+        printf '%s%s\n' "$TARGET_VOLUME" "$path"
+    fi
+}
+
+APP_SUPPORT="$(target_path "/Library/Application Support/T5ynth")"
+APP_BUNDLE="$(target_path "/Applications/T5ynth.app")"
 
 # Create models directory (writable by all staff members for in-app downloads)
 mkdir -p "$APP_SUPPORT/models"
@@ -15,8 +27,6 @@ chgrp staff "$APP_SUPPORT/presets"
 chmod 755 "$APP_SUPPORT/presets"
 
 # Remove quarantine from installed items
-xattr -cr /Applications/T5ynth.app 2>/dev/null || true
-xattr -cr "/Library/Audio/Plug-Ins/Components/T5ynth.component" 2>/dev/null || true
-xattr -cr "/Library/Audio/Plug-Ins/VST3/T5ynth.vst3" 2>/dev/null || true
+xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 
 exit 0

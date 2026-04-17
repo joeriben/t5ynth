@@ -1,5 +1,7 @@
 #include "PipeInference.h"
+#include <cerrno>
 #include <cstring>
+#include <array>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -17,20 +19,117 @@ juce::File PipeInference::findBundledBinary(const juce::File& backendDir) const
 {
     // PyInstaller-bundled binary: backendDir/dist/pipe_inference/pipe_inference
     auto dist = backendDir.getChildFile("dist/pipe_inference/pipe_inference");
-    if (dist.existsAsFile()) return dist;
+    if (isCompatibleBundledBinary(dist)) return dist;
 
     // Installed layout: binary next to backendDir
     // macOS app bundle: Contents/Resources/backend/pipe_inference
     // Linux/Windows:    backend/pipe_inference(.exe)
     auto sibling = backendDir.getChildFile("pipe_inference");
-    if (sibling.existsAsFile()) return sibling;
+    if (isCompatibleBundledBinary(sibling)) return sibling;
 
    #ifdef _WIN32
     auto siblingExe = backendDir.getChildFile("pipe_inference.exe");
-    if (siblingExe.existsAsFile()) return siblingExe;
+    if (isCompatibleBundledBinary(siblingExe)) return siblingExe;
    #endif
 
     return {};  // not found — fall back to Python
+}
+
+bool PipeInference::isCompatibleBundledBinary(const juce::File& binary) const
+{
+    if (!binary.existsAsFile())
+        return false;
+
+    auto stream = binary.createInputStream();
+    if (stream == nullptr)
+    {
+        juce::Logger::writeToLog("PipeInference: could not inspect bundled backend " + binary.getFullPathName());
+        return false;
+    }
+
+    std::array<unsigned char, 4> magic { 0, 0, 0, 0 };
+    if (stream->read(magic.data(), static_cast<int>(magic.size())) != static_cast<int>(magic.size()))
+        return false;
+
+   #ifdef _WIN32
+    const bool compatible = magic[0] == 'M' && magic[1] == 'Z';
+   #elif JUCE_MAC
+    const bool compatible =
+        (magic[0] == 0xfe && magic[1] == 0xed && magic[2] == 0xfa && magic[3] == 0xce) ||
+        (magic[0] == 0xce && magic[1] == 0xfa && magic[2] == 0xed && magic[3] == 0xfe) ||
+        (magic[0] == 0xfe && magic[1] == 0xed && magic[2] == 0xfa && magic[3] == 0xcf) ||
+        (magic[0] == 0xcf && magic[1] == 0xfa && magic[2] == 0xed && magic[3] == 0xfe) ||
+        (magic[0] == 0xca && magic[1] == 0xfe && magic[2] == 0xba && magic[3] == 0xbe);
+   #else
+    const bool compatible = magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
+   #endif
+
+    if (!compatible)
+    {
+        juce::Logger::writeToLog("PipeInference: ignoring incompatible bundled backend "
+                                  + binary.getFullPathName());
+    }
+
+    return compatible;
+}
+
+void PipeInference::prepareBundledBinary(const juce::File& backendDir, const juce::File& binary) const
+{
+   #ifndef _WIN32
+    if (!binary.setExecutePermission(true))
+    {
+        juce::Logger::writeToLog("PipeInference: could not ensure execute bit on "
+                                  + binary.getFullPathName());
+    }
+   #endif
+
+   #if JUCE_MAC
+    if (backendDir.getFullPathName().containsIgnoreCase(".app/Contents/Resources/backend"))
+    {
+        juce::ChildProcess proc;
+        const juce::StringArray args { "xattr", "-dr", "com.apple.quarantine",
+                                       backendDir.getFullPathName() };
+
+        if (!proc.start(args, juce::ChildProcess::wantStdErr))
+        {
+            juce::Logger::writeToLog("PipeInference: could not start xattr cleanup for "
+                                      + backendDir.getFullPathName());
+            return;
+        }
+
+        proc.waitForProcessToFinish(5000);
+        const auto output = proc.readAllProcessOutput().trim();
+
+        if (proc.getExitCode() != 0 && output.isNotEmpty())
+        {
+            juce::Logger::writeToLog("PipeInference: xattr cleanup failed: " + output);
+        }
+    }
+   #endif
+}
+
+juce::String PipeInference::maybeAugmentMacStandaloneError(const juce::File& backendDir,
+                                                           const juce::String& detail) const
+{
+   #if JUCE_MAC
+    const bool isBundledStandalone
+        = backendDir.getFullPathName().containsIgnoreCase(".app/Contents/Resources/backend");
+
+    if (isBundledStandalone
+        && (detail.containsIgnoreCase("exec failed")
+            || detail.containsIgnoreCase("permission denied")
+            || detail.containsIgnoreCase("operation not permitted")
+            || detail.containsIgnoreCase("code signature")
+            || detail.containsIgnoreCase("library not loaded")))
+    {
+        return detail
+             + "\n\nmacOS appears to be blocking the app bundle or one of its bundled "
+               "libraries. The .pkg installer avoids this path and removes quarantine "
+               "attributes after install.";
+    }
+   #endif
+
+    return detail;
 }
 
 juce::String PipeInference::findPython(const juce::File& backendDir) const
@@ -121,6 +220,7 @@ bool PipeInference::launch(const juce::File& backendDir)
 
     if (bundled.existsAsFile())
     {
+        prepareBundledBinary(backendDir, bundled);
         execPath = bundled.getFullPathName();
         juce::Logger::writeToLog("PipeInference: launching bundled " + execPath);
     }
@@ -129,7 +229,24 @@ bool PipeInference::launch(const juce::File& backendDir)
         auto script = backendDir.getChildFile("pipe_inference.py");
         if (!script.existsAsFile())
         {
-            lastError_ = "Backend not found in " + backendDir.getFullPathName();
+            const auto dist = backendDir.getChildFile("dist/pipe_inference/pipe_inference");
+            const auto sibling = backendDir.getChildFile("pipe_inference");
+           #ifdef _WIN32
+            const auto siblingExe = backendDir.getChildFile("pipe_inference.exe");
+           #endif
+
+            if (dist.existsAsFile() || sibling.existsAsFile()
+               #ifdef _WIN32
+                || siblingExe.existsAsFile()
+               #endif
+            )
+            {
+                lastError_ = "Bundled backend has incompatible binary format for this platform";
+            }
+            else
+            {
+                lastError_ = "Backend not found in " + backendDir.getFullPathName();
+            }
             juce::Logger::writeToLog("PipeInference: " + lastError_);
             launching_ = false;
             return false;
@@ -247,6 +364,10 @@ bool PipeInference::launch(const juce::File& backendDir)
             auto scriptStr = scriptPath.toStdString();
             execlp(execStr.c_str(), execStr.c_str(), scriptStr.c_str(), nullptr);
         }
+
+        auto message = std::string("PipeInference: exec failed for ")
+                     + execStr + ": " + std::strerror(errno) + "\n";
+        ::write(STDERR_FILENO, message.c_str(), message.size());
         _exit(1);
     }
 
@@ -270,7 +391,9 @@ bool PipeInference::launch(const juce::File& backendDir)
             stderrContent = stderrLog.loadFileAsString().trimEnd();
 
         if (stderrContent.isNotEmpty())
-            lastError_ = stderrContent.fromLastOccurrenceOf("\n", false, false);
+            lastError_ = maybeAugmentMacStandaloneError(
+                backendDir,
+                stderrContent.fromLastOccurrenceOf("\n", false, false).trim());
         else if (!isChildAlive())
             lastError_ = "Backend process crashed on startup";
         else

@@ -109,6 +109,10 @@ private:
     juce::String lastError_;  // human-readable error from last failed launch
 
     juce::File findBundledBinary(const juce::File& backendDir) const;
+    bool isCompatibleBundledBinary(const juce::File& binary) const;
+    void prepareBundledBinary(const juce::File& backendDir, const juce::File& binary) const;
+    juce::String maybeAugmentMacStandaloneError(const juce::File& backendDir,
+                                                const juce::String& detail) const;
     juce::String findPython(const juce::File& backendDir) const;
     bool readExact(void* dest, int numBytes, int timeoutMs = 120000);
     bool writeExact(const void* src, int numBytes);

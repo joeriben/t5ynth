@@ -1,5 +1,17 @@
 #!/bin/bash
 # Remove previous T5ynth.app before installing new version.
 # Prevents stale files from manual installs corrupting the bundle signature.
-rm -rf /Applications/T5ynth.app
+
+TARGET_VOLUME="${2:-/}"
+
+target_path() {
+    local path="$1"
+    if [[ "$TARGET_VOLUME" == "/" ]]; then
+        printf '%s\n' "$path"
+    else
+        printf '%s%s\n' "$TARGET_VOLUME" "$path"
+    fi
+}
+
+rm -rf "$(target_path "/Applications/T5ynth.app")"
 exit 0

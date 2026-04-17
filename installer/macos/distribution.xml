@@ -4,44 +4,31 @@
     <welcome file="welcome.html"/>
     <license file="LICENSE.txt"/>
     <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_anywhere="true" enable_currentUserHome="false" enable_localSystem="true"/>
 
     <choices-outline>
         <line choice="standalone"/>
-        <line choice="vst3"/>
-        <line choice="au"/>
         <line choice="support-data"/>
     </choices-outline>
 
-    <!-- Standalone app — required (backend lives inside the .app bundle) -->
-    <choice id="standalone" title="T5ynth Standalone App"
-            description="The standalone application (required)."
+    <!-- App bundle — required (backend lives inside the .app bundle) -->
+    <choice id="standalone" title="T5ynth App"
+            description="The T5ynth macOS app (required)."
+            customLocation="/Applications"
+            customLocationAllowAlternateVolumes="true"
             start_selected="true" enabled="false">
         <pkg-ref id="org.ai4artsed.t5ynth.standalone"/>
-    </choice>
-
-    <!-- VST3 plugin -->
-    <choice id="vst3" title="VST3 Plugin"
-            description="VST3 plugin for DAWs (Ableton, Bitwig, Reaper, etc.)."
-            start_selected="true">
-        <pkg-ref id="org.ai4artsed.t5ynth.vst3"/>
-    </choice>
-
-    <!-- AU plugin -->
-    <choice id="au" title="AU Plugin"
-            description="Audio Unit plugin for Logic Pro, GarageBand, etc."
-            start_selected="true">
-        <pkg-ref id="org.ai4artsed.t5ynth.au"/>
     </choice>
 
     <!-- Support data (factory presets + models dir) — required -->
     <choice id="support-data" title="Factory Presets &amp; Support Data"
             description="Factory presets and model storage directory."
+            customLocation="/Library/Application Support/T5ynth"
+            customLocationAllowAlternateVolumes="true"
             start_selected="true" enabled="false">
         <pkg-ref id="org.ai4artsed.t5ynth.support-data"/>
     </choice>
 
     <pkg-ref id="org.ai4artsed.t5ynth.standalone" version="0" onConclusion="none">standalone.pkg</pkg-ref>
-    <pkg-ref id="org.ai4artsed.t5ynth.vst3" version="0" onConclusion="none">vst3.pkg</pkg-ref>
-    <pkg-ref id="org.ai4artsed.t5ynth.au" version="0" onConclusion="none">au.pkg</pkg-ref>
     <pkg-ref id="org.ai4artsed.t5ynth.support-data" version="0" onConclusion="none">support-data.pkg</pkg-ref>
 </installer-gui-script>

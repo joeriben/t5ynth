@@ -68,7 +68,7 @@ private:
 
     void showDimExplorer();
     void hideDimExplorer();
-    void tryLoadInferenceModels();
+    void tryLoadInferenceModels(bool forceRestart = false);
     void savePreset();
     void loadPreset();
     void exportWav();
@@ -88,6 +88,7 @@ private:
     SettingsPage settingsPage;
     Scrim settingsScrim;
     bool settingsVisible = false;
+    bool pendingInferenceReload = false;
 
     // Manual overlay — native WebView renders the shipped HTML guide
     // (resources/T5ynth_Guide.html), bundled via juce_add_binary_data.

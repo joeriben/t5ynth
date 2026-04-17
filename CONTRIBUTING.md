@@ -179,11 +179,13 @@ for the full procedure.
 
 Versioning convention:
 
-- Stable releases: `v1.0.x`
-- Release candidates / pre-releases: `v1.0.x-rc.N` (also `-alpha.N`, `-beta.N`)
-
-Never use `v0.x`. T5ynth has been at the `v1.0.x` line since its first public
-release and the version space below that is reserved.
+- Current public line: `v0.3.0-alpha.N`
+- Until end-user installation is proven reliable, do not cut `v1.x` tags.
+- Stable releases, once justified: `v1.0.x`
+- Release candidates / pre-releases after 1.0: `v1.0.x-rc.N` (also `-alpha.N`,
+  `-beta.N`)
+- macOS installer packages map those tags to numeric receipt versions, e.g.
+  `v0.3.0-alpha.2 -> 0.3.0.102`
 
 ---
 

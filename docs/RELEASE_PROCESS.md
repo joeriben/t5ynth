@@ -12,12 +12,19 @@ Repository: `joeriben/t5ynth`. Default branch: `main`.
 
 T5ynth uses semantic version tags prefixed with `v`.
 
-- **Stable releases:** `v1.0.0`, `v1.0.1`, `v1.0.2`, ...
-- **Release candidates and pre-releases:** `v1.0.0-rc.1`, `v1.0.0-rc.2`, ...,
-  `v1.1.0-rc.1`, ..., and equivalents for `-alpha.N` / `-beta.N`.
-- **Never use `v0.x` for new releases.** The `v0.x` range predates public
-  release and is reserved — do not reuse it. A single historical `v0.2.0`
-  tag exists for archival purposes only.
+- **Current public line:** `v0.3.0-alpha.1`, `v0.3.0-alpha.2`, ...
+- **Until macOS end-user installation is proven reliable, do not cut 1.x tags.**
+- **Stable releases, once justified:** `v1.0.0`, `v1.0.1`, ...
+- **Release candidates / pre-releases after 1.0:** `v1.0.0-rc.1`,
+  `v1.0.0-beta.1`, etc.
+
+Implementation detail:
+
+- The Git tag may include a prerelease suffix such as `-alpha.N`.
+- The macOS installer package version is translated to a dotted numeric
+  version with a fourth component so installer receipts still sort correctly:
+  `0.3.0-alpha.2 -> 0.3.0.102`, `0.3.0-beta.1 -> 0.3.0.201`,
+  `0.3.0-rc.3 -> 0.3.0.303`, `0.3.0 -> 0.3.0.400`.
 
 The release job in CI auto-detects pre-release suffixes via a shell case
 statement:
@@ -30,7 +37,7 @@ esac
 
 Any tag matching `*-rc*`, `*-alpha*`, or `*-beta*` is passed to
 `gh release create` with `--prerelease`, which marks the GitHub Release as a
-pre-release. Stable tags (`v1.0.1` etc.) are created as full releases.
+pre-release. Stable tags are created as full releases.
 
 ---
 
@@ -87,9 +94,9 @@ job to run (declared via `needs: [macos, windows, linux]`).
 
 | Job       | Runner           | Targets                         |
 |-----------|------------------|---------------------------------|
-| `macos`   | `macos-14`       | Standalone, VST3, AU            |
-| `linux`   | `ubuntu-latest`  | Standalone, VST3                |
-| `windows` | `windows-latest` | Standalone, VST3                |
+| `macos`   | `macos-14`       | macOS app + `.pkg` installer    |
+| `linux`   | `ubuntu-latest`  | App, VST3                       |
+| `windows` | `windows-latest` | App, VST3                       |
 
 Every job:
 
@@ -111,6 +118,8 @@ Every job:
 
 - Swap is expanded to 8 GB before install to give PyTorch / PyInstaller
   headroom.
+- The Linux CI runner currently produces **x86_64** binaries only, so the
+  release asset names must keep the architecture suffix.
 - The apt install list must cover all JUCE Linux dependencies. The current
   list includes `libgtk-3-dev` and `libwebkit2gtk-4.1-dev` for the in-app
   manual `WebBrowserComponent`. If a new JUCE module is enabled that pulls
@@ -139,43 +148,46 @@ Every job:
 
 ## 5. Artifact layout
 
-Archives are built on each platform with `tar -cJf` (xz-compressed tar)
+Linux and Windows archives are built with `tar -cJf` (xz-compressed tar)
 **before** upload. This is deliberate: `actions/upload-artifact` strips
 Unix permission bits, which would break the executable bit on the
 `T5ynth` binary and on `backend/pipe_inference`. By tarring on the build
-machine, permissions survive the round-trip.
+machine, permissions survive the round-trip. macOS end-user releases are
+currently installer-only (`T5ynth-macOS-Installer.pkg`).
 
 Each archive contains the platform binary plus:
 
 - `LICENSE.txt`
 - `THIRD_PARTY_LICENSES.txt`
-- `DO_NOT_FORGET.txt` (macOS quarantine instructions, bundled everywhere
-  for simplicity)
+- `DO_NOT_FORGET.txt` (legacy release notes, bundled on archive-based
+  platforms for simplicity)
 
-On macOS and Windows the backend is copied into the distribution
-alongside the binary:
+On Windows the backend is copied into the distribution alongside the
+binary:
 
-- macOS: into `T5ynth.app/Contents/Resources/backend/`
 - Windows: into `T5ynth/backend/` next to `T5ynth.exe`
 - Linux: into `T5ynth/backend/` next to `T5ynth`
 
+On macOS the backend is embedded directly into
+`T5ynth.app/Contents/Resources/backend/` before the installer is built.
+
 The `release` job downloads all artifacts with `actions/download-artifact`,
 flattens them with `find artifacts -name '*.tar.xz' -exec mv {} release/ \;`,
-and hands `release/*.tar.xz` to `gh release create`.
+also collects `.pkg` / `.exe` installers, and hands the combined set to
+`gh release create`.
 
-### Expected release assets (7 total)
+### Expected release assets (6 total)
 
 ```
-T5ynth-macOS-Standalone.tar.xz
-T5ynth-macOS-VST3.tar.xz
-T5ynth-macOS-AU.tar.xz
-T5ynth-Linux-Standalone.tar.xz
-T5ynth-Linux-VST3.tar.xz
+T5ynth-macOS-Installer.pkg
+T5ynth-Linux-x86_64-Standalone.tar.xz
+T5ynth-Linux-x86_64-VST3.tar.xz
+T5ynth-Windows-Setup.exe
 T5ynth-Windows-Standalone.tar.xz
 T5ynth-Windows-VST3.tar.xz
 ```
 
-If the release page shows fewer than seven assets, something was skipped —
+If the release page shows fewer than six assets, something was skipped —
 investigate before announcing the release.
 
 ---
@@ -186,9 +198,8 @@ Release notes are assembled by the `release` job:
 
 1. `.github/release_notes_header.md` is copied to `release_notes.md` as a
    fixed prefix. This file is evergreen — it should not reference a
-   specific version number. It currently documents the
-   macOS `xattr -cr` quarantine workaround and the Linux `chmod +x`
-   fallback.
+   specific version number. It currently documents the macOS installer
+   flow and the Linux `chmod +x` fallback.
 2. `gh api repos/joeriben/t5ynth/releases/generate-notes` is called with
    the new tag and the previous tag; the `.body` field from the response
    is appended to `release_notes.md`. This produces a "What's Changed" /
@@ -226,7 +237,7 @@ it every time before pushing a release tag — no exceptions.
    cmake --build build_clean --config Release -j $env:NUMBER_OF_PROCESSORS
    ```
 
-2. **Standalone launches cleanly.** No crash, no missing-dylib errors on
+2. **App launches cleanly.** No crash, no missing-dylib errors on
    stdout, UI renders.
 
 3. **Default preset loads, generation runs, audio comes out.** Hit
@@ -447,7 +458,7 @@ evergreen:
 - **Do not** mention a specific version number.
 - **Do not** mention a specific release date.
 - **Do** document any cross-cutting installation quirks — e.g. the macOS
-  `xattr -cr /Applications/T5ynth.app` quarantine workaround, the Linux
-  `chmod +x` fallback — that users need to see on every release.
+  installer-only delivery path, the Linux `chmod +x` fallback — that
+  users need to see on every release.
 - Update it as part of the commit that introduces a new user-facing
   installation requirement, not as part of the release commit itself.

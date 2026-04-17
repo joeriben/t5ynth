@@ -24,6 +24,7 @@ public:
     void setModelPath(const juce::File& dir);
     juce::File getModelPath() const { return modelPath; }
     void setBackendConnected(bool connected);
+    void setBackendStarting();
     void setBackendFailed(const juce::String& reason);
 
     std::function<void()> onClose;

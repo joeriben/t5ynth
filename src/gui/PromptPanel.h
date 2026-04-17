@@ -38,6 +38,9 @@ public:
     /** Set semantic axis values to include in the next generation request. */
     void setSemanticAxes(std::map<juce::String, float> axes) { pendingAxes_ = std::move(axes); }
 
+    /** Re-read available devices/models after the backend was restarted. */
+    void refreshInferenceChoices();
+
     /** Called after generation with embedding stats (for DimensionExplorer). */
     std::function<void(const std::vector<float>&, const std::vector<float>&)> onEmbeddingsReady;
 
@@ -126,6 +129,8 @@ private:
     float lastGenNoise_ = std::numeric_limits<float>::quiet_NaN();
     float lastGenMagnitude_ = std::numeric_limits<float>::quiet_NaN();
     std::map<juce::String, float> lastGenAxes_;
+    juce::String lastGenPromptA_;
+    juce::String lastGenPromptB_;
     double lastRegenTimeMs_ = 0.0; // for beat-based cooldown
     float alphaGhostValue_ = std::numeric_limits<float>::quiet_NaN();
     float magGhostValue_ = std::numeric_limits<float>::quiet_NaN();

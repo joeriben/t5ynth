@@ -2,19 +2,17 @@
 set -euo pipefail
 
 # ── T5ynth macOS .pkg Installer Builder ──────────────────────────────
-# Usage: build_pkg.sh --app <path> --vst3 <path> --au <path>
-#                     --presets <dir> --version <ver> --output <pkg>
+# Usage: build_pkg.sh --app <path> --presets <dir>
+#                     --version <ver> --output <pkg>
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ── Parse arguments ──────────────────────────────────────────────────
-APP="" VST3="" AU="" PRESETS="" VERSION="1.0.0" OUTPUT="T5ynth-macOS.pkg"
+APP="" PRESETS="" VERSION="0.3.0" OUTPUT="T5ynth-macOS-Installer.pkg"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --app)     APP="$2";     shift 2 ;;
-        --vst3)    VST3="$2";    shift 2 ;;
-        --au)      AU="$2";      shift 2 ;;
         --presets) PRESETS="$2";  shift 2 ;;
         --version) VERSION="$2"; shift 2 ;;
         --output)  OUTPUT="$2";  shift 2 ;;
@@ -25,7 +23,35 @@ done
 # Strip leading 'v' from version tag (e.g. v1.1.0 -> 1.1.0)
 VERSION="${VERSION#v}"
 
-for var in APP VST3 AU PRESETS; do
+# pkgbuild/productbuild expect a dotted numeric version, and macOS receipts
+# compare that version for reinstall / upgrade decisions. Keep the user-facing
+# tag semantics, but translate prereleases into a monotonically increasing
+# fourth numeric component:
+#   0.3.0-alpha.2 -> 0.3.0.102
+#   0.3.0-beta.1  -> 0.3.0.201
+#   0.3.0-rc.3    -> 0.3.0.303
+#   0.3.0         -> 0.3.0.400
+CORE_VERSION="${VERSION%%-*}"
+PACKAGE_VERSION=""
+
+if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    PACKAGE_VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.400"
+elif [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)-(alpha|beta|rc)\.([0-9]+)$ ]]; then
+    case "${BASH_REMATCH[4]}" in
+        alpha) PACKAGE_STAGE_BASE=100 ;;
+        beta)  PACKAGE_STAGE_BASE=200 ;;
+        rc)    PACKAGE_STAGE_BASE=300 ;;
+    esac
+
+    PACKAGE_STAGE_NUMBER=$((PACKAGE_STAGE_BASE + BASH_REMATCH[5]))
+    PACKAGE_VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.${PACKAGE_STAGE_NUMBER}"
+else
+    echo "Error: unsupported version format '$VERSION'"
+    echo "Expected X.Y.Z or X.Y.Z-alpha.N / -beta.N / -rc.N"
+    exit 1
+fi
+
+for var in APP PRESETS; do
     if [[ -z "${!var}" ]]; then
         echo "Error: --$(echo $var | tr '[:upper:]' '[:lower:]') is required"
         exit 1
@@ -36,7 +62,7 @@ done
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-echo "==> Building T5ynth installer v${VERSION}"
+echo "==> Building T5ynth installer ${VERSION} (pkg version ${PACKAGE_VERSION})"
 
 # ── Stage: Standalone ────────────────────────────────────────────────
 echo "  Staging Standalone..."
@@ -47,36 +73,10 @@ cp -R "$APP" "$STAGE_APP/"
 pkgbuild \
     --root "$STAGE_APP" \
     --identifier org.ai4artsed.t5ynth.standalone \
-    --version "$VERSION" \
+    --version "$PACKAGE_VERSION" \
     --install-location /Applications \
     --scripts "$SCRIPT_DIR/scripts-standalone" \
     "$WORK/standalone.pkg"
-
-# ── Stage: VST3 ──────────────────────────────────────────────────────
-echo "  Staging VST3..."
-STAGE_VST3="$WORK/stage-vst3"
-mkdir -p "$STAGE_VST3"
-cp -R "$VST3" "$STAGE_VST3/"
-
-pkgbuild \
-    --root "$STAGE_VST3" \
-    --identifier org.ai4artsed.t5ynth.vst3 \
-    --version "$VERSION" \
-    --install-location "/Library/Audio/Plug-Ins/VST3" \
-    "$WORK/vst3.pkg"
-
-# ── Stage: AU ────────────────────────────────────────────────────────
-echo "  Staging AU..."
-STAGE_AU="$WORK/stage-au"
-mkdir -p "$STAGE_AU"
-cp -R "$AU" "$STAGE_AU/"
-
-pkgbuild \
-    --root "$STAGE_AU" \
-    --identifier org.ai4artsed.t5ynth.au \
-    --version "$VERSION" \
-    --install-location "/Library/Audio/Plug-Ins/Components" \
-    "$WORK/au.pkg"
 
 # ── Stage: Support data (factory presets + empty models dir) ─────────
 echo "  Staging support data..."
@@ -97,7 +97,7 @@ fi
 pkgbuild \
     --root "$STAGE_SUPPORT" \
     --identifier org.ai4artsed.t5ynth.support-data \
-    --version "$VERSION" \
+    --version "$PACKAGE_VERSION" \
     --install-location "/Library/Application Support/T5ynth" \
     --scripts "$SCRIPT_DIR/scripts" \
     "$WORK/support-data.pkg"
@@ -114,7 +114,7 @@ fi
 echo "  Building product installer..."
 
 # Inject version into distribution.xml pkg-ref elements
-sed "s/version=\"0\"/version=\"${VERSION}\"/g" \
+sed "s/version=\"0\"/version=\"${PACKAGE_VERSION}\"/g" \
     "$SCRIPT_DIR/distribution.xml" > "$WORK/distribution.xml"
 
 mkdir -p "$(dirname "$OUTPUT")"

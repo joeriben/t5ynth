@@ -55,7 +55,7 @@ jobs:
           fi
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DT5YNTH_MACOS_STANDALONE_ONLY=ON
 
       - name: Build
         run: cmake --build build --config Release -j$(sysctl -n hw.ncpu)
@@ -91,50 +91,17 @@ jobs:
             exit 1
           fi
 
-      # tar on the build machine to preserve Unix permissions (+x bits)
-      # upload-artifact strips permissions — the release job uses these archives directly
-      - name: Create archives
+      # macOS releases are installer-only for now; just create the output dir
+      # before building the .pkg.
+      - name: Prepare macOS release staging
         run: |
           mkdir -p archives
-          # Include license files alongside binaries
-          for d in build/T5ynth_artefacts/Release/Standalone \
-                   build/T5ynth_artefacts/Release/VST3 \
-                   build/T5ynth_artefacts/Release/AU; do
-            cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt "$d/"
-          done
-          tar -cJf archives/T5ynth-macOS-Standalone.tar.xz \
-            -C build/T5ynth_artefacts/Release/Standalone T5ynth.app LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt
-          tar -cJf archives/T5ynth-macOS-VST3.tar.xz \
-            -C build/T5ynth_artefacts/Release/VST3 .
-          tar -cJf archives/T5ynth-macOS-AU.tar.xz \
-            -C build/T5ynth_artefacts/Release/AU .
-          ls -lh archives/
-
-      - name: Upload Standalone
-        uses: actions/upload-artifact@v4
-        with:
-          name: T5ynth-macOS-Standalone
-          path: archives/T5ynth-macOS-Standalone.tar.xz
-
-      - name: Upload VST3
-        uses: actions/upload-artifact@v4
-        with:
-          name: T5ynth-macOS-VST3
-          path: archives/T5ynth-macOS-VST3.tar.xz
-
-      - name: Upload AU
-        uses: actions/upload-artifact@v4
-        with:
-          name: T5ynth-macOS-AU
-          path: archives/T5ynth-macOS-AU.tar.xz
 
       - name: Build macOS installer (.pkg)
         run: |
           chmod +x installer/macos/build_pkg.sh
           installer/macos/build_pkg.sh \
             --app   build/T5ynth_artefacts/Release/Standalone/T5ynth.app \
-            --vst3  build/T5ynth_artefacts/Release/VST3/T5ynth.vst3 \
-            --au    build/T5ynth_artefacts/Release/AU/T5ynth.component \
             --presets resources/presets \
             --version "${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '0.0.0-dev' }}" \
             --output archives/T5ynth-macOS-Installer.pkg
@@ -281,26 +248,35 @@ jobs:
           cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
           cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt dist/T5ynth/
 
+      - name: Verify Linux artifact architecture
+        run: |
+          test -x dist/T5ynth/T5ynth
+          test -x dist/T5ynth/backend/pipe_inference
+          file dist/T5ynth/T5ynth | tee /tmp/t5ynth-file.txt
+          file dist/T5ynth/backend/pipe_inference | tee /tmp/pipe-file.txt
+          grep -Eq 'ELF 64-bit.*x86-64' /tmp/t5ynth-file.txt
+          grep -Eq 'ELF 64-bit.*x86-64' /tmp/pipe-file.txt
+
       - name: Create archives
         run: |
           mkdir -p archives
           cp LICENSE.txt THIRD_PARTY_LICENSES.txt DO_NOT_FORGET.txt build/T5ynth_artefacts/Release/VST3/
-          tar -cJf archives/T5ynth-Linux-Standalone.tar.xz -C dist T5ynth
-          tar -cJf archives/T5ynth-Linux-VST3.tar.xz \
+          tar -cJf archives/T5ynth-Linux-x86_64-Standalone.tar.xz -C dist T5ynth
+          tar -cJf archives/T5ynth-Linux-x86_64-VST3.tar.xz \
             -C build/T5ynth_artefacts/Release/VST3 .
           ls -lh archives/
 
       - name: Upload Standalone
         uses: actions/upload-artifact@v4
         with:
-          name: T5ynth-Linux-Standalone
-          path: archives/T5ynth-Linux-Standalone.tar.xz
+          name: T5ynth-Linux-x86_64-Standalone
+          path: archives/T5ynth-Linux-x86_64-Standalone.tar.xz
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
-          name: T5ynth-Linux-VST3
-          path: archives/T5ynth-Linux-VST3.tar.xz
+          name: T5ynth-Linux-x86_64-VST3
+          path: archives/T5ynth-Linux-x86_64-VST3.tar.xz
 
   # ── Release (only on tags) ──────────────────────────────────────
   release:

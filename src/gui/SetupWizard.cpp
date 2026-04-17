@@ -32,6 +32,15 @@ static bool hasModelMarker(const juce::File& dir)
     return weightBytes >= kMinWeightBytes;
 }
 
+static void setInstructionsText(juce::TextEditor& editor, const juce::String& text)
+{
+    editor.setText(text, false);
+    editor.setHighlightedRegion({ 0, 0 });
+    editor.setCaretPosition(0);
+    editor.moveCaretToTop(false);
+    editor.scrollEditorToPositionCaret(0, 0);
+}
+
 static bool isEssentialDiffusersFile(const juce::String& remotePath)
 {
     auto path = remotePath.replaceCharacter('\\', '/');
@@ -219,6 +228,8 @@ SettingsPage::SettingsPage()
 
     instructionsLabel.setMultiLine(true);
     instructionsLabel.setReadOnly(true);
+    instructionsLabel.setCaretVisible(false);
+    instructionsLabel.setSelectAllWhenFocused(false);
     instructionsLabel.setColour(juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
     instructionsLabel.setColour(juce::TextEditor::textColourId, juce::Colour(0xffcccccc));
     instructionsLabel.setColour(juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
@@ -1026,7 +1037,7 @@ void SettingsPage::onDownloadFinished(bool success, const juce::String& error)
             }
         }
 
-        downloadStatusLabel.setText("Download complete! Restart T5ynth to use the new model.", juce::dontSendNotification);
+        downloadStatusLabel.setText("Download complete. Activating model...", juce::dontSendNotification);
         downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
         auto found = scanForModel();
         if (found.exists()) setModelPath(found);
@@ -1035,7 +1046,7 @@ void SettingsPage::onDownloadFinished(bool success, const juce::String& error)
         downloadStatusLabel.setText("Download failed", juce::dontSendNotification);
         downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
         // Show full error in the multi-line instructions area
-        instructionsLabel.setText(error, false);
+        setInstructionsText(instructionsLabel, error);
         progressBar.setVisible(false);
     }
 }
@@ -1051,11 +1062,20 @@ void SettingsPage::setBackendConnected(bool connected)
     updateStatus();
 }
 
+void SettingsPage::setBackendStarting()
+{
+    backendConnected = false;
+    backendFailReason = {};
+    backendStatusLabel.setText("Backend: Starting...", juce::dontSendNotification);
+    backendStatusLabel.setColour(juce::Label::textColourId, kDim);
+    updateStatus();
+}
+
 void SettingsPage::setBackendFailed(const juce::String& reason)
 {
     backendConnected = false;
     backendFailReason = reason;
-    backendStatusLabel.setText("Backend: " + reason, juce::dontSendNotification);
+    backendStatusLabel.setText("Backend: Start failed", juce::dontSendNotification);
     backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
     updateStatus();
 }
@@ -1082,19 +1102,22 @@ void SettingsPage::updateStatus()
         if (backendConnected) {
             modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
             modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
-            instructionsLabel.setText("Ready to generate audio.", false);
+            setInstructionsText(instructionsLabel, "Ready to generate audio.");
         } else if (backendFailReason.isNotEmpty()) {
             modelStatusLabel.setText(id + ": Files found -- backend startup failed", juce::dontSendNotification);
             modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xfffbbf24));  // amber
-            instructionsLabel.setText(
+            setInstructionsText(
+                instructionsLabel,
                 "Model files were found, but backend startup failed while validating or loading a model.\n\n"
-                "Error: " + backendFailReason + "\n\n"
-                "This often means a downloaded model is incomplete, incompatible, or failed on the available device.\n\n"
-                "Check the application log for details.", false);
+                "Model path:\n  " + modelPath.getFullPathName() + "\n\n"
+                "Backend error:\n  " + backendFailReason + "\n\n"
+                "This usually means the model download is incomplete, incompatible, or the app bundle "
+                "could not load one of its own libraries.\n\n"
+                "Application log:\n  ~/Library/T5ynth/Logs/backend_stderr.log");
         } else {
             modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
             modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
-            instructionsLabel.setText("Model files found. Starting backend...", false);
+            setInstructionsText(instructionsLabel, "Model files found. Starting backend...");
         }
     } else {
         modelStatusLabel.setText(id + ": Not installed", juce::dontSendNotification);
@@ -1107,7 +1130,8 @@ void SettingsPage::updateStatus()
         auto targetPath = targetDir.getFullPathName();
 
         if (id == "audioldm2") {
-            instructionsLabel.setText(
+            setInstructionsText(
+                instructionsLabel,
                 "AUDIOLDM2\n"
                 "Academic latent-diffusion text-to-audio model published by CVSSP / "
                 "University of Surrey and collaborators (Liu et al., 2023), released "
@@ -1118,9 +1142,10 @@ void SettingsPage::updateStatus()
                 "  Source: https://huggingface.co/" + hfRepo + "\n"
                 "  Target: " + targetPath + "\n\n"
                 "License: CC BY-NC-SA 4.0 -- non-commercial use only, no revenue "
-                "threshold, no exceptions.", false);
+                "threshold, no exceptions.");
         } else if (id == "stable-audio-open-small") {
-            instructionsLabel.setText(
+            setInstructionsText(
+                instructionsLabel,
                 "STABLE AUDIO OPEN SMALL\n"
                 "Licensed under the Stability AI Community License. Gated on "
                 "HuggingFace -- a free HuggingFace account is required once to "
@@ -1146,10 +1171,11 @@ void SettingsPage::updateStatus()
                 "     them into the target directory. You can delete the originals\n"
                 "     from Downloads afterwards.\n\n"
                 "If you saved them somewhere other than Downloads, Auto-Scan will "
-                "open a folder picker and ask you to point at the folder.", false);
+                "open a folder picker and ask you to point at the folder.");
         } else {
             // SA 1.0 (and any future gated Stability model)
-            instructionsLabel.setText(
+            setInstructionsText(
+                instructionsLabel,
                 "STABLE AUDIO OPEN 1.0\n"
                 "Licensed under the Stability AI Community License. Gated on "
                 "HuggingFace. The model consists of many files in nested "
@@ -1160,7 +1186,7 @@ void SettingsPage::updateStatus()
                 "       huggingface-cli login    # paste your HF access token\n"
                 "       huggingface-cli download " + hfRepo + " \\\n"
                 "         --local-dir \"" + targetPath + "\"\n"
-                "  3. Click 'Auto-Scan' above, or 'Browse...' and select that folder.", false);
+                "  3. Click 'Auto-Scan' above, or 'Browse...' and select that folder.");
         }
     }
 }

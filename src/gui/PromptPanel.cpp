@@ -55,12 +55,20 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     promptAEditor.setMultiLine(false);
     promptAEditor.setText("a steady clean saw wave, c3");
     promptAEditor.onReturnKey = [this] { triggerGeneration(); };
+    promptAEditor.onTextChange = [this] {
+        // Prompt edits should force the next drift regen to use a fresh snapshot.
+        lastGenPromptA_.clear();
+    };
     promptAEditor.setBufferedToImage(true);
     addAndMakeVisible(promptAEditor);
 
     makeLabel(promptBLabel, "Prompt B (optional, for interpolation)", kDim, juce::Justification::centredLeft, this);
     promptBEditor.setMultiLine(false);
     promptBEditor.setText("glass breaking");
+    promptBEditor.onTextChange = [this] {
+        // Prompt edits should force the next drift regen to use a fresh snapshot.
+        lastGenPromptB_.clear();
+    };
     promptBEditor.setBufferedToImage(true);
     addAndMakeVisible(promptBEditor);
 
@@ -490,6 +498,8 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
 {
     promptAEditor.setText(promptA, false);
     promptBEditor.setText(promptB, false);
+    lastGenPromptA_.clear();
+    lastGenPromptB_.clear();
     seedEditor.setText(juce::String(seed), false);
     randomSeedToggle.setToggleState(randomSeed, juce::dontSendNotification);
     seedEditor.setEnabled(!randomSeed);
@@ -585,6 +595,44 @@ void PromptPanel::populateModelSelector()
 
     modelsPopulated = true;
     resized();
+}
+
+void PromptPanel::refreshInferenceChoices()
+{
+    auto selectedModel = getSelectedModel();
+    const bool preferCpu = cpuBtn.getToggleState();
+
+    if (selectedModel.isNotEmpty())
+        pendingModel_ = selectedModel;
+
+    devicesPopulated = false;
+    modelsPopulated = false;
+    gpuBackend_.clear();
+
+    gpuBtn.setEnabled(true);
+    gpuBtn.setAlpha(1.0f);
+    cpuBtn.setEnabled(true);
+    cpuBtn.setAlpha(1.0f);
+
+    for (int i = 0; i < kNumModelSlots; ++i)
+    {
+        modelSlotIds[i].clear();
+        modelBtns[i].setToggleState(false, juce::dontSendNotification);
+        modelBtns[i].setEnabled(false);
+        modelBtns[i].setAlpha(0.3f);
+    }
+
+    if (!processorRef.isPipeInferenceReady())
+        return;
+
+    populateDeviceButtons();
+
+    if (preferCpu || !gpuBtn.isEnabled())
+        cpuBtn.setToggleState(true, juce::dontSendNotification);
+    else
+        gpuBtn.setToggleState(true, juce::dontSendNotification);
+
+    populateModelSelector();
 }
 
 juce::String PromptPanel::getSelectedModel() const
@@ -694,8 +742,11 @@ void PromptPanel::triggerGeneration()
                     processor->setLastDevice(deviceForLabel);
                     processor->setLastModel(modelForLabel);
                     processor->setLastSeed(result.seed);
-                    processor->setLastPrompts(self->promptAEditor.getText().trim(),
-                                              self->promptBEditor.getText().trim());
+                    auto promptA = self->promptAEditor.getText().trim();
+                    auto promptB = self->promptBEditor.getText().trim();
+                    processor->setLastPrompts(promptA, promptB);
+                    self->lastGenPromptA_ = promptA;
+                    self->lastGenPromptB_ = promptB;
                     self->seedEditor.setText(juce::String(result.seed), false);
                     auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
                                 + juce::String(result.seed) + " | " + modelForLabel
@@ -741,12 +792,16 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
     lastGenAxes_ = effectiveAxes;
 
     auto req = buildInferenceRequest(effectiveAlpha, effectiveAxes, effectiveNoise, effectiveMagnitude);
+    auto deviceForLabel = req.device.isEmpty()
+        ? processorRef.getPipeInference().getDefaultDevice() : req.device;
+    auto modelForLabel = req.model.isEmpty()
+        ? processorRef.getPipeInference().getDefaultModel() : req.model;
     auto* processor = &processorRef;
     juce::Component::SafePointer<PromptPanel> safeThis(this);
-    std::thread([safeThis, processor, req]()
+    std::thread([safeThis, processor, req, deviceForLabel, modelForLabel]()
     {
         auto result = processor->getPipeInference().generate(req);
-        juce::MessageManager::callAsync([safeThis, processor, result = std::move(result)]()
+        juce::MessageManager::callAsync([safeThis, processor, result = std::move(result), deviceForLabel, modelForLabel]()
         {
             if (auto* self = safeThis.getComponent())
             {
@@ -765,7 +820,14 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
                             applyDriftCrossfade(newAudio, oldRaw, xfadeSamples);
                     }
                     processor->loadGeneratedAudio(newAudio, 44100.0);
+                    auto promptA = self->promptAEditor.getText().trim();
+                    auto promptB = self->promptBEditor.getText().trim();
+                    processor->setLastDevice(deviceForLabel);
+                    processor->setLastModel(modelForLabel);
                     processor->setLastSeed(result.seed);
+                    processor->setLastPrompts(promptA, promptB);
+                    self->lastGenPromptA_ = promptA;
+                    self->lastGenPromptB_ = promptB;
                     self->seedEditor.setText(juce::String(result.seed), false);
                     auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | drift regen";
                     if (self->onStatusChanged) self->onStatusChanged(info, false);
@@ -839,6 +901,10 @@ void PromptPanel::pollDriftRegen()
     bool magChanged = !std::isnan(effMag) &&
         (std::isnan(lastGenMagnitude_) || std::abs(effMag - lastGenMagnitude_) > DRIFT_THRESHOLD);
 
+    auto promptA = promptAEditor.getText().trim();
+    auto promptB = promptBEditor.getText().trim();
+    bool promptChanged = (promptA != lastGenPromptA_) || (promptB != lastGenPromptB_);
+
     bool axesChanged = false;
     for (auto& [key, val] : effAxes)
     {
@@ -850,7 +916,7 @@ void PromptPanel::pollDriftRegen()
         }
     }
 
-    if (!alphaChanged && !axesChanged && !noiseChanged && !magChanged) return;
+    if (!alphaChanged && !axesChanged && !noiseChanged && !magChanged && !promptChanged) return;
 
     auto& apvts = processorRef.getValueTreeState();
     float genAlpha = std::isnan(effAlpha)

@@ -49,6 +49,17 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     settingsScrim.setVisible(false);
     addChildComponent(settingsScrim);
     addChildComponent(settingsPage);
+    settingsPage.onModelReady = [this]
+    {
+        if (promptPanel.isGenerating())
+        {
+            pendingInferenceReload = true;
+            statusBar.setStatusText("Model installed. Backend reload is queued.");
+            return;
+        }
+
+        tryLoadInferenceModels(true);
+    };
 
     // Manual overlay — hosts the native WebBrowserComponent that renders
     // the shipped HTML guide. Clicking outside the panel or the close
@@ -263,9 +274,11 @@ void MainPanel::hideSettings()
     resized();
 }
 
-void MainPanel::tryLoadInferenceModels()
+void MainPanel::tryLoadInferenceModels(bool forceRestart)
 {
-    statusBar.setStatusText("Loading inference...");
+    statusBar.setConnected(false);
+    statusBar.setStatusText(forceRestart ? "Refreshing inference..." : "Loading inference...");
+    settingsPage.setBackendStarting();
 
     auto* processor = &processorRef;
     const auto bundledBackendMode = juce::SystemStats::getEnvironmentVariable("T5YNTH_REQUIRE_BUNDLED_BACKEND", {})
@@ -387,8 +400,11 @@ void MainPanel::tryLoadInferenceModels()
     if (backendDir.exists())
     {
         juce::Component::SafePointer<MainPanel> safeThis(this);
-        std::thread([safeThis, processor, backendDir]()
+        std::thread([safeThis, processor, backendDir, forceRestart]()
         {
+            if (forceRestart)
+                processor->getPipeInference().shutdown();
+
             bool ok = processor->launchPipeInference(backendDir);
             auto errorMsg = ok ? juce::String() : processor->getPipeInference().getLastError();
             juce::MessageManager::callAsync([safeThis, ok, errorMsg]()
@@ -400,9 +416,11 @@ void MainPanel::tryLoadInferenceModels()
                         self->statusBar.setConnected(true);
                         self->statusBar.setStatusText("Ready");
                         self->settingsPage.setBackendConnected(true);
+                        self->promptPanel.refreshInferenceChoices();
                     }
                     else
                     {
+                        self->statusBar.setConnected(false);
                         self->statusBar.setStatusText("Backend: " + errorMsg);
                         self->settingsPage.setBackendFailed(errorMsg);
                     }
@@ -418,7 +436,7 @@ void MainPanel::tryLoadInferenceModels()
                          ? juce::String("Bundled backend not found in app")
                          : (juce::JUCEApplicationBase::isStandaloneApp()
                             ? juce::String("Backend not found — reinstall T5ynth")
-                            : juce::String("Backend not found — install T5ynth Standalone"));
+                            : juce::String("Backend not found — install the T5ynth app"));
         statusBar.setStatusText(msg);
         settingsPage.setBackendFailed(forceBundledBackend ? "Bundled backend missing" : "Not found");
     }
@@ -531,6 +549,12 @@ void MainPanel::timerCallback()
         mv.driftAxis1.load(std::memory_order_relaxed),
         mv.driftAxis2.load(std::memory_order_relaxed),
         mv.driftAxis3.load(std::memory_order_relaxed));
+
+    if (pendingInferenceReload && !promptPanel.isGenerating())
+    {
+        pendingInferenceReload = false;
+        tryLoadInferenceModels(true);
+    }
 }
 
 void MainPanel::resized()
