@@ -76,6 +76,9 @@ public:
     /** Callback when P1 (start position) is dragged. */
     std::function<void(float)> onStartPosChanged;
 
+    /** Callback when a P1/P2/P3 drag gesture finishes. */
+    std::function<void()> onMarkerDragFinished;
+
     /** Access the lock button (owner wires onToggled + setLocked from preset). */
     LockButton& getLockButton() { return lockButton; }
 

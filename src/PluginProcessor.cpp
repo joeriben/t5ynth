@@ -1534,10 +1534,17 @@ void T5ynthProcessor::syncWavetableTraversal(double bufferSampleRate, int totalS
         default:                               oscLoopMode = WavetableOscillator::LoopMode::Loop;     break;
     }
 
-    masterOsc.setAutoScan(true);
-    masterOsc.setAutoScanRate(bufferSampleRate, mapping.regionSamples);
     masterOsc.setAutoScanStartPos(mapping.startInExtract);
     masterOsc.setAutoScanLoop(mapping.loopStartInExtract, mapping.loopEndInExtract, oscLoopMode);
+    if (loopMode == SamplePlayer::LoopMode::OneShot)
+    {
+        masterOsc.setAutoScan(false);
+    }
+    else
+    {
+        masterOsc.setAutoScan(true);
+        masterOsc.setAutoScanRate(bufferSampleRate, mapping.regionSamples);
+    }
 }
 
 bool T5ynthProcessor::isWavetableMode() const

@@ -279,7 +279,10 @@ void WaveformDisplay::mouseDrag(const juce::MouseEvent& e)
 
 void WaveformDisplay::mouseUp(const juce::MouseEvent&)
 {
+    const bool finishedMarkerDrag = dragging == Start || dragging == End || dragging == StartPos;
     dragging = None;
+    if (finishedMarkerDrag && onMarkerDragFinished)
+        onMarkerDragFinished();
 }
 
 void WaveformDisplay::setWaveform(const float* data, int numSamples)

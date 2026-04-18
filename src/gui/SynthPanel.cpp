@@ -260,9 +260,8 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         processorRef.getSampler().setLoopEnd(end);
         processorRef.getSampler().setPointsLocked(true);
         waveformDisplay.getLockButton().setLocked(true);
-
         if (processorRef.isWavetableMode())
-            processorRef.reextractWavetable();
+            pendingWtReextract_ = true;
     };
 
     // P1 (start position) handle
@@ -271,7 +270,13 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         processorRef.getSampler().setPointsLocked(true);
         waveformDisplay.getLockButton().setLocked(true);
         if (processorRef.isWavetableMode())
+            pendingWtReextract_ = true;
+    };
+
+    waveformDisplay.onMarkerDragFinished = [this]() {
+        if (pendingWtReextract_ && processorRef.isWavetableMode())
             processorRef.reextractWavetable();
+        pendingWtReextract_ = false;
     };
 
     // Lock button: toggles P1/P2/P3 preservation across Generate

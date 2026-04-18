@@ -26,6 +26,7 @@ private:
     float fs() const;
     void updateVisibility();
     bool initialized = false;
+    bool pendingWtReextract_ = false;
 
     T5ynthProcessor& processorRef;
 
