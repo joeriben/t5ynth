@@ -372,17 +372,17 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
 
     if (p.engineIsWavetable && osc.hasFrames())
     {
-        // Scan modulation
         float scanMod = p.baseScan + p.driftScanOffset;
         if (p.mod1Target == EnvTarget::Scan) scanMod += mod1EnvVal;
         if (p.mod2Target == EnvTarget::Scan) scanMod += mod2EnvVal;
         if (p.lfo1Target == LfoTarget::Scan) scanMod += lfo1Val;
         if (p.lfo2Target == LfoTarget::Scan) scanMod += lfo2Val;
-        float clampedScan = juce::jlimit(0.0f, 1.0f, scanMod);
+        const float clampedScan = juce::jlimit(0.0f, 1.0f, scanMod);
         osc.setScanPosition(clampedScan);
-        result.modulatedScan = clampedScan;
 
         sample = osc.processSample();
+        result.modulatedScan = clampedScan;
+        lastModulatedScan_ = clampedScan;
     }
     else if (!p.engineIsWavetable && sampler.hasAudio())
     {
@@ -553,17 +553,17 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                     osc.setFrequency(baseFrequency * (1.0f + pitchMod));
                 }
 
-                // Scan modulation
                 float scanMod = p.baseScan + p.driftScanOffset;
                 if (p.mod1Target == EnvTarget::Scan) scanMod += mod1EnvVal;
                 if (p.mod2Target == EnvTarget::Scan) scanMod += mod2EnvVal;
                 if (p.lfo1Target == LfoTarget::Scan) scanMod += lfo1Val;
                 if (p.lfo2Target == LfoTarget::Scan) scanMod += lfo2Val;
-                osc.setScanPosition(juce::jlimit(0.0f, 1.0f, scanMod));
-                lastModulatedScan_ = scanMod;
+                const float clampedScan = juce::jlimit(0.0f, 1.0f, scanMod);
+                osc.setScanPosition(clampedScan);
                 osc.setInterpolation(p.wtSmooth);
 
                 sample = osc.processSample();
+                lastModulatedScan_ = clampedScan;
             }
 
             // Mix noise oscillator (goes through VCA + filter with the main signal)

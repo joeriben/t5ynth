@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <limits>
 
 /**
  * Waveform display with draggable loop region brackets.
@@ -93,8 +94,8 @@ private:
     enum DragTarget { None, Start, End, StartPos, Scan };
     DragTarget dragging = None;
     bool scanVisible = false;
-    float scanTarget   = 0.0f;
-    float scanPos      = 0.0f;   // smoothed display value
+    float scanTarget   = std::numeric_limits<float>::quiet_NaN();
+    float scanPos      = std::numeric_limits<float>::quiet_NaN();   // smoothed display value
     float lastScanPx   = -100.0f;
 
 public:

@@ -1,5 +1,9 @@
 # T5ynth Development Log
 
+## 2026-04-18 — Sampler Wave Cursor Reverted
+
+Tested a live playback cursor in the sampler waveform view and reverted it. On loop-heavy material the 30 Hz smoothed marker felt visually late relative to the audio and was more distracting than helpful. If this is revisited, it should probably use a different visualization approach rather than a lagged dot/cursor over the waveform.
+
 ## 2026-04-11 — Installers + Path Architecture
 
 ### macOS .pkg Installer

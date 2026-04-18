@@ -319,6 +319,14 @@ bool SettingsPage::hasAnyInstalledModel()
 void SettingsPage::setModelPath(const juce::File& dir)
 {
     modelPath = dir;
+
+    if (modelPath.exists() && !backendConnected)
+    {
+        backendFailReason = {};
+        backendStatusLabel.setText("Backend: Starting...", juce::dontSendNotification);
+        backendStatusLabel.setColour(juce::Label::textColourId, kDim);
+    }
+
     updateStatus();
     if (modelPath.exists() && onModelReady)
         onModelReady();
@@ -1041,7 +1049,6 @@ void SettingsPage::onDownloadFinished(bool success, const juce::String& error)
         downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
         auto found = scanForModel();
         if (found.exists()) setModelPath(found);
-        updateStatus();
     } else {
         downloadStatusLabel.setText("Download failed", juce::dontSendNotification);
         downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));

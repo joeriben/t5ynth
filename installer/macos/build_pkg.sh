@@ -188,7 +188,6 @@ pkgbuild \
 # ── Copy resources for the product installer ─────────────────────────
 RESOURCES="$WORK/resources"
 mkdir -p "$RESOURCES"
-cp "$SCRIPT_DIR/resources/welcome.html" "$RESOURCES/"
 if [[ -f "$SCRIPT_DIR/../../LICENSE.txt" ]]; then
     cp "$SCRIPT_DIR/../../LICENSE.txt" "$RESOURCES/"
 fi

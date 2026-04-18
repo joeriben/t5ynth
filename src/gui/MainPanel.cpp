@@ -846,7 +846,9 @@ void MainPanel::exportWav()
         "Export WAV", juce::File::getSpecialLocation(juce::File::userDesktopDirectory), "*.wav");
 
     juce::Component::SafePointer<MainPanel> safeThis(this);
-    chooser->launchAsync(juce::FileBrowserComponent::saveMode,
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode
+                         | juce::FileBrowserComponent::canSelectFiles
+                         | juce::FileBrowserComponent::warnAboutOverwriting,
         [safeThis, chooser](const juce::FileChooser& fc)
         {
             if (!safeThis) return;
@@ -945,7 +947,9 @@ void MainPanel::savePreset()
         "Save Preset", presetsDir, "*.t5p");
 
     juce::Component::SafePointer<MainPanel> safeThis(this);
-    chooser->launchAsync(juce::FileBrowserComponent::saveMode,
+    chooser->launchAsync(juce::FileBrowserComponent::saveMode
+                         | juce::FileBrowserComponent::canSelectFiles
+                         | juce::FileBrowserComponent::warnAboutOverwriting,
         [safeThis, chooser](const juce::FileChooser& fc)
         {
             if (!safeThis) return;
@@ -953,7 +957,14 @@ void MainPanel::savePreset()
             if (file == juce::File()) return;
 
             if (PresetFormat::saveToFile(file, safeThis->processorRef))
+            {
                 safeThis->statusBar.setPresetName(file.getFileNameWithoutExtension());
+                safeThis->statusBar.setStatusText("Saved preset: " + file.withFileExtension("t5p").getFileName());
+            }
+            else
+            {
+                safeThis->statusBar.setStatusText("Preset save failed");
+            }
         });
 }
 

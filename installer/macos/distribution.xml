@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>T5ynth</title>
-    <welcome file="welcome.html"/>
     <license file="LICENSE.txt"/>
     <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <domains enable_anywhere="true" enable_currentUserHome="false" enable_localSystem="true"/>

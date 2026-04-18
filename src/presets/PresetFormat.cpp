@@ -72,8 +72,11 @@ bool PresetFormat::saveToFile(const juce::File& file, T5ynthProcessor& processor
 
     // Write file
     auto targetFile = file.withFileExtension("t5p");
-    targetFile.deleteFile();
-    juce::FileOutputStream out(targetFile);
+    if (!targetFile.getParentDirectory().exists())
+        targetFile.getParentDirectory().createDirectory();
+
+    juce::TemporaryFile tempFile(targetFile);
+    juce::FileOutputStream out(tempFile.getFile());
     if (out.failedToOpen()) return false;
 
     // Magic + version
@@ -98,7 +101,10 @@ bool PresetFormat::saveToFile(const juce::File& file, T5ynthProcessor& processor
     }
 
     out.flush();
-    return out.getStatus().wasOk();
+    if (!out.getStatus().wasOk())
+        return false;
+
+    return tempFile.overwriteTargetFileWithTemporary();
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -279,8 +279,6 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         processorRef.getSampler().setStartPos(pos);
         processorRef.getSampler().setPointsLocked(true);
         waveformDisplay.getLockButton().setLocked(true);
-        if (processorRef.isWavetableMode())
-            processorRef.getMasterOsc().setAutoScanStartPos(pos);
     };
 
     // Lock button: toggles P1/P2/P3 preservation across Generate
