@@ -166,6 +166,7 @@ echo "  Staging support data..."
 STAGE_SUPPORT="$WORK/stage-support"
 mkdir -p "$STAGE_SUPPORT/presets"
 mkdir -p "$STAGE_SUPPORT/models"
+mkdir -p "$STAGE_SUPPORT/docs"
 
 # Copy factory presets
 if [[ -d "$PRESETS" ]]; then
@@ -176,6 +177,16 @@ fi
 if [[ -f "$SCRIPT_DIR/../../LICENSE.txt" ]]; then
     cp "$SCRIPT_DIR/../../LICENSE.txt" "$STAGE_SUPPORT/"
 fi
+
+# Copy install guides if they exist.
+for guide in \
+    "$SCRIPT_DIR/../../docs/releases/T5ynth-macOS-Installation-DE.pdf" \
+    "$SCRIPT_DIR/../../docs/releases/T5ynth-macOS-Installation-EN.pdf"
+do
+    if [[ -f "$guide" ]]; then
+        cp "$guide" "$STAGE_SUPPORT/docs/"
+    fi
+done
 
 pkgbuild \
     --root "$STAGE_SUPPORT" \
