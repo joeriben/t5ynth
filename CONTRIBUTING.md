@@ -179,13 +179,13 @@ for the full procedure.
 
 Versioning convention:
 
-- Current public line: `v0.3.0-alpha.N`
-- Until end-user installation is proven reliable, do not cut `v1.x` tags.
+- Current public prerelease line: `v1.0.0-beta.N`
+- Do not cut stable `v1.0.x` until the installer path has been validated on end-user machines.
 - Stable releases, once justified: `v1.0.x`
 - Release candidates / pre-releases after 1.0: `v1.0.x-rc.N` (also `-alpha.N`,
   `-beta.N`)
 - macOS installer packages map those tags to numeric receipt versions, e.g.
-  `v0.3.0-alpha.2 -> 0.3.0.102`
+  `v1.0.0-beta.1 -> 1.0.0.201`
 
 ---
 
