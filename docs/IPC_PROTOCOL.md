@@ -103,8 +103,9 @@ around any code path known to print (native pipeline loading at
 
 ### 2.4 Handshake ("ready" signal)
 
-After launch, the server loads the default model on all available devices
-and sends a **single "ready" frame** on stdout:
+After launch, the server loads the default model on the first working
+device (best-first: `mps` → `cuda` → `cpu`) and sends a **single "ready"
+frame** on stdout:
 
 ```
 \x02 <uint16_le length> <UTF-8 JSON bytes>
@@ -124,15 +125,16 @@ The JSON object has this shape:
 }
 ```
 
-- `devices` — the list of devices on which the default model was
-  successfully loaded (best-first: `mps` → `cuda` → `cpu`).
-- `default` — the first successfully loaded device.
+- `devices` — the list of device backends the UI may request
+  (`available_devices()`: `mps`/`cuda` when present, plus `cpu`).
+- `default` — the device on which the default model was successfully
+  preloaded during startup.
 - `models` — all discovered model directory names.
 - `default_model` — `"stable-audio-open-1.0"` if present, else the first
   discovered model.
 
 The client times out after **120 seconds** waiting for the `\x02` byte
-(two-pipeline warm load can take 30–60 s,
+(single-pipeline warm load can still take tens of seconds,
 `src/inference/PipeInference.cpp:248-257`), then 5 seconds for the payload.
 
 If the server cannot load any pipeline, it sends an error frame

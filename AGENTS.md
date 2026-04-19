@@ -1,0 +1,9 @@
+# Repository Instructions
+
+- Check twice before asking the user to restart servers, hard reload pages, rerun apps, or repeat an installation step.
+- Never upload locally built artifacts to GitHub Releases. Public release assets must come from GitHub Actions artifacts.
+- For changes touching `.github/workflows/build.yml`, `CMakeLists.txt`, installers, backend bundling, or packaging paths:
+  - run a local Release build first,
+  - use PR/main GitHub CI to validate before any release tag,
+  - keep `docs/RELEASE_PROCESS.md` in sync with the workflow.
+- Do not cut, move, or reuse a release tag until the relevant GitHub Actions run is green.

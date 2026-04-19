@@ -111,11 +111,10 @@ private:
     void populateModelSelector();
     juce::String getSelectedModel() const;
 
-    // Device selector (GPU / CPU toggle)
-    juce::TextButton gpuBtn { "GPU" }, cpuBtn { "CPU" };
-    juce::String gpuBackend_;  // "mps" or "cuda" — resolved at runtime
+    // Device selection is backend-controlled: GPU/Metal when available, else CPU.
+    juce::String defaultInferenceDevice_;
     bool devicesPopulated = false;
-    void populateDeviceButtons();
+    void populateDeviceChoice();
 
     juce::TextButton generateButton { "Generate" };
     juce::Label infoLabel;

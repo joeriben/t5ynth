@@ -170,21 +170,6 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     addAndMakeVisible(randomSeedToggle);
     syncSeedEditorEnabledState();
 
-    // Device selector — GPU / CPU toggle
-    for (auto* btn : { &gpuBtn, &cpuBtn })
-    {
-        btn->setColour(juce::TextButton::buttonColourId, kSurface);
-        btn->setColour(juce::TextButton::buttonOnColourId, kOscCol);
-        btn->setColour(juce::TextButton::textColourOffId, kDim);
-        btn->setColour(juce::TextButton::textColourOnId, juce::Colours::white);
-        btn->setClickingTogglesState(true);
-        btn->setRadioGroupId(1003);
-        addAndMakeVisible(btn);
-    }
-    gpuBtn.setToggleState(true, juce::dontSendNotification);
-    gpuBtn.setConnectedEdges(juce::Button::ConnectedOnRight);
-    cpuBtn.setConnectedEdges(juce::Button::ConnectedOnLeft);
-
     // Model selector — fixed 3 slots, always visible (disabled = gray until model found)
     {
         const char* slotLabels[kNumModelSlots] = { "SA Open 1.0", "SA Small", "AudioLDM2" };
@@ -233,10 +218,9 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
                 if (onStatusChanged) onStatusChanged("Loading " + model + "...", true);
                 generateButton.setEnabled(false);
 
-                auto& pipeInf = processorRef.getPipeInference();
-                juce::String device = cpuBtn.getToggleState() ? "cpu" : gpuBackend_;
+                auto pipePtr = processorRef.getPipeInferencePtr();
+                juce::String device = defaultInferenceDevice_;
                 juce::Component::SafePointer<PromptPanel> safeThis(this);
-                auto* pipePtr = &pipeInf;
                 std::thread([safeThis, pipePtr, model, device]()
                 {
                     bool ok = pipePtr->preload(model, device);
@@ -278,7 +262,7 @@ void PromptPanel::timerCallback()
 {
     if (!devicesPopulated && processorRef.isPipeInferenceReady())
     {
-        populateDeviceButtons();
+        populateDeviceChoice();
         populateModelSelector();
         // Don't stop timer — continue for drift regen polling + ghost updates
     }
@@ -470,14 +454,10 @@ void PromptPanel::resized()
     layoutCompactPair(stepsLabel, stepsSlider, stepsValue, &stepsHint,
                       cfgLabel, cfgSlider, cfgValue, &cfgHint);
 
-    // Seed + Device row — buttons need height ≈ f/0.6 so LnF auto-font matches f
+    // Seed row
     {
         int seedRowH = juce::roundToInt(f * 1.65f);
         auto seedRow = area.removeFromTop(seedRowH);
-        int btnW = juce::roundToInt(seedRow.getWidth() * 0.11f);
-        gpuBtn.setBounds(seedRow.removeFromLeft(btnW));
-        cpuBtn.setBounds(seedRow.removeFromLeft(btnW));
-        seedRow.removeFromLeft(gap);
         setFs(seedLabel, f);
         int seedLabelW = juce::roundToInt(f * 2.5f);
         seedLabel.setBounds(seedRow.removeFromLeft(seedLabelW));
@@ -498,6 +478,7 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
                                   const juce::String& device,
                                   const juce::String& model)
 {
+    juce::ignoreUnused(device);
     promptAEditor.setText(promptA, false);
     promptBEditor.setText(promptB, false);
     lastGenPromptA_.clear();
@@ -505,12 +486,6 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
     randomSeedToggle.setToggleState(randomSeed, juce::dontSendNotification);
     syncSeedEditorDisplay(seed, true);
     syncSeedEditorEnabledState();
-
-    // Select device from preset — "cpu" selects CPU, anything else selects GPU
-    if (device.equalsIgnoreCase("cpu"))
-        cpuBtn.setToggleState(true, juce::dontSendNotification);
-    else
-        gpuBtn.setToggleState(true, juce::dontSendNotification);
 
     // Select model from preset (match by model directory name)
     if (model.isNotEmpty())
@@ -533,21 +508,15 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
     }
 }
 
-void PromptPanel::populateDeviceButtons()
+void PromptPanel::populateDeviceChoice()
 {
-    auto& devs = processorRef.getPipeInference().getAvailableDevices();
-    // Find the GPU backend (mps or cuda) — first non-cpu device
-    gpuBackend_ = {};
-    for (auto& d : devs)
+    auto& pipeInf = processorRef.getPipeInference();
+    defaultInferenceDevice_ = pipeInf.getDefaultDevice();
+    if (defaultInferenceDevice_.isEmpty())
     {
-        if (d != "cpu") { gpuBackend_ = d; break; }
-    }
-    // If no GPU available, disable the GPU button and select CPU
-    if (gpuBackend_.isEmpty())
-    {
-        gpuBtn.setEnabled(false);
-        gpuBtn.setAlpha(0.3f);
-        cpuBtn.setToggleState(true, juce::dontSendNotification);
+        auto& devs = pipeInf.getAvailableDevices();
+        if (!devs.isEmpty())
+            defaultInferenceDevice_ = devs[0];
     }
     devicesPopulated = true;
 }
@@ -556,7 +525,6 @@ void PromptPanel::populateModelSelector()
 {
     auto& pipeInf = processorRef.getPipeInference();
     auto& models = pipeInf.getAvailableModels();
-    auto& defaultModel = pipeInf.getDefaultModel();
 
     // Match available models to fixed slots by pattern
     // Slot 0: SA Open 1.0, Slot 1: SA Small, Slot 2: AudioLDM2
@@ -601,19 +569,13 @@ void PromptPanel::populateModelSelector()
 void PromptPanel::refreshInferenceChoices()
 {
     auto selectedModel = getSelectedModel();
-    const bool preferCpu = cpuBtn.getToggleState();
 
     if (selectedModel.isNotEmpty())
         pendingModel_ = selectedModel;
 
     devicesPopulated = false;
     modelsPopulated = false;
-    gpuBackend_.clear();
-
-    gpuBtn.setEnabled(true);
-    gpuBtn.setAlpha(1.0f);
-    cpuBtn.setEnabled(true);
-    cpuBtn.setAlpha(1.0f);
+    defaultInferenceDevice_.clear();
 
     for (int i = 0; i < kNumModelSlots; ++i)
     {
@@ -626,13 +588,7 @@ void PromptPanel::refreshInferenceChoices()
     if (!processorRef.isPipeInferenceReady())
         return;
 
-    populateDeviceButtons();
-
-    if (preferCpu || !gpuBtn.isEnabled())
-        cpuBtn.setToggleState(true, juce::dontSendNotification);
-    else
-        gpuBtn.setToggleState(true, juce::dontSendNotification);
-
+    populateDeviceChoice();
     populateModelSelector();
 }
 
@@ -714,7 +670,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
     req.steps = steps;
     req.cfgScale = cfgScale;
     req.seed = seed;
-    req.device = cpuBtn.getToggleState() ? "cpu" : gpuBackend_;
+    req.device = defaultInferenceDevice_;
     req.model = getSelectedModel();
     req.dimensionOffsets = std::move(pendingOffsets_);
     req.semanticAxes = axesOverride.empty() ? std::move(pendingAxes_) : std::move(axesOverride);
@@ -744,7 +700,7 @@ void PromptPanel::triggerGeneration()
     auto& pipeInf = processorRef.getPipeInference();
     if (!devicesPopulated && pipeInf.isReady())
     {
-        populateDeviceButtons();
+        populateDeviceChoice();
         populateModelSelector();
     }
 
@@ -755,26 +711,27 @@ void PromptPanel::triggerGeneration()
     auto req = buildInferenceRequest();
     auto deviceForLabel = req.device.isEmpty() ? pipeInf.getDefaultDevice() : req.device;
     auto modelForLabel = req.model.isEmpty() ? pipeInf.getDefaultModel() : req.model;
-    auto* processor = &processorRef;
+    auto pipePtr = processorRef.getPipeInferencePtr();
     juce::Component::SafePointer<PromptPanel> safeThis(this);
-    std::thread([safeThis, processor, req, deviceForLabel, modelForLabel]()
+    std::thread([safeThis, pipePtr, req, deviceForLabel, modelForLabel]()
     {
-        auto result = processor->getPipeInference().generate(req);
-        juce::MessageManager::callAsync([safeThis, processor, result = std::move(result), req, deviceForLabel, modelForLabel]()
+        auto result = pipePtr->generate(req);
+        juce::MessageManager::callAsync([safeThis, result = std::move(result), req, deviceForLabel, modelForLabel]()
         {
             if (auto* self = safeThis.getComponent())
             {
+                auto& processor = self->processorRef;
                 self->generating = false;
                 self->generateButton.setEnabled(true);
                 if (result.success)
                 {
-                    processor->loadGeneratedAudio(result.audio, 44100.0);
-                    processor->setLastDevice(deviceForLabel);
-                    processor->setLastModel(modelForLabel);
-                    processor->setLastSeed(result.seed);
+                    processor.loadGeneratedAudio(result.audio, 44100.0);
+                    processor.setLastDevice(deviceForLabel);
+                    processor.setLastModel(modelForLabel);
+                    processor.setLastSeed(result.seed);
                     auto promptA = self->promptAEditor.getText().trim();
                     auto promptB = self->promptBEditor.getText().trim();
-                    processor->setLastPrompts(promptA, promptB);
+                    processor.setLastPrompts(promptA, promptB);
                     self->lastGenPromptA_ = promptA;
                     self->lastGenPromptB_ = promptB;
                     self->syncSeedEditorDisplay(result.seed);
@@ -785,7 +742,7 @@ void PromptPanel::triggerGeneration()
 
                     if (!result.embeddingA.empty())
                     {
-                        processor->setLastEmbeddings(result.embeddingA, result.embeddingB);
+                        processor.setLastEmbeddings(result.embeddingA, result.embeddingB);
                         auto baseline = result.embeddingBaseline;
                         if (baseline.size() != result.embeddingA.size())
                         {
@@ -833,36 +790,37 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
         ? processorRef.getPipeInference().getDefaultDevice() : req.device;
     auto modelForLabel = req.model.isEmpty()
         ? processorRef.getPipeInference().getDefaultModel() : req.model;
-    auto* processor = &processorRef;
+    auto pipePtr = processorRef.getPipeInferencePtr();
     juce::Component::SafePointer<PromptPanel> safeThis(this);
-    std::thread([safeThis, processor, req, deviceForLabel, modelForLabel]()
+    std::thread([safeThis, pipePtr, req, deviceForLabel, modelForLabel]()
     {
-        auto result = processor->getPipeInference().generate(req);
-        juce::MessageManager::callAsync([safeThis, processor, result = std::move(result), req, deviceForLabel, modelForLabel]()
+        auto result = pipePtr->generate(req);
+        juce::MessageManager::callAsync([safeThis, result = std::move(result), req, deviceForLabel, modelForLabel]()
         {
             if (auto* self = safeThis.getComponent())
             {
+                auto& processor = self->processorRef;
                 self->generating = false;
                 self->generateButton.setEnabled(true);
                 if (result.success)
                 {
                     auto newAudio = result.audio;
-                    float xfadeMs = processor->getValueTreeState()
+                    float xfadeMs = processor.getValueTreeState()
                         .getRawParameterValue(PID::driftCrossfade)->load();
                     int xfadeSamples = juce::roundToInt(xfadeMs * 0.001f * 44100.0f);
                     if (xfadeSamples > 0)
                     {
-                        const auto& oldRaw = processor->getGeneratedAudioRaw();
+                        const auto& oldRaw = processor.getGeneratedAudioRaw();
                         if (oldRaw.getNumSamples() > 0)
                             applyDriftCrossfade(newAudio, oldRaw, xfadeSamples);
                     }
-                    processor->loadGeneratedAudio(newAudio, 44100.0);
+                    processor.loadGeneratedAudio(newAudio, 44100.0);
                     auto promptA = self->promptAEditor.getText().trim();
                     auto promptB = self->promptBEditor.getText().trim();
-                    processor->setLastDevice(deviceForLabel);
-                    processor->setLastModel(modelForLabel);
-                    processor->setLastSeed(result.seed);
-                    processor->setLastPrompts(promptA, promptB);
+                    processor.setLastDevice(deviceForLabel);
+                    processor.setLastModel(modelForLabel);
+                    processor.setLastSeed(result.seed);
+                    processor.setLastPrompts(promptA, promptB);
                     self->lastGenPromptA_ = promptA;
                     self->lastGenPromptB_ = promptB;
                     self->syncSeedEditorDisplay(result.seed);
@@ -871,7 +829,7 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
 
                     if (!result.embeddingA.empty())
                     {
-                        processor->setLastEmbeddings(result.embeddingA, result.embeddingB);
+                        processor.setLastEmbeddings(result.embeddingA, result.embeddingB);
                         auto baseline = result.embeddingBaseline;
                         if (baseline.size() != result.embeddingA.size())
                         {

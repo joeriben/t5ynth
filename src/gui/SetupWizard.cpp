@@ -705,15 +705,19 @@ void SettingsPage::startDownload()
     {
         auto& km = kKnownModels[idx];
         auto licenseUrl = juce::String(km.licenseUrl);
+        juce::Component::SafePointer<SettingsPage> safeThis(this);
         juce::AlertWindow::showOkCancelBox(
             juce::MessageBoxIconType::InfoIcon,
             juce::String(km.displayName) + " -- License",
             juce::String(km.licenseNotice) + "\n\nFull license:\n" + licenseUrl,
             "Accept & Download", "Cancel", this,
-            juce::ModalCallbackFunction::create([this](int result) {
+            juce::ModalCallbackFunction::create([safeThis](int result) {
                 if (result == 1) {
-                    licenseAccepted_ = true;
-                    startDownload();  // re-enter, this time skips dialog
+                    if (auto* self = safeThis.getComponent())
+                    {
+                        self->licenseAccepted_ = true;
+                        self->startDownload();  // re-enter, this time skips dialog
+                    }
                 }
             }));
         return;  // async — startDownload will be called again from callback
@@ -838,16 +842,22 @@ void SettingsPage::downloadGhReleaseInThread()
     for (auto& f : kFiles) total += f.expectedSize;
     totalBytes = total;
     downloadedBytes = 0;
+    downloadCounter_ = std::make_shared<std::atomic<int64_t>>(0);
+    downloadCancelFlag_ = std::make_shared<std::atomic<bool>>(false);
     startTimer(250);
 
     juce::Component::SafePointer<SettingsPage> safeThis(this);
-    auto* bytesCounter = &downloadedBytes;
-    std::thread([safeThis, bytesCounter, ghBase, targetDir]()
+    auto progressCounter = downloadCounter_;
+    auto cancelFlag = downloadCancelFlag_;
+    std::thread([safeThis, progressCounter, cancelFlag, ghBase, targetDir]()
     {
         int64_t bytesCompleted = 0;
 
         for (int i = 0; i < kNumFiles; ++i)
         {
+            if (cancelFlag && cancelFlag->load())
+                return;
+
             auto& gf = kFiles[i];
             auto fileName = juce::String(gf.name);
             auto targetFile = targetDir.getChildFile(fileName);
@@ -856,7 +866,7 @@ void SettingsPage::downloadGhReleaseInThread()
             if (targetFile.existsAsFile() && targetFile.getSize() > gf.expectedSize * 9 / 10)
             {
                 bytesCompleted += gf.expectedSize;
-                bytesCounter->store(bytesCompleted);
+                if (progressCounter) progressCounter->store(bytesCompleted);
                 continue;
             }
 
@@ -898,16 +908,18 @@ void SettingsPage::downloadGhReleaseInThread()
             int64_t written = 0;
             while (true)
             {
+                if (cancelFlag && cancelFlag->load())
+                    return;
                 auto bytesRead = stream->read(buffer, sizeof(buffer));
                 if (bytesRead <= 0) break;
                 outStream->write(buffer, static_cast<size_t>(bytesRead));
                 written += bytesRead;
-                bytesCounter->store(bytesCompleted + written);
+                if (progressCounter) progressCounter->store(bytesCompleted + written);
             }
             outStream.reset();
 
             bytesCompleted += juce::jmax(written, gf.expectedSize);
-            bytesCounter->store(bytesCompleted);
+            if (progressCounter) progressCounter->store(bytesCompleted);
         }
 
         juce::MessageManager::callAsync([safeThis]() {
@@ -944,16 +956,22 @@ void SettingsPage::downloadAllFilesInThread()
     auto targetDir = getAppSupportModelDir(modelId);
     auto files = filesToDownload;  // copy for thread
 
+    downloadCounter_ = std::make_shared<std::atomic<int64_t>>(0);
+    downloadCancelFlag_ = std::make_shared<std::atomic<bool>>(false);
     startTimer(250);  // timer updates progress bar from atomic downloadedBytes
 
     juce::Component::SafePointer<SettingsPage> safeThis(this);
-    auto* bytesCounter = &downloadedBytes;
-    std::thread([safeThis, bytesCounter, hfRepo, targetDir, files]()
+    auto progressCounter = downloadCounter_;
+    auto cancelFlag = downloadCancelFlag_;
+    std::thread([safeThis, progressCounter, cancelFlag, hfRepo, targetDir, files]()
     {
         int64_t bytesCompleted = 0;
 
         for (size_t i = 0; i < files.size(); ++i)
         {
+            if (cancelFlag && cancelFlag->load())
+                return;
+
             auto& df = files[i];
             auto targetFile = targetDir.getChildFile(df.remotePath);
             targetFile.getParentDirectory().createDirectory();
@@ -963,7 +981,7 @@ void SettingsPage::downloadAllFilesInThread()
                 && (df.size == 0 || targetFile.getSize() >= df.size * 9 / 10))
             {
                 bytesCompleted += df.size;
-                bytesCounter->store(bytesCompleted);
+                if (progressCounter) progressCounter->store(bytesCompleted);
                 continue;
             }
 
@@ -1010,15 +1028,18 @@ void SettingsPage::downloadAllFilesInThread()
 
             char buffer[65536];
             int64_t written = 0;
-            while (!juce::Thread::currentThreadShouldExit())
+            while (!(cancelFlag && cancelFlag->load()))
             {
                 auto bytesRead = stream->read(buffer, sizeof(buffer));
                 if (bytesRead <= 0) break;
                 outStream->write(buffer, static_cast<size_t>(bytesRead));
                 written += bytesRead;
-                bytesCounter->store(bytesCompleted + written);
+                if (progressCounter) progressCounter->store(bytesCompleted + written);
             }
             outStream.reset();
+
+            if (cancelFlag && cancelFlag->load())
+                return;
 
             // Check for server error responses (HTML/JSON error instead of data)
             if (written > 0 && written < 100000 && df.size > 100000)
@@ -1071,7 +1092,7 @@ void SettingsPage::downloadAllFilesInThread()
             }
 
             bytesCompleted += juce::jmax(written, df.size);
-            bytesCounter->store(bytesCompleted);
+            if (progressCounter) progressCounter->store(bytesCompleted);
         }
 
         juce::MessageManager::callAsync([safeThis]() {
@@ -1084,6 +1105,8 @@ void SettingsPage::downloadAllFilesInThread()
 void SettingsPage::timerCallback()
 {
     if (!downloading) { stopTimer(); return; }
+    if (downloadCounter_)
+        downloadedBytes.store(downloadCounter_->load());
     if (totalBytes > 0)
         downloadProgress = static_cast<double>(downloadedBytes.load()) / static_cast<double>(totalBytes);
 }
@@ -1092,6 +1115,10 @@ void SettingsPage::onDownloadFinished(bool success, const juce::String& error)
 {
     stopTimer();
     downloading = false;
+    if (downloadCancelFlag_)
+        downloadCancelFlag_->store(true);
+    downloadCounter_.reset();
+    downloadCancelFlag_.reset();
     downloadButton.setEnabled(true);
     scanButton.setEnabled(true);
     browseButton.setEnabled(true);

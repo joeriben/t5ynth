@@ -14,7 +14,12 @@ class SettingsPage : public juce::Component,
 {
 public:
     SettingsPage();
-    ~SettingsPage() override { stopTimer(); }
+    ~SettingsPage() override
+    {
+        stopTimer();
+        if (downloadCancelFlag_)
+            downloadCancelFlag_->store(true);
+    }
 
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -99,6 +104,8 @@ private:
     std::atomic<bool> downloading { false };
     std::atomic<bool> modelInstallBusy_ { false };
     bool licenseAccepted_ = false;
+    std::shared_ptr<std::atomic<int64_t>> downloadCounter_;
+    std::shared_ptr<std::atomic<bool>> downloadCancelFlag_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SettingsPage)
 };

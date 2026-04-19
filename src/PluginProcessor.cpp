@@ -35,7 +35,7 @@ T5ynthProcessor::~T5ynthProcessor() = default;
 
 bool T5ynthProcessor::launchPipeInference(const juce::File& backendDir)
 {
-    return pipeInference.launch(backendDir);
+    return pipeInference->launch(backendDir);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParameterLayout()
@@ -2014,7 +2014,6 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     synth->setProperty("steps", static_cast<int>(get(PID::infSteps)));
     synth->setProperty("cfg", get(PID::genCfg));
     synth->setProperty("seed", static_cast<int>(get(PID::genSeed)));
-    synth->setProperty("device", lastDevice);
     synth->setProperty("model", lastModel);
     synth->setProperty("hfBoost", get(PID::genHfBoost) > 0.5f);
     root->setProperty("synth", synth.get());

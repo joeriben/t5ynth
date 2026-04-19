@@ -160,6 +160,7 @@ juce::String PipeInference::findPython(const juce::File& backendDir) const
 
 bool PipeInference::isConnected() const
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
    #ifdef _WIN32
     return hChildStdinWr_ != INVALID_HANDLE_VALUE;
    #else
@@ -169,6 +170,7 @@ bool PipeInference::isConnected() const
 
 bool PipeInference::isChildAlive() const
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
 #ifdef _WIN32
     if (hProcess_ == INVALID_HANDLE_VALUE) return false;
     DWORD exitCode = 0;
@@ -184,6 +186,7 @@ bool PipeInference::isChildAlive() const
 
 bool PipeInference::tryRestart()
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     juce::Logger::writeToLog("PipeInference: attempting restart...");
     shutdown();
     if (backendDir_.exists())
@@ -193,6 +196,7 @@ bool PipeInference::tryRestart()
 
 bool PipeInference::launch(const juce::File& backendDir)
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     // Atomic guard: only one launch() may run at a time
     bool expected = false;
     if (!launching_.compare_exchange_strong(expected, true))
@@ -472,6 +476,7 @@ bool PipeInference::launch(const juce::File& backendDir)
 
 void PipeInference::shutdown()
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     ready_ = false;
 #ifdef _WIN32
     if (hChildStdinWr_ != INVALID_HANDLE_VALUE) { CloseHandle(hChildStdinWr_); hChildStdinWr_ = INVALID_HANDLE_VALUE; }
@@ -575,6 +580,7 @@ bool PipeInference::writeExact(const void* src, int numBytes)
 
 PipeInference::Result PipeInference::generate(const Request& request)
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     Result result;
 
     // Check if subprocess is alive, auto-restart if dead
@@ -652,7 +658,7 @@ PipeInference::Result PipeInference::generate(const Request& request)
         return result;
     }
 
-    // Read response status byte (3 min timeout for dual-pipeline startup)
+    // Read response status byte (3 min timeout for long first-request warm loads)
     char status = 0;
     if (!readExact(&status, 1, 180000))
     {
@@ -734,6 +740,7 @@ PipeInference::Result PipeInference::generate(const Request& request)
 
 bool PipeInference::preload(const juce::String& model, const juce::String& device)
 {
+    const std::lock_guard<std::recursive_mutex> lock(stateMutex_);
     if (!ready_ || !isConnected()) return false;
 
     auto json = juce::DynamicObject::Ptr(new juce::DynamicObject());
