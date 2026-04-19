@@ -282,7 +282,6 @@ void MainPanel::tryLoadInferenceModels(bool forceRestart)
     statusBar.setStatusText(forceRestart ? "Refreshing inference..." : "Loading inference...");
     settingsPage.setBackendStarting();
 
-    auto* processor = &processorRef;
     const auto bundledBackendMode = juce::SystemStats::getEnvironmentVariable("T5YNTH_REQUIRE_BUNDLED_BACKEND", {})
                                         .trim();
     const auto forceBundledBackend = bundledBackendMode.equalsIgnoreCase("1")
@@ -402,13 +401,14 @@ void MainPanel::tryLoadInferenceModels(bool forceRestart)
     if (backendDir.exists())
     {
         juce::Component::SafePointer<MainPanel> safeThis(this);
-        std::thread([safeThis, processor, backendDir, forceRestart]()
+        auto pipePtr = processorRef.getPipeInferencePtr();
+        std::thread([safeThis, pipePtr, backendDir, forceRestart]()
         {
             if (forceRestart)
-                processor->getPipeInference().shutdown();
+                pipePtr->shutdown();
 
-            bool ok = processor->launchPipeInference(backendDir);
-            auto errorMsg = ok ? juce::String() : processor->getPipeInference().getLastError();
+            bool ok = pipePtr->launch(backendDir);
+            auto errorMsg = ok ? juce::String() : pipePtr->getLastError();
             juce::MessageManager::callAsync([safeThis, ok, errorMsg]()
             {
                 if (auto* self = safeThis.getComponent())

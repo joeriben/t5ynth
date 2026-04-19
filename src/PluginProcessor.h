@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <array>
+#include <memory>
 #include <limits>
 #include "dsp/VoiceManager.h"
 #include "dsp/LFO.h"
@@ -53,10 +54,11 @@ public:
     void reloadProcessedAudio(const juce::AudioBuffer<float>& processed);
 
     // Inference (Python subprocess)
-    bool isInferenceReady() const { return pipeInference.isReady(); }
-    PipeInference& getPipeInference() { return pipeInference; }
+    bool isInferenceReady() const { return pipeInference->isReady(); }
+    PipeInference& getPipeInference() { return *pipeInference; }
+    std::shared_ptr<PipeInference> getPipeInferencePtr() { return pipeInference; }
     bool launchPipeInference(const juce::File& backendDir);
-    bool isPipeInferenceReady() const { return pipeInference.isReady(); }
+    bool isPipeInferenceReady() const { return pipeInference->isReady(); }
 
     // Last device/model used for generation (for preset tagging)
     void setLastDevice(const juce::String& dev) { lastDevice = dev; }
@@ -154,7 +156,7 @@ private:
     float lastGenMutation = -1.0f;
 
     // Inference (Python subprocess)
-    PipeInference pipeInference;
+    std::shared_ptr<PipeInference> pipeInference = std::make_shared<PipeInference>();
     juce::String lastDevice;
     juce::String lastModel;
 

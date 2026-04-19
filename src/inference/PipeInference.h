@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <atomic>
+#include <mutex>
 #include <vector>
 #include <utility>
 #include <map>
@@ -90,6 +91,7 @@ public:
     bool isConnected() const;
 
 private:
+    mutable std::recursive_mutex stateMutex_;
     std::atomic<bool> ready_ { false };
     std::atomic<bool> launching_ { false };  // prevents concurrent launch() calls
    #ifdef _WIN32

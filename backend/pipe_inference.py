@@ -7,7 +7,8 @@ Protocol:
   Error:    \x00 + uint32 length + UTF-8 message
   Ready:    \x02 + uint16 length + JSON {"devices": [...], "default": "..."}
 
-Loads one pipeline per available device (MPS, CUDA, CPU) for instant switching.
+Loads one startup pipeline on the preferred device and lazy-loads additional
+device/model combinations on demand.
 Noise generation is patched to use numpy PCG64 for cross-platform determinism
 (same seed → same audio on CPU, CUDA, ARM, x86).
 """
@@ -351,17 +352,18 @@ def _load_native_pipeline(model_dir, device):
 
 
 def load_default_model(model_name, devices):
-    """Eagerly load the default model on all devices. Returns list of loaded devices."""
-    loaded = []
+    """Load the default model on the first working device. Returns that device."""
+    failures = []
     for dev in devices:
         try:
             get_pipeline(model_name, dev)
-            loaded.append(dev)
+            return dev
         except Exception as e:
-            log.warning(f"Failed to load {model_name} on {dev}: {e}")
-    if not loaded:
-        raise RuntimeError(f"Could not load {model_name} on any device")
-    return loaded
+            msg = f"{dev}: {e}"
+            failures.append(msg)
+            log.warning(f"Failed to load {model_name} on {msg}")
+    failure_summary = "; ".join(failures) if failures else "no devices"
+    raise RuntimeError(f"Could not load {model_name} on any device ({failure_summary})")
 
 
 def startup_model_candidates(models):
@@ -380,8 +382,8 @@ def choose_startup_model(models, devices):
     failures = []
     for model_name in startup_model_candidates(models):
         try:
-            loaded_devices = load_default_model(model_name, devices)
-            return model_name, loaded_devices, failures
+            default_device = load_default_model(model_name, devices)
+            return model_name, default_device, failures
         except Exception as e:
             msg = f"{model_name}: {e}"
             failures.append(msg)
@@ -1046,16 +1048,15 @@ def main():
     devices = available_devices()
 
     try:
-        default_model, loaded_devices, startup_failures = choose_startup_model(_available_models, devices)
+        default_model, default_device, startup_failures = choose_startup_model(_available_models, devices)
     except Exception as e:
         log.error(f"Failed to load default model: {e}")
         send_error(f"Pipeline load failed: {e}")
         return
 
-    default_device = loaded_devices[0]
-    send_ready(loaded_devices, default_device, _available_models, default_model)
+    send_ready(devices, default_device, _available_models, default_model)
     log.info(f"Ready. Models: {list(_available_models.keys())}, default: {default_model}, "
-             f"devices: {loaded_devices}, default device: {default_device}")
+             f"devices: {devices}, default device: {default_device}")
     if startup_failures:
         log.warning(f"Skipped unusable startup models: {startup_failures}")
 

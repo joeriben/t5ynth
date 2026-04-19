@@ -22,7 +22,6 @@ bool PresetFormat::saveToFile(const juce::File& file, T5ynthProcessor& processor
         synth->setProperty("promptA", processor.getLastPromptA());
         synth->setProperty("promptB", processor.getLastPromptB());
         synth->setProperty("seed", processor.getLastSeed());
-        synth->setProperty("device", processor.getLastDevice());
         synth->setProperty("model", processor.getLastModel());
         auto genSeed = static_cast<int>(processor.getValueTreeState()
                            .getRawParameterValue(PID::genSeed)->load());
