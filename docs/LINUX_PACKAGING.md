@@ -1,0 +1,176 @@
+# Linux Packaging
+
+This document covers the Linux installer/distribution path for T5ynth.
+
+Current scope:
+
+- Fedora RPM for the **standalone app**
+- isolated bundled Python backend included under `/opt/T5ynth/backend/`
+- desktop entry, icon, wrapper, and a lightweight preflight helper
+- named backend bundle selection via `bundle-id`
+
+The first RPM path is intentionally standalone-only. VST3 remains a separate
+archive/distribution path for now.
+
+## 1. Why RPM first
+
+For T5ynth, Fedora RPMs are a better first Linux package target than AppImage:
+
+- Fedora 42 is the immediate target environment.
+- RPM can express runtime dependencies like `gtk3` and `webkit2gtk4.1`.
+- No macOS-style notarization or Developer ID workflow is required.
+- The app already has a natural install layout: binary plus sibling backend.
+
+The critical packaging rule is:
+
+- the target host does **not** build Python/Torch
+- the target host does **not** need a project `.venv`
+- the target host does **not** rely on any globally installed PyTorch
+- a build host or CI produces the backend bundle once, and the RPM wraps it
+
+In other words:
+
+- the release/build pipeline builds backend bundles
+- the Fedora packager selects a named release-built bundle
+- the target installer only installs that selected bundle
+
+## 2. Package layout
+
+The RPM installs:
+
+```text
+/opt/T5ynth/T5ynth
+/opt/T5ynth/backend/*
+/usr/bin/t5ynth
+/usr/bin/t5ynth-preflight
+/usr/share/applications/t5ynth.desktop
+/usr/share/icons/hicolor/1024x1024/apps/t5ynth.png
+/usr/share/licenses/t5ynth/{LICENSE.txt,THIRD_PARTY_LICENSES.txt}
+```
+
+The wrapper at `/usr/bin/t5ynth` simply launches `/opt/T5ynth/T5ynth`.
+The app keeps its expected sibling-backend layout, so no runtime path rewrite
+is needed.
+
+## 3. What must exist before packaging
+
+The RPM packager expects two prebuilt artefacts:
+
+- the standalone app binary:
+  `build_clean/T5ynth_artefacts/Release/Standalone/T5ynth`
+- the isolated backend bundle:
+  `archives/linux-bundles/<bundle-id>/backend/pipe_inference`
+
+That backend bundle is produced on a build host or in CI, not on the target
+install machine. The build-host/source-build path is documented in
+[`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md) and
+[`DEV_BUILD.md`](DEV_BUILD.md).
+
+## 4. Stage a named release bundle
+
+The packaging host should stage the already-built backend into a named bundle
+slot before building the RPM:
+
+```bash
+installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda
+```
+
+This copies `backend/dist/pipe_inference/` into:
+
+```text
+archives/linux-bundles/fedora42-x86_64-cuda/
+```
+
+and writes a `bundle.env` metadata file beside it. That metadata is then
+installed into `/opt/T5ynth/backend/bundle.env` for runtime inspection.
+
+## 5. Build the RPM
+
+Prerequisites:
+
+- `rpmbuild` available on the packaging host
+- the prebuilt standalone binary
+- the staged named backend bundle
+
+Run:
+
+```bash
+installer/linux/build_rpm.sh
+```
+
+Outputs land under:
+
+```text
+archives/rpm/rpmbuild/RPMS/x86_64/
+```
+
+Useful flags:
+
+```bash
+installer/linux/build_rpm.sh --skip-build
+installer/linux/build_rpm.sh --bundle-id fedora42-x86_64-cuda
+installer/linux/build_rpm.sh --build-dir build_clean --bundle-id fedora42-x86_64-cuda --version 1.0.0
+installer/linux/build_rpm.sh --build-dir build_clean --backend-bundle /path/to/pipe_inference --version 1.0.0
+```
+
+By default the packager selects:
+
+```text
+archives/linux-bundles/<bundle-id>/backend/
+```
+
+`--backend-bundle` is an override for ad-hoc packaging hosts. The preferred
+release path is the named bundle slot plus `bundle.env`.
+
+## 6. Install and validate
+
+Install locally with:
+
+```bash
+sudo dnf install ./archives/rpm/rpmbuild/RPMS/x86_64/t5ynth-*.rpm
+```
+
+Run the installed preflight:
+
+```bash
+t5ynth-preflight
+```
+
+Launch:
+
+```bash
+t5ynth
+```
+
+## 7. Runtime model
+
+The RPM does **not** touch or depend on a global Python/Torch installation.
+The bundled backend under `/opt/T5ynth/backend/` carries its own isolated ML
+runtime. The host must still provide:
+
+- a working NVIDIA driver if CUDA is expected
+- standard Linux runtime libraries such as GTK, WebKit, ALSA, and libcurl
+
+The RPM does **not** bundle the NVIDIA driver. CUDA usability is a host-level
+concern and must be checked on the target machine.
+
+Recommended host checks:
+
+```bash
+nvidia-smi
+t5ynth-preflight
+```
+
+If `nvidia-smi` fails, do not silently treat that as “CPU is fine”. Fix the
+driver stack first if the target install is meant to be a CUDA machine.
+
+`t5ynth-preflight` also prints the installed `bundle-id` from
+`/opt/T5ynth/backend/bundle.env`, so package/runtime mismatches are easier to
+debug.
+
+## 8. Known limits of the first RPM path
+
+- standalone only, no VST3 packaging yet
+- Fedora-focused dependency metadata
+- no CI artifact upload yet for RPMs
+- model weights are still installed separately after launch

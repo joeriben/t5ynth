@@ -1,8 +1,11 @@
 # T5ynth on Linux
 
-This is the current Linux install path for T5ynth. There is no native `.rpm`,
-`.deb`, or AppImage installer yet. On Linux, the supported path today is a
-source build plus a bundled Python backend.
+This document is the Linux **developer / build-host** path for T5ynth. It is
+for people who need to build the standalone app and the isolated backend bundle
+from source.
+
+It is **not** the production installer path. End-user / production packaging
+belongs in [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md).
 
 The reference distro in this document is Fedora 42 Workstation on x86_64. The
 same source build also works on Ubuntu 24.04 with the package set documented in
@@ -24,6 +27,8 @@ sudo dnf install -y \
 
 If you prefer a scripted setup, the repo now includes
 [`tools/setup_fedora42.sh`](../tools/setup_fedora42.sh).
+That script is build-host-only: it installs Fedora development packages and
+creates a repo-local `.venv`. Do not treat it as the Linux installer.
 
 Before you start, check the package names on the target machine:
 
@@ -95,6 +100,16 @@ cd ..
 
 Expected output: `backend/dist/pipe_inference/pipe_inference`
 
+This one-folder PyInstaller output is the isolated backend bundle later
+consumed by the Linux RPM packager.
+
+On the packaging/release host, the next step is to stage it into a named
+bundle slot with:
+
+```bash
+installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda
+```
+
 ## 5. Build T5ynth
 
 ```bash
@@ -134,6 +149,10 @@ Run it with:
 ```bash
 ./dist/T5ynth/T5ynth
 ```
+
+For the Fedora installer path, this same backend bundle is first staged into a
+named release bundle and then wrapped into the RPM described in
+[`LINUX_PACKAGING.md`](LINUX_PACKAGING.md).
 
 ## 7. Model installation on Linux
 

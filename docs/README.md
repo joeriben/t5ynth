@@ -11,7 +11,8 @@ This directory contains two kinds of files: current contributor reference materi
 Files in this directory:
 
 - [`DEV_BUILD.md`](DEV_BUILD.md) — Cross-platform build setup (macOS, Linux, Windows 11).
-- [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md) — Current Linux / Fedora 42 source-install path.
+- [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md) — Linux / Fedora 42 source build path for developers and build hosts.
+- [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md) — Fedora RPM packaging path using a named prebuilt isolated backend bundle.
 - [`MACOS_INSTALLATION.md`](MACOS_INSTALLATION.md) — End-user macOS installer and Gatekeeper override notes.
 - [`IPC_PROTOCOL.md`](IPC_PROTOCOL.md) — JUCE ↔ Python binary pipe protocol specification.
 - [`ADDING_A_MODEL.md`](ADDING_A_MODEL.md) — HOWTO for adding a new inference engine.
@@ -63,7 +64,9 @@ In `docs/`:
 ## I want to…
 
 - …build T5ynth locally → [`DEV_BUILD.md`](DEV_BUILD.md)
-- …install T5ynth on Fedora / Linux → [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md)
+- …install packaged T5ynth on Fedora / Linux → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
+- …build T5ynth from source on Fedora / Linux → [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md)
+- …build a Fedora RPM → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
 - …install the current macOS build → [`MACOS_INSTALLATION.md`](MACOS_INSTALLATION.md)
 - …understand the code layout → [`/ARCHITECTURE.md`](../ARCHITECTURE.md)
 - …add a new diffusion model → [`ADDING_A_MODEL.md`](ADDING_A_MODEL.md)

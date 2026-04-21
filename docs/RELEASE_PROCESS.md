@@ -111,6 +111,9 @@ Every job:
      index (`https://download.pytorch.org/whl/cu124`).
 4. Runs `pyinstaller pipe_inference.spec --noconfirm` in `backend/` to
    bundle the Python inference backend.
+   - For Linux packaging, that backend should be staged as a named release
+     bundle and then consumed by the RPM packager, rather than rebuilt on the
+     target machine.
 5. Runs `cmake -B build -DCMAKE_BUILD_TYPE=Release`, then
    `cmake --build build --config Release -j<ncpu>`.
 6. Assembles a distribution directory containing the built binary plus the

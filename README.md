@@ -195,10 +195,15 @@ Presets store everything needed for instant recall: synthesis parameters (JSON),
 The old minimal snippet in this README was not enough to produce a working
 Linux build. The authoritative build guides now live here:
 
-- Linux / Fedora 42 install from source: [docs/LINUX_INSTALLATION.md](docs/LINUX_INSTALLATION.md)
+- Linux / Fedora 42 source build on a developer/build host: [docs/LINUX_INSTALLATION.md](docs/LINUX_INSTALLATION.md)
+- Fedora RPM packaging path from a prebuilt isolated backend bundle: [docs/LINUX_PACKAGING.md](docs/LINUX_PACKAGING.md)
 - Cross-platform developer build guide: [docs/DEV_BUILD.md](docs/DEV_BUILD.md)
 
 ### Quick Source Build
+
+This is the developer/build-host path. It creates a repo-local `.venv`,
+installs Python dependencies there, and freezes the backend bundle locally.
+It is not the target-machine installer path.
 
 ```bash
 # Clone
@@ -227,6 +232,11 @@ cp build_clean/T5ynth_artefacts/Release/Standalone/T5ynth dist/T5ynth/
 cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
 ./dist/T5ynth/T5ynth
 ```
+
+For Fedora packaging/installation, do not rebuild Python/Torch on the target
+machine. Build the isolated backend bundle once on a build host, stage it into
+a named release bundle, then wrap that selected bundle into the RPM described
+in [docs/LINUX_PACKAGING.md](docs/LINUX_PACKAGING.md).
 
 ### Model Download
 

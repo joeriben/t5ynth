@@ -5,7 +5,10 @@ usage() {
     cat <<'EOF'
 Usage: tools/setup_fedora42.sh [--cuda|--cpu] [--skip-system] [--skip-python]
 
-Prepares a Fedora 42 machine for a local T5ynth source build.
+Prepares a Fedora 42 build host for a local T5ynth source build.
+
+This script is developer/build-host only. It is not the Linux installer path
+for end users or production machines.
 
 Options:
   --cuda         Install the CUDA 12.4 PyTorch wheel (default)
@@ -121,7 +124,7 @@ cat <<'EOF'
 
 Fedora 42 setup complete.
 
-Next steps:
+Next steps on the build host:
   source .venv/bin/activate
   cd backend && pyinstaller pipe_inference.spec --noconfirm && cd ..
   cmake -S . -B build_clean -DCMAKE_BUILD_TYPE=Release
@@ -130,4 +133,7 @@ Next steps:
   cp build_clean/T5ynth_artefacts/Release/Standalone/T5ynth dist/T5ynth/
   cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
   ./dist/T5ynth/T5ynth
+
+For a Fedora installer package, stop after creating backend/dist/pipe_inference
+and use installer/linux/build_rpm.sh on a packaging host.
 EOF
