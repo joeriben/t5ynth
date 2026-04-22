@@ -73,6 +73,7 @@ slot before building the RPM:
 
 ```bash
 installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda
+installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda-blackwell
 ```
 
 This copies `backend/dist/pipe_inference/` into:
@@ -83,6 +84,11 @@ archives/linux-bundles/fedora42-x86_64-cuda/
 
 and writes a `bundle.env` metadata file beside it. That metadata is then
 installed into `/opt/T5ynth/backend/bundle.env` for runtime inspection.
+
+Bundle ids must encode the runtime class when CUDA compatibility matters. For
+Blackwell, do not stage or package a vague `...-cuda` bundle. Use an explicit
+id such as `fedora42-x86_64-cuda-blackwell`, and stage it from a backend bundle
+whose internal torch runtime reports CUDA 12.8 or newer.
 
 ## 5. Build the RPM
 
@@ -164,9 +170,10 @@ t5ynth-preflight
 If `nvidia-smi` fails, do not silently treat that as “CPU is fine”. Fix the
 driver stack first if the target install is meant to be a CUDA machine.
 
-`t5ynth-preflight` also prints the installed `bundle-id` from
-`/opt/T5ynth/backend/bundle.env`, so package/runtime mismatches are easier to
-debug.
+`t5ynth-preflight` also prints the installed `bundle-id` and torch/CUDA bundle
+metadata from `/opt/T5ynth/backend/bundle.env`. On Blackwell hosts it fails
+closed if the installed bundle is not explicitly Blackwell-class or if the
+bundled torch runtime is older than CUDA 12.8.
 
 ## 8. Known limits of the first RPM path
 

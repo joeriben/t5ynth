@@ -65,6 +65,15 @@ NVIDIA / CUDA 12.4:
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
+NVIDIA Blackwell:
+
+```bash
+python -m pip install -r backend/requirements-torch-blackwell.txt
+```
+
+That file pins the tested torch triplet used for Blackwell-class GPUs.
+Keep those three packages on the same CUDA 12.8 line.
+
 CPU-only fallback:
 
 ```bash
@@ -108,6 +117,7 @@ bundle slot with:
 
 ```bash
 installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda
+installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda-blackwell
 ```
 
 ## 5. Build T5ynth
@@ -210,3 +220,16 @@ contains leftovers from another Python version, or `torch` was installed from
 the wrong index. Recreate the venv with `python3.11 -m venv .venv --clear`,
 activate it again, run `python --version`, then reinstall `torch` before
 `backend/requirements.txt`.
+
+`CUDA error: no kernel image is available for execution on the device`
+
+Treat that as a build/runtime mismatch first. On Blackwell GPUs, a backend
+bundle built with `torch ... +cu124` is too old and must not be packaged.
+Rebuild the repo-local venv with:
+
+```bash
+bash tools/setup_fedora42.sh --cuda-blackwell
+```
+
+then rebuild and restage the backend bundle with an explicit Blackwell bundle
+id such as `fedora42-x86_64-cuda-blackwell`.

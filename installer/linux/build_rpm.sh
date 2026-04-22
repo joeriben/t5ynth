@@ -209,7 +209,7 @@ cp -a $payload_tree/* %{buildroot}/
 /usr/share/licenses/t5ynth/THIRD_PARTY_LICENSES.txt
 EOF
 
-rpmbuild \
+QA_RPATHS=$((0x0010)) rpmbuild \
     --define "_topdir $topdir" \
     --define "_tmppath $tmppath" \
     -bb "$specfile"

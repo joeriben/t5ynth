@@ -216,6 +216,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install pyinstaller
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu124   # Linux/Windows NVIDIA
+# python -m pip install -r backend/requirements-torch-blackwell.txt               # NVIDIA Blackwell build hosts
 # python -m pip install torch                                                   # macOS or CPU-only fallback
 python -m pip install -r backend/requirements.txt
 

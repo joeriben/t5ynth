@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: tools/setup_fedora42.sh [--cuda|--cpu] [--skip-system] [--skip-python]
+Usage: tools/setup_fedora42.sh [--cuda|--cuda-blackwell|--cpu] [--skip-system] [--skip-python]
 
 Prepares a Fedora 42 build host for a local T5ynth source build.
 
@@ -11,7 +11,9 @@ This script is developer/build-host only. It is not the Linux installer path
 for end users or production machines.
 
 Options:
-  --cuda         Install the CUDA 12.4 PyTorch wheel (default)
+  --cuda         Install the generic CUDA 12.4 PyTorch wheel
+  --cuda-blackwell
+                 Install the pinned Blackwell PyTorch stack (CUDA 12.8)
   --cpu          Install the CPU-only PyTorch wheel
   --skip-system  Skip dnf package installation
   --skip-python  Skip venv and pip installation
@@ -43,10 +45,27 @@ warn_low_memory() {
     fi
 }
 
+detect_host_gpu_family() {
+    if ! command -v nvidia-smi >/dev/null 2>&1; then
+        printf '%s\n' "unknown"
+        return 0
+    fi
+
+    if nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | grep -qi 'Blackwell'; then
+        printf '%s\n' "blackwell"
+        return 0
+    fi
+
+    printf '%s\n' "generic"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cuda)
             torch_mode="cuda"
+            ;;
+        --cuda-blackwell)
+            torch_mode="cuda-blackwell"
             ;;
         --cpu)
             torch_mode="cpu"
@@ -83,6 +102,7 @@ fi
 
 require_cmd git
 warn_low_memory
+host_gpu_family="$(detect_host_gpu_family)"
 
 if [[ $skip_system -eq 0 ]]; then
     require_cmd sudo
@@ -103,6 +123,13 @@ if [[ $skip_python -eq 0 ]]; then
         echo "python3.11 is required for this setup script. Install it first." >&2
         exit 1
     fi
+
+    if [[ "$torch_mode" == "cuda" && "$host_gpu_family" == "blackwell" ]]; then
+        echo "Detected a Blackwell GPU on this build host." >&2
+        echo "Refusing the generic cu124 torch path. Use --cuda-blackwell so the repo-local venv gets the pinned Blackwell torch stack." >&2
+        exit 1
+    fi
+
     python3.11 -m venv .venv --clear
     # shellcheck disable=SC1091
     source .venv/bin/activate
@@ -113,6 +140,8 @@ if [[ $skip_python -eq 0 ]]; then
 
     if [[ "$torch_mode" == "cuda" ]]; then
         python -m pip install torch --index-url https://download.pytorch.org/whl/cu124
+    elif [[ "$torch_mode" == "cuda-blackwell" ]]; then
+        python -m pip install -r backend/requirements-torch-blackwell.txt
     else
         python -m pip install torch
     fi
@@ -136,4 +165,8 @@ Next steps on the build host:
 
 For a Fedora installer package, stop after creating backend/dist/pipe_inference
 and use installer/linux/build_rpm.sh on a packaging host.
+
+If the target bundle is for Blackwell GPUs, stage it with an explicit bundle id,
+for example:
+  installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda-blackwell
 EOF
