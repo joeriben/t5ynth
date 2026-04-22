@@ -5,6 +5,17 @@
 #include "BinaryData.h"
 #include <thread>
 
+namespace
+{
+const char* const kBundledPresetNames[] = {
+    "DEMO T5-Oscillator-Drift.t5p",
+    "Evil Beauty.t5p",
+    "INIT.t5p",
+    "Samba Getdown.t5p",
+    "Talking about aliens.t5p",
+};
+}
+
 MainPanel::MainPanel(T5ynthProcessor& processor)
     : processorRef(processor),
       promptPanel(processor),
@@ -770,18 +781,16 @@ void MainPanel::ensureBundledPresetsExist()
 {
     auto userDir = PresetFormat::getUserPresetsDirectory();
 
-    struct BundledPreset { const char* data; int size; const char* fileName; };
-    const BundledPreset bundled[] = {
-        { BinaryData::DEMO_T5OscillatorDrift_t5p,
-          BinaryData::DEMO_T5OscillatorDrift_t5pSize,
-          "DEMO T5-Oscillator-Drift.t5p" },
-    };
-
-    for (auto& bp : bundled)
+    for (auto* presetName : kBundledPresetNames)
     {
-        auto target = userDir.getChildFile(bp.fileName);
+        int size = 0;
+        auto* data = BinaryData::getNamedResource(presetName, size);
+        if (data == nullptr || size <= 0)
+            continue;
+
+        auto target = userDir.getChildFile(presetName);
         if (!target.existsAsFile())
-            target.replaceWithData(bp.data, static_cast<size_t>(bp.size));
+            target.replaceWithData(data, static_cast<size_t>(size));
     }
 }
 
