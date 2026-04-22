@@ -121,6 +121,7 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     setupVelMode(*env.aRow, env.aVelModeHidden, aVelModeId, apvts, env.aVelModeA);
     setupVelMode(*env.dRow, env.dVelModeHidden, dVelModeId, apvts, env.dVelModeA);
     setupVelMode(*env.rRow, env.rVelModeHidden, rVelModeId, apvts, env.rVelModeA);
+    env.velRow->setLabelMode(SliderRow::LabelMode::Positive);
 
     // Trigger initial value display
     env.aRow->updateValue();

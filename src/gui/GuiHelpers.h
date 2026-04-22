@@ -331,14 +331,28 @@ public:
         return false;
     }
 
-    void paintOverChildren(juce::Graphics& g) override
+    void paint(juce::Graphics& g) override
     {
-        if (labelMode == LabelMode::Negative)
+        auto lb = label.getBounds().toFloat();
+        if (lb.isEmpty())
+            return;
+
+        if (labelMode == LabelMode::Positive)
+        {
+            g.setColour(trackCol);
+            g.fillRect(lb);
+            g.setColour(trackCol.brighter(0.15f));
+            g.drawRect(lb, 1.0f);
+        }
+        else if (labelMode == LabelMode::Negative)
         {
             g.setColour(juce::Colour(0xccff9800));
-            g.drawRect(label.getBounds().toFloat().reduced(0.5f), 1.0f);
+            g.drawRect(lb.reduced(0.5f), 1.0f);
         }
+    }
 
+    void paintOverChildren(juce::Graphics& g) override
+    {
         if (std::isnan(ghostSmoothed)) return;
 
         auto sb = slider.getBounds();
@@ -464,7 +478,9 @@ private:
     void updateLabelAppearance()
     {
         juce::Colour textColour = kDimmer;
-        if (labelMode == LabelMode::Positive || labelMode == LabelMode::Negative)
+        if (labelMode == LabelMode::Positive)
+            textColour = juce::Colours::white;
+        else if (labelMode == LabelMode::Negative)
             textColour = kDim;
         label.setColour(juce::Label::textColourId, textColour);
     }
