@@ -97,21 +97,22 @@ On `main` and pull requests, three platforms build in parallel. On tag pushes,
 only the macOS job runs and the `release` job waits for that macOS job
 (`needs: [macos]`).
 
-| Job       | Runner           | Targets                               |
-|-----------|------------------|---------------------------------------|
-| `macos`   | `macos-14`       | macOS app + `.pkg` installer          |
-| `linux`   | `ubuntu-latest`  | Linux base standalone + VST3 archives |
-| `windows` | `windows-latest` | App, VST3                             |
+| Job       | Runner           | Targets                                             |
+|-----------|------------------|-----------------------------------------------------|
+| `macos`   | `macos-14`       | macOS app + `.pkg` installer                        |
+| `linux`   | `ubuntu-latest`  | Linux base standalone + VST3 archives + Ubuntu `.deb` artifact |
+| `windows` | `windows-latest` | App, VST3                                           |
 
 Important distinction:
 
-- The Ubuntu `linux` job is the **Linux base build layer**. It produces the
-  common Linux app/backend layout as `.tar.xz` artefacts and does not yet
-  publish a distro-specific package.
+- The Ubuntu `linux` job is still the **Linux base build layer**, producing the
+  common Linux app/backend layout as `.tar.xz` artefacts.
+- That same Ubuntu job now also materialises one package-layer consumer of that
+  layout: the Ubuntu/Debian `.deb` CI artefact.
 - Fedora RPM packaging and Ubuntu/Debian `.deb` packaging are **Linux package
   layers** built from that same layout contract plus a named staged backend
-  bundle. They are documented in [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
-  and are currently validated outside GitHub Actions.
+  bundle. They are documented in [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md).
+- Fedora RPM remains outside GitHub Actions for now.
 
 Every job:
 
@@ -130,7 +131,9 @@ Every job:
 6. Assembles a distribution directory containing the built binary plus the
    bundled backend under `backend/`.
 7. Creates `.tar.xz` archives on the build machine (see §5).
-8. Uploads each archive with `actions/upload-artifact@v4`.
+8. On the Ubuntu Linux job, stages a named backend bundle and builds an Ubuntu
+   `.deb` from the same app/backend layout.
+9. Uploads each archive/package with `actions/upload-artifact@v4`.
 
 ### Linux base-build notes
 
@@ -234,6 +237,12 @@ The current Linux base-archive filenames are:
 ```text
 T5ynth-Linux-Base-x86_64-Standalone.tar.xz
 T5ynth-Linux-Base-x86_64-VST3.tar.xz
+```
+
+The current Ubuntu package-layer CI artefact is:
+
+```text
+T5ynth-Ubuntu-x86_64-DEB
 ```
 
 Those are CI artefacts, not GitHub Release assets. Package-layer outputs such

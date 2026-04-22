@@ -250,5 +250,6 @@ bundled torch runtime is older than CUDA 12.8.
 ## 10. Known limits of the current package-layer paths
 
 - standalone only, no VST3 packaging yet
-- no CI artifact upload yet for RPM or `.deb`
+- Fedora RPM is not yet uploaded from GitHub Actions
+- Ubuntu/Debian `.deb` is a CI artefact, but not yet a GitHub Release asset
 - model weights are still installed separately after launch
