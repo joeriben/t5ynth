@@ -443,10 +443,12 @@ bool VoiceManager::hasActiveVoices() const
 
 void VoiceManager::updateGainTarget()
 {
-    // Only count held (non-releasing) voices — releasing voices are already
-    // fading via their own amplitude envelope and don't need extra attenuation.
-    int n = getHeldVoiceCount();
-    float newTarget = (n > 0) ? 1.0f / std::pow(static_cast<float>(n), 0.3f) : 1.0f;
+    // Additive summing, no per-voice attenuation: real-world synths (including
+    // the Hammond/Viscount reference the user called out) don't scale down
+    // each voice as more keys are held — they just sum. Peak excursions are
+    // caught by the end-of-chain limiter. Kept the ramp infrastructure in
+    // place so reintroducing a scaling law later is a one-line change.
+    constexpr float newTarget = 1.0f;
 
     if (newTarget != targetGain)
     {
