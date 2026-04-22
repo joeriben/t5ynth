@@ -218,6 +218,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.0f, 36.0f, 0.1f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{PID::filterDriveMakeup, 1}, "Filter Drive Makeup", true));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::filterDriveOs, 1}, "Filter Drive OS",
+        toChoices(FilterDriveOs::kEntries), FilterDriveOs::X4));
 
     // Delay
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -811,6 +814,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.kbdTrack = parameters.getRawParameterValue(PID::filterKbdTrack)->load();
     bp.filterDriveDb = parameters.getRawParameterValue(PID::filterDrive)->load();
     bp.filterDriveMakeup = parameters.getRawParameterValue(PID::filterDriveMakeup)->load() > 0.5f;
+    bp.filterDriveOs = static_cast<int>(parameters.getRawParameterValue(PID::filterDriveOs)->load());
     bp.filterDriveGain = std::pow(10.0f, bp.filterDriveDb * (1.0f / 20.0f));
     // Input-gain compensation: drive pushes the input by +N dB into the
     // shaper, makeup trims the output by -N dB, so small signals stay unity-
@@ -2083,6 +2087,9 @@ static juce::String filterTypeToString(int i)           { return choiceToKey(i, 
 static int filterSlopeFromString(const juce::String& s) { return choiceFromKey(s, FilterSlope::kEntries); }
 static juce::String filterSlopeToString(int i)          { return choiceToKey(i, FilterSlope::kEntries); }
 
+static int filterDriveOsFromString(const juce::String& s) { return choiceFromKey(s, FilterDriveOs::kEntries); }
+static juce::String filterDriveOsToString(int i)          { return choiceToKey(i, FilterDriveOs::kEntries); }
+
 static int envTargetFromString(const juce::String& s)   { return choiceFromKey(s, EnvTarget::kEntries); }
 static juce::String envTargetToString(int i)            { return choiceToKey(i, EnvTarget::kEntries); }
 
@@ -2346,6 +2353,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     filt->setProperty("kbdTrack", get(PID::filterKbdTrack));
     filt->setProperty("drive", get(PID::filterDrive));
     filt->setProperty("driveMakeup", get(PID::filterDriveMakeup) > 0.5f);
+    filt->setProperty("driveOs", filterDriveOsToString(static_cast<int>(get(PID::filterDriveOs))));
     root->setProperty("filter", filt.get());
 
     // Sequencer
@@ -2593,6 +2601,11 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
                  filt->hasProperty("drive") ? static_cast<float>(filt->getProperty("drive")) : 0.0f);
         setParam(parameters, PID::filterDriveMakeup,
                  filt->hasProperty("driveMakeup") ? (static_cast<bool>(filt->getProperty("driveMakeup")) ? 1.0f : 0.0f) : 1.0f);
+        // Drive OS: absent in older presets -> Off (bit-identical to pre-OS build).
+        setParam(parameters, PID::filterDriveOs,
+                 filt->hasProperty("driveOs")
+                     ? static_cast<float>(filterDriveOsFromString(filt->getProperty("driveOs").toString()))
+                     : static_cast<float>(FilterDriveOs::Off));
     }
 
     // ── Sequencer ──

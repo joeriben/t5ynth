@@ -111,6 +111,7 @@ namespace PID {
     static constexpr const char* filterKbdTrack   = "filter_kbd_track";
     static constexpr const char* filterDrive      = "filter_drive";
     static constexpr const char* filterDriveMakeup= "filter_drive_makeup";
+    static constexpr const char* filterDriveOs    = "filter_drive_os";
     static constexpr const char* delayType        = "delay_type";
     static constexpr const char* delayTime        = "delay_time";
     static constexpr const char* delayFeedback    = "delay_feedback";
@@ -351,6 +352,19 @@ namespace FilterSlope {
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(Slope24 + 1 == kCount, "FilterSlope out of sync.");
+}
+
+// ── Filter drive oversampling factor ──
+namespace FilterDriveOs {
+    enum : int { Off = 0, X2 = 1, X4 = 2, X8 = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off", "Off" },
+        { "2x",  "2x"  },
+        { "4x",  "4x"  },
+        { "8x",  "8x"  }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(X8 + 1 == kCount, "FilterDriveOs out of sync.");
 }
 
 // ── Delay type ──
@@ -768,10 +782,11 @@ struct BlockParams
     float filterMix = 1.0f;
     // Pre-filter drive: user-facing controls
     float filterDriveDb = 0.0f;        // 0…36 dB, 0 = bypass
-    bool  filterDriveMakeup = true;    // peak match after tanh (user toggle)
+    bool  filterDriveMakeup = true;    // -dB output trim after tanh (user toggle)
+    int   filterDriveOs = FilterDriveOs::Off;  // Oversampling around tanh
     // Pre-computed derived values (filled in processBlock, not by user):
     float filterDriveGain = 1.0f;          // 10^(driveDb/20)
-    float filterDriveMakeupGain = 1.0f;    // 1/tanh(driveGain) when makeup on, else 1.0
+    float filterDriveMakeupGain = 1.0f;    // 1/driveGain when makeup on, else 1.0
     float kbdTrack = 0.0f;
 
     // Scan

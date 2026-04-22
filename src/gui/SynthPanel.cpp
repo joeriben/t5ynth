@@ -644,6 +644,34 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         }
     }
 
+    // ── Filter drive oversampling switchbox: Off 2x 4x 8x ──
+    {
+        juce::StringArray osLabels;
+        for (const auto& e : FilterDriveOs::kEntries) osLabels.add(e.label);
+        filterDriveOsHidden.addItemList(osLabels, 1);
+        filterDriveOsHidden.onChange = [this] {
+            int id = filterDriveOsHidden.getSelectedId();
+            for (int i = 0; i < kNumDriveOsBtns; ++i)
+                filterDriveOsBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+        };
+        for (int i = 0; i < kNumDriveOsBtns; ++i)
+        {
+            filterDriveOsBtns[i].setButtonText(osLabels[i]);
+            filterDriveOsBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+            filterDriveOsBtns[i].setColour(juce::TextButton::buttonOnColourId, kFilterCol);
+            filterDriveOsBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+            filterDriveOsBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+            filterDriveOsBtns[i].setClickingTogglesState(true);
+            filterDriveOsBtns[i].setRadioGroupId(3004);
+            { int edges = 0;
+              if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+              if (i < kNumDriveOsBtns - 1) edges |= juce::Button::ConnectedOnRight;
+              filterDriveOsBtns[i].setConnectedEdges(edges); }
+            filterDriveOsBtns[i].onClick = [this, i] { filterDriveOsHidden.setSelectedId(i + 1); };
+            addAndMakeVisible(filterDriveOsBtns[i]);
+        }
+    }
+
     cutoffRow      = std::make_unique<SliderRow>("Cutoff",    fmtHz,  kFilterCol);
     resoRow        = std::make_unique<SliderRow>("Resonance", fmtF2,  kFilterCol);
     filterMixRow   = std::make_unique<SliderRow>("Mix",       fmtPct, kFilterCol);
@@ -677,8 +705,9 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     filterMakeupA  = std::make_unique<BA>(apvts, PID::filterDriveMakeup, filterMakeupBtn);
     filterMakeupBtn.onClick(); // sync initial colours with APVTS state
 
-    filterTypeA  = std::make_unique<CA>(apvts, PID::filterType,  filterTypeHidden);
-    filterSlopeA = std::make_unique<CA>(apvts, PID::filterSlope, filterSlopeHidden);
+    filterTypeA    = std::make_unique<CA>(apvts, PID::filterType,     filterTypeHidden);
+    filterSlopeA   = std::make_unique<CA>(apvts, PID::filterSlope,    filterSlopeHidden);
+    filterDriveOsA = std::make_unique<CA>(apvts, PID::filterDriveOs,  filterDriveOsHidden);
 
     cutoffRow->updateValue();
     resoRow->updateValue();
@@ -876,6 +905,11 @@ void SynthPanel::updateVisibility()
     }
     filterMakeupBtn.setAlpha(filterAlpha);
     filterMakeupBtn.setEnabled(filterOn);
+    for (int i = 0; i < kNumDriveOsBtns; ++i)
+    {
+        filterDriveOsBtns[i].setAlpha(filterAlpha);
+        filterDriveOsBtns[i].setEnabled(filterOn);
+    }
 
     bool isWavetable = engineModeHidden.getSelectedId() == 2;
     bool isSampler = !isWavetable;
@@ -1104,6 +1138,7 @@ void SynthPanel::paint(juce::Graphics& g)
         // Filter switchbox borders
         paintSwitchBoxBorder(g, filterTypeSwitchBounds);
         paintSwitchBoxBorder(g, filterSlopeSwitchBounds);
+        paintSwitchBoxBorder(g, filterDriveOsSwitchBounds);
     }
 
     // Card: Modulation (ENVs + LFOs + Drift)
@@ -1398,12 +1433,14 @@ void SynthPanel::resized()
     filterHeader.setBounds(area.removeFromTop(headerH));
     area.removeFromTop(headerGap);
 
-    // ── Filter switchboxes + Drive: [OFF LP HP BP] [6 12 18 24 dB] [Drive  [Makeup]] ──
+    // ── Filter header: [TYPE] [SLOPE] [Drive]  [Makeup] [OS-Switchbox] ──
     auto filterHdr = area.removeFromTop(rowH);
     {
         const int groupGap = juce::roundToInt(f * 0.75f);
         const int typeCellW = juce::roundToInt(f * 3.2f);
         const int slopeCellW = juce::roundToInt(f * 3.2f);
+        const int osCellW = juce::roundToInt(f * 1.5f);
+        const int makeupW = juce::roundToInt(f * 5.0f);
 
         auto typeArea = filterHdr.removeFromLeft(typeCellW * kNumTypeBtns);
         filterHdr.removeFromLeft(groupGap);
@@ -1420,13 +1457,20 @@ void SynthPanel::resized()
         filterSlopeSwitchBounds = filterSlopeBtns[0].getBounds()
             .getUnion(filterSlopeBtns[kNumSlopeBtns - 1].getBounds());
 
-        // Drive slider + Makeup toggle fill the remainder of the header row
-        const int makeupW = juce::roundToInt(f * 5.0f);
+        // From the right: OS-switchbox, Makeup toggle, then Drive slider takes the rest.
+        auto osArea = filterHdr.removeFromRight(osCellW * kNumDriveOsBtns);
+        filterHdr.removeFromRight(4);
         auto makeupArea = filterHdr.removeFromRight(makeupW);
         filterHdr.removeFromRight(4);
         filterDriveRow->setBounds(filterHdr);
+
         const int toggleH = juce::roundToInt(rowH * 0.72f);
         filterMakeupBtn.setBounds(makeupArea.withSizeKeepingCentre(makeupArea.getWidth(), toggleH));
+
+        for (int i = 0; i < kNumDriveOsBtns; ++i)
+            filterDriveOsBtns[i].setBounds(osArea.removeFromLeft(osCellW));
+        filterDriveOsSwitchBounds = filterDriveOsBtns[0].getBounds()
+            .getUnion(filterDriveOsBtns[kNumDriveOsBtns - 1].getBounds());
     }
     area.removeFromTop(gap);
 

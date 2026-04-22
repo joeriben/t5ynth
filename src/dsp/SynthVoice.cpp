@@ -51,6 +51,17 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
     perVoiceLfo1.prepare(sampleRate);
     perVoiceLfo2.prepare(sampleRate);
     filter.prepare(sampleRate, samplesPerBlock);
+
+    // Build + init the three oversamplers around the pre-filter tanh drive.
+    // Init size is SUB_BLOCK_SIZE because renderBlock drives the OS in sub-block
+    // chunks — internal buffers are sized for maxBlockSize × factor samples.
+    using Os = juce::dsp::Oversampling<float>;
+    driveOs2x_ = std::make_unique<Os>(1, 1, Os::filterHalfBandPolyphaseIIR, true, false);
+    driveOs4x_ = std::make_unique<Os>(1, 2, Os::filterHalfBandPolyphaseIIR, true, false);
+    driveOs8x_ = std::make_unique<Os>(1, 3, Os::filterHalfBandPolyphaseIIR, true, false);
+    driveOs2x_->initProcessing(static_cast<size_t>(SUB_BLOCK_SIZE));
+    driveOs4x_->initProcessing(static_cast<size_t>(SUB_BLOCK_SIZE));
+    driveOs8x_->initProcessing(static_cast<size_t>(SUB_BLOCK_SIZE));
 }
 
 void SynthVoice::reset()
@@ -59,6 +70,9 @@ void SynthVoice::reset()
     sampler.reset();
     filter.reset();
     noise.reset();
+    if (driveOs2x_) driveOs2x_->reset();
+    if (driveOs4x_) driveOs4x_->reset();
+    if (driveOs8x_) driveOs8x_->reset();
     active = false;
     noteHeld = false;
     currentNote = -1;
@@ -625,7 +639,13 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             filter.setMix(p.filterMix);
         }
 
-        // ── Per-sample inner loop: envelopes + audio + drive/filter/VCA ──
+        // ── Phase A (per sample): generate raw osc/noise and cache VCA ──
+        // Drive, filter and VCA are applied below as block operations so the
+        // drive can be wrapped in oversampling without pulling the filter or
+        // VCA up to the oversampled rate.
+        float vcaScratch[SUB_BLOCK_SIZE] {};
+        int lastI = subBlockEnd;      // exclusive end of the filled range
+        bool goingIdle = false;
         for (int i = pos; i < subBlockEnd; ++i)
         {
             float ampEnvVal = ampEnv.processSample() * p.ampAmount;
@@ -678,7 +698,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                 lastModulatedScan_ = osc.getCurrentScanPosition();
             }
 
-            // Mix noise oscillator (goes through VCA + filter with the main signal)
+            // Mix noise oscillator (goes through drive + filter + VCA with the main signal)
             float noiseLevel = p.noiseLevel;
             if (p.mod1Target == EnvTarget::NoiseLevel) noiseLevel += mod1EnvVal;
             if (p.mod2Target == EnvTarget::NoiseLevel) noiseLevel += mod2EnvVal;
@@ -692,30 +712,70 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                 sample += noise.processSample() * noiseLevel;
             }
 
-            // VCA
+            // Cache VCA for phase D; raw audio goes to output[i] untouched.
             float vca = ampEnvVal;
             if (p.mod1Target == EnvTarget::DCA) vca *= (1.0f + mod1EnvVal);
             if (p.mod2Target == EnvTarget::DCA) vca *= (1.0f + mod2EnvVal);
 
-            if (p.filterEnabled)
-            {
-                if (p.filterDriveDb > 0.01f)
-                    sample = std::tanh(sample * p.filterDriveGain) * p.filterDriveMakeupGain;
-                sample = filter.processSample(sample);
-            }
-
-            sample *= vca;
-
             output[i] = sample;
+            vcaScratch[i - pos] = vca;
 
             if (ampEnv.isIdle() && !noteHeld)
             {
                 active = false;
-                for (int j = i + 1; j < numSamples; ++j)
+                lastI = i + 1;
+                for (int j = lastI; j < numSamples; ++j)
                     output[j] = 0.0f;
-                return;
+                goingIdle = true;
+                break;
             }
         }
+
+        const int driveLen = lastI - pos;
+
+        // ── Phase B: pre-filter drive (tanh), with optional block-level oversampling ──
+        if (p.filterEnabled && p.filterDriveDb > 0.01f && driveLen > 0)
+        {
+            const float driveGain  = p.filterDriveGain;
+            const float makeupGain = p.filterDriveMakeupGain;
+
+            if (p.filterDriveOs == FilterDriveOs::Off)
+            {
+                for (int i = pos; i < lastI; ++i)
+                    output[i] = std::tanh(output[i] * driveGain) * makeupGain;
+            }
+            else
+            {
+                auto* os = (p.filterDriveOs == FilterDriveOs::X2) ? driveOs2x_.get()
+                         : (p.filterDriveOs == FilterDriveOs::X4) ? driveOs4x_.get()
+                         :                                           driveOs8x_.get();
+
+                float* chPtr = output + pos;
+                float* const channels[1] = { chPtr };
+                juce::dsp::AudioBlock<float> block(channels, 1, static_cast<size_t>(driveLen));
+                juce::dsp::AudioBlock<const float> constBlock(block);
+                auto upBlock = os->processSamplesUp(constBlock);
+                auto* upData = upBlock.getChannelPointer(0);
+                const size_t upN = upBlock.getNumSamples();
+                for (size_t i = 0; i < upN; ++i)
+                    upData[i] = std::tanh(upData[i] * driveGain) * makeupGain;
+                os->processSamplesDown(block);
+            }
+        }
+
+        // ── Phase C: per-sample filter (LTI, no OS needed) ──
+        if (p.filterEnabled)
+        {
+            for (int i = pos; i < lastI; ++i)
+                output[i] = filter.processSample(output[i]);
+        }
+
+        // ── Phase D: per-sample VCA ──
+        for (int i = pos; i < lastI; ++i)
+            output[i] *= vcaScratch[i - pos];
+
+        if (goingIdle)
+            return;
 
         pos = subBlockEnd;
     }

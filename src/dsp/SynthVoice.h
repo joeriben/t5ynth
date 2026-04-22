@@ -6,6 +6,8 @@
 #include "StateVariableFilter.h"
 #include "NoiseGenerator.h"
 #include "BlockParams.h"
+#include <juce_dsp/juce_dsp.h>
+#include <memory>
 #include <vector>
 
 /**
@@ -92,6 +94,11 @@ private:
     LFO perVoiceLfo1; // used when LFO mode == Trigger
     LFO perVoiceLfo2;
     T5ynthFilter filter;
+    // Drive oversamplers (polyphase IIR half-band). Three instances, prepared in
+    // prepare(); renderBlock() picks the one matching bp.filterDriveOs.
+    std::unique_ptr<juce::dsp::Oversampling<float>> driveOs2x_;  // numStages=1, 2x
+    std::unique_ptr<juce::dsp::Oversampling<float>> driveOs4x_;  // numStages=2, 4x
+    std::unique_ptr<juce::dsp::Oversampling<float>> driveOs8x_;  // numStages=3, 8x
     NoiseGenerator noise;
 
     EngineMode engineMode = EngineMode::Sampler;

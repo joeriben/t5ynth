@@ -86,7 +86,7 @@ private:
 
     // ── Layout rects for paint() ──
     juce::Rectangle<int> engineSwitchBounds, loopSwitchBounds, optSwitchBounds;
-    juce::Rectangle<int> filterTypeSwitchBounds, filterSlopeSwitchBounds;
+    juce::Rectangle<int> filterTypeSwitchBounds, filterSlopeSwitchBounds, filterDriveOsSwitchBounds;
     int engineCardBottom = 0;
 
     // ── Filter ──
@@ -100,6 +100,10 @@ private:
     juce::ComboBox filterSlopeHidden;
     std::unique_ptr<SliderRow> cutoffRow, resoRow, filterMixRow, kbdTrackRow, filterDriveRow;
     juce::TextButton filterMakeupBtn { "Makeup" };
+    // Drive oversampling switchbox: Off 2x 4x 8x
+    static constexpr int kNumDriveOsBtns = 4;
+    juce::TextButton filterDriveOsBtns[kNumDriveOsBtns];
+    juce::ComboBox filterDriveOsHidden;
 
     // ── Envelope sections ──
     struct EnvSection
@@ -161,7 +165,7 @@ private:
     std::unique_ptr<CA> wtFramesA;
     std::unique_ptr<BA> wtSmoothA;
     std::unique_ptr<BA> wtAutoScanA;
-    std::unique_ptr<CA> filterTypeA, filterSlopeA;
+    std::unique_ptr<CA> filterTypeA, filterSlopeA, filterDriveOsA;
     std::unique_ptr<SA> filterDriveA;
     std::unique_ptr<BA> filterMakeupA;
     std::unique_ptr<CA> driftRegenA;
