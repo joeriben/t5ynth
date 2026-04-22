@@ -495,11 +495,19 @@ private:
     void updateLabelAppearance()
     {
         juce::Colour textColour = kDimmer;
+        auto border = juce::BorderSize<int>(1, 5, 1, 5);
         if (labelMode == LabelMode::Positive)
+        {
             textColour = juce::Colours::white;
+            border = juce::BorderSize<int>(0, 2, 1, 3);
+        }
         else if (labelMode == LabelMode::Negative)
+        {
             textColour = kDim;
+            border = juce::BorderSize<int>(0, 2, 1, 3);
+        }
         label.setColour(juce::Label::textColourId, textColour);
+        label.setBorderSize(border);
     }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderRow)
