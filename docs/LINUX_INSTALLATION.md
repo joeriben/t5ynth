@@ -110,7 +110,7 @@ cd ..
 Expected output: `backend/dist/pipe_inference/pipe_inference`
 
 This one-folder PyInstaller output is the isolated backend bundle later
-consumed by the Linux RPM packager.
+consumed by the Linux package-layer scripts.
 
 On the packaging/release host, the next step is to stage it into a named
 bundle slot with:
@@ -160,8 +160,8 @@ Run it with:
 ./dist/T5ynth/T5ynth
 ```
 
-For the Fedora installer path, this same backend bundle is first staged into a
-named release bundle and then wrapped into the RPM described in
+For the Linux package-layer path, this same backend bundle is first staged into
+a named release bundle and then wrapped into the RPM or `.deb` described in
 [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md).
 
 ## 7. Model installation on Linux

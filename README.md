@@ -196,14 +196,14 @@ The old minimal snippet in this README was not enough to produce a working
 Linux build. The authoritative build guides now live here:
 
 - Linux / Fedora 42 source build on a developer/build host: [docs/LINUX_INSTALLATION.md](docs/LINUX_INSTALLATION.md)
-- Linux package-layer docs, currently Fedora RPM from a prebuilt isolated backend bundle: [docs/LINUX_PACKAGING.md](docs/LINUX_PACKAGING.md)
+- Linux package-layer docs, currently Fedora RPM and Ubuntu/Debian `.deb` from a prebuilt isolated backend bundle: [docs/LINUX_PACKAGING.md](docs/LINUX_PACKAGING.md)
 - Cross-platform developer build guide: [docs/DEV_BUILD.md](docs/DEV_BUILD.md)
 
 Linux now has one common build contract and multiple distribution layers:
 
 - the Ubuntu CI `linux` job produces Linux base archives (`T5ynth` plus sibling `backend/`)
 - Fedora RPM wraps that same app/backend layout for installation on Fedora
-- a future Ubuntu/Debian package should consume the same base layout rather than fork a second Linux build path
+- Ubuntu/Debian `.deb` wraps that same app/backend layout for installation on Ubuntu-family systems
 
 ### Quick Source Build
 
@@ -240,10 +240,10 @@ cp -R backend/dist/pipe_inference/* dist/T5ynth/backend/
 ./dist/T5ynth/T5ynth
 ```
 
-For Fedora packaging/installation, do not rebuild Python/Torch on the target
+For Linux package-layer installation, do not rebuild Python/Torch on the target
 machine. Build the isolated backend bundle once on a build host, stage it into
-a named release bundle, then wrap that selected bundle into the RPM described
-in [docs/LINUX_PACKAGING.md](docs/LINUX_PACKAGING.md).
+a named release bundle, then wrap that selected bundle into the RPM or `.deb`
+described in [docs/LINUX_PACKAGING.md](docs/LINUX_PACKAGING.md).
 
 ### Model Download
 

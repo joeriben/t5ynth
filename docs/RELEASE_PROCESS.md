@@ -108,12 +108,10 @@ Important distinction:
 - The Ubuntu `linux` job is the **Linux base build layer**. It produces the
   common Linux app/backend layout as `.tar.xz` artefacts and does not yet
   publish a distro-specific package.
-- Fedora RPM packaging is a **Linux package layer** built from that same
-  layout contract plus a named staged backend bundle. It is documented in
-  [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md) and is currently validated
-  outside GitHub Actions.
-- A future Ubuntu/Debian package path should consume the same Linux base build
-  contract, not fork a second unrelated Linux build flow.
+- Fedora RPM packaging and Ubuntu/Debian `.deb` packaging are **Linux package
+  layers** built from that same layout contract plus a named staged backend
+  bundle. They are documented in [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
+  and are currently validated outside GitHub Actions.
 
 Every job:
 
@@ -124,9 +122,9 @@ Every job:
      index (`https://download.pytorch.org/whl/cu124`).
 4. Runs `pyinstaller pipe_inference.spec --noconfirm` in `backend/` to
    bundle the Python inference backend.
-   - For Linux package-layer outputs such as the Fedora RPM, that backend
-     should be staged as a named release bundle and then consumed by the
-     packager, rather than rebuilt on the target machine.
+   - For Linux package-layer outputs such as the Fedora RPM and Ubuntu/Debian
+     `.deb`, that backend should be staged as a named release bundle and then
+     consumed by the packager, rather than rebuilt on the target machine.
 5. Runs `cmake -B build -DCMAKE_BUILD_TYPE=Release`, then
    `cmake --build build --config Release -j<ncpu>`.
 6. Assembles a distribution directory containing the built binary plus the
@@ -239,8 +237,8 @@ T5ynth-Linux-Base-x86_64-VST3.tar.xz
 ```
 
 Those are CI artefacts, not GitHub Release assets. Package-layer outputs such
-as the Fedora RPM are separate deliverables built from the same app/backend
-layout contract.
+as the Fedora RPM and Ubuntu/Debian `.deb` are separate deliverables built from
+the same app/backend layout contract.
 
 The `release` job downloads artifacts with `actions/download-artifact`,
 collects only `.pkg` files into `release/`, and passes those files to
@@ -253,9 +251,10 @@ T5ynth-macOS-Installer.pkg
 ```
 
 For the current stable release process, GitHub Releases publish **only** the
-macOS installer. Windows artefacts, Linux base artefacts, Fedora RPMs, VST3 and
-AU remain outside the public stable release page until each distribution path
-has been validated and explicitly wired into CI release publication.
+macOS installer. Windows artefacts, Linux base artefacts, Fedora RPMs,
+Ubuntu/Debian `.deb`, VST3 and AU remain outside the public stable release page
+until each distribution path has been validated and explicitly wired into CI
+release publication.
 
 If the release page does not contain `T5ynth-macOS-Installer.pkg`, something
 went wrong — investigate before announcing the release.

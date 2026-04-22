@@ -12,7 +12,7 @@ Files in this directory:
 
 - [`DEV_BUILD.md`](DEV_BUILD.md) — Cross-platform build setup (macOS, Linux, Windows 11).
 - [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md) — Linux / Fedora 42 source build path for developers and build hosts.
-- [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md) — Linux package-layer docs, currently Fedora RPM, using a named prebuilt isolated backend bundle.
+- [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md) — Linux package-layer docs, currently Fedora RPM and Ubuntu/Debian `.deb`, using a named prebuilt isolated backend bundle.
 - [`PYTORCH_BUNDLING_NOTES.md`](PYTORCH_BUNDLING_NOTES.md) — Detailed findings from freezing and packaging the Python/Torch backend on Linux, including Blackwell-specific pitfalls.
 - [`CUDA_BUNDLE_TARGETS.md`](CUDA_BUNDLE_TARGETS.md) — Short target matrix for generic NVIDIA vs. Blackwell bundles and the future Windows installer.
 - [`MACOS_INSTALLATION.md`](MACOS_INSTALLATION.md) — End-user macOS installer and Gatekeeper override notes.
@@ -66,9 +66,9 @@ In `docs/`:
 ## I want to…
 
 - …build T5ynth locally → [`DEV_BUILD.md`](DEV_BUILD.md)
-- …install packaged T5ynth on Fedora / Linux → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
+- …install packaged T5ynth on Fedora / Ubuntu / Linux → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
 - …build T5ynth from source on Fedora / Linux → [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md)
-- …build a Fedora RPM → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
+- …build a Fedora RPM or Ubuntu/Debian `.deb` → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
 - …understand what actually broke while freezing the PyTorch backend → [`PYTORCH_BUNDLING_NOTES.md`](PYTORCH_BUNDLING_NOTES.md)
 - …see the short GPU/bundle target matrix for RTX 3080-class hosts and Windows → [`CUDA_BUNDLE_TARGETS.md`](CUDA_BUNDLE_TARGETS.md)
 - …install the current macOS build → [`MACOS_INSTALLATION.md`](MACOS_INSTALLATION.md)

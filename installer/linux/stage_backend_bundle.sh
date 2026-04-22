@@ -3,10 +3,10 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: installer/linux/stage_backend_bundle.sh --bundle-id ID [--source DIR] [--gpu-family FAMILY]
+Usage: installer/linux/stage_backend_bundle.sh --bundle-id ID [--source DIR] [--gpu-family FAMILY] [--distro-family FAMILY]
 
 Stage a prebuilt Linux backend bundle into the release/packaging layout used by
-installer/linux/build_rpm.sh.
+installer/linux/build_rpm.sh and installer/linux/build_deb.sh.
 
 This script does not build Python/Torch. It copies an already-built
 backend/dist/pipe_inference tree into:
@@ -167,9 +167,27 @@ infer_gpu_family_from_bundle_id() {
     esac
 }
 
+infer_distro_family_from_bundle_id() {
+    local id="$1"
+    case "$id" in
+        ubuntu*|*ubuntu*)
+            printf '%s\n' "ubuntu"
+            ;;
+        debian*|*debian*)
+            printf '%s\n' "debian"
+            ;;
+        fedora*|*fedora*)
+            printf '%s\n' "fedora"
+            ;;
+        *)
+            printf '%s\n' "linux"
+            ;;
+    esac
+}
+
 bundle_id=""
 source_dir="backend/dist/pipe_inference"
-distro_family="fedora"
+distro_family=""
 gpu_family=""
 
 while [[ $# -gt 0 ]]; do
@@ -184,6 +202,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --gpu-family)
             gpu_family="$2"
+            shift
+            ;;
+        --distro-family)
+            distro_family="$2"
             shift
             ;;
         -h|--help)
@@ -234,6 +256,9 @@ bundle_cuda_version="$(detect_bundle_cuda_version "$backend_dest" || true)"
 
 if [[ -z "$gpu_family" ]]; then
     gpu_family="$(infer_gpu_family_from_bundle_id "$bundle_id")"
+fi
+if [[ -z "$distro_family" ]]; then
+    distro_family="$(infer_distro_family_from_bundle_id "$bundle_id")"
 fi
 
 if [[ "$gpu_family" == "blackwell" ]]; then

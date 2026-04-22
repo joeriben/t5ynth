@@ -8,19 +8,20 @@ The important distinction is:
 - this document describes **package-layer outputs** built on top of that base
   app/backend layout
 
-Today, that package layer is Fedora RPM. A future Ubuntu/Debian package should
-consume the same base artefact contract rather than inventing a second Linux
-build path.
+Today, that package layer is Fedora RPM and Ubuntu/Debian `.deb`. Both consume
+the same base artefact contract rather than inventing separate Linux build
+paths.
 
 Current scope:
 
 - Fedora RPM for the **standalone app**
+- Ubuntu/Debian `.deb` for the **standalone app**
 - isolated bundled Python backend included under `/opt/T5ynth/backend/`
 - desktop entry, icon, wrapper, and a lightweight preflight helper
 - named backend bundle selection via `bundle-id`
 
-The first RPM path is intentionally standalone-only. VST3 remains a separate
-archive/distribution path for now.
+The current Linux package paths are intentionally standalone-only. VST3 remains
+a separate archive/distribution path for now.
 
 ## 1. Base layer vs package layer
 
@@ -34,7 +35,7 @@ Linux packaging is split into two layers:
 2. **Package layer**
    - wraps that app/backend layout for a target distribution
    - adds package metadata, wrappers, desktop integration, and runtime deps
-   - currently implemented as Fedora RPM
+   - currently implemented as Fedora RPM and Ubuntu/Debian `.deb`
 
 That keeps Linux packaging coherent:
 
@@ -56,17 +57,18 @@ The critical packaging rule is:
 - the target host does **not** build Python/Torch
 - the target host does **not** need a project `.venv`
 - the target host does **not** rely on any globally installed PyTorch
-- a build host or CI produces the backend bundle once, and the RPM wraps it
+- a build host or CI produces the backend bundle once, and the package wraps it
 
 In other words:
 
 - the release/build pipeline builds backend bundles
-- the Fedora packager selects a named release-built bundle
+- the Fedora RPM packager and Ubuntu/Debian `.deb` packager select a named
+  release-built bundle
 - the target installer only installs that selected bundle
 
 ## 3. Package layout
 
-The RPM installs:
+The current Linux package-layer outputs install:
 
 ```text
 /opt/T5ynth/T5ynth
@@ -84,7 +86,7 @@ is needed.
 
 ## 4. What must exist before packaging
 
-The RPM packager expects two prebuilt artefacts:
+The Linux package-layer scripts expect two prebuilt artefacts:
 
 - the standalone app binary:
   `build_clean/T5ynth_artefacts/Release/Standalone/T5ynth`
@@ -99,11 +101,13 @@ install machine. The build-host/source-build path is documented in
 ## 5. Stage a named release bundle
 
 The packaging host should stage the already-built backend into a named bundle
-slot before building the RPM:
+slot before building the package:
 
 ```bash
 installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda
 installer/linux/stage_backend_bundle.sh --bundle-id fedora42-x86_64-cuda-blackwell
+installer/linux/stage_backend_bundle.sh --bundle-id ubuntu24.04-x86_64-cuda
+installer/linux/stage_backend_bundle.sh --bundle-id ubuntu24.04-x86_64-cuda-blackwell
 ```
 
 This copies `backend/dist/pipe_inference/` into:
@@ -158,12 +162,50 @@ archives/linux-bundles/<bundle-id>/backend/
 `--backend-bundle` is an override for ad-hoc packaging hosts. The preferred
 release path is the named bundle slot plus `bundle.env`.
 
-## 7. Install and validate
+## 7. Build the Debian package
 
-Install locally with:
+Prerequisites:
+
+- `ar`, `tar`, `gzip`, `xz`, and `md5sum` available on the packaging host
+- the prebuilt standalone binary
+- the staged named backend bundle
+
+Run:
+
+```bash
+installer/linux/build_deb.sh
+```
+
+Outputs land under:
+
+```text
+archives/deb/
+```
+
+Useful flags:
+
+```bash
+installer/linux/build_deb.sh --skip-build
+installer/linux/build_deb.sh --bundle-id ubuntu24.04-x86_64-cuda
+installer/linux/build_deb.sh --build-dir build_clean --bundle-id ubuntu24.04-x86_64-cuda --version 1.0.0
+installer/linux/build_deb.sh --build-dir build_clean --backend-bundle /path/to/pipe_inference --version 1.0.0
+```
+
+As with the RPM path, the preferred release path is the named bundle slot plus
+`bundle.env`.
+
+## 8. Install and validate
+
+Install on Fedora locally with:
 
 ```bash
 sudo dnf install ./archives/rpm/rpmbuild/RPMS/x86_64/t5ynth-*.rpm
+```
+
+Install on Ubuntu/Debian locally with:
+
+```bash
+sudo apt install ./archives/deb/t5ynth_*_amd64.deb
 ```
 
 Run the installed preflight:
@@ -178,17 +220,17 @@ Launch:
 t5ynth
 ```
 
-## 8. Runtime model
+## 9. Runtime model
 
-The RPM does **not** touch or depend on a global Python/Torch installation.
-The bundled backend under `/opt/T5ynth/backend/` carries its own isolated ML
-runtime. The host must still provide:
+The RPM and `.deb` do **not** touch or depend on a global Python/Torch
+installation. The bundled backend under `/opt/T5ynth/backend/` carries its own
+isolated ML runtime. The host must still provide:
 
 - a working NVIDIA driver if CUDA is expected
 - standard Linux runtime libraries such as GTK, WebKit, ALSA, and libcurl
 
-The RPM does **not** bundle the NVIDIA driver. CUDA usability is a host-level
-concern and must be checked on the target machine.
+The package does **not** bundle the NVIDIA driver. CUDA usability is a
+host-level concern and must be checked on the target machine.
 
 Recommended host checks:
 
@@ -205,9 +247,8 @@ metadata from `/opt/T5ynth/backend/bundle.env`. On Blackwell hosts it fails
 closed if the installed bundle is not explicitly Blackwell-class or if the
 bundled torch runtime is older than CUDA 12.8.
 
-## 9. Known limits of the first RPM path
+## 10. Known limits of the current package-layer paths
 
 - standalone only, no VST3 packaging yet
-- Fedora-focused dependency metadata
-- no CI artifact upload yet for RPMs
+- no CI artifact upload yet for RPM or `.deb`
 - model weights are still installed separately after launch
