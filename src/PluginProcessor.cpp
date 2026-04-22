@@ -67,6 +67,26 @@ float applyNormalizedOffset(float baseValue, float modulationOffset)
     return juce::jlimit(0.0f, 1.0f, baseValue + modulationOffset);
 }
 
+float computeTanhDriveMakeupGain(float driveGain)
+{
+    constexpr int kSteps = 1024;
+    constexpr float kRefRms = 0.70710678118f; // RMS of a full-scale sine
+
+    double sumSq = 0.0;
+    for (int i = 0; i < kSteps; ++i)
+    {
+        const float phase = juce::MathConstants<float>::twoPi
+                          * (static_cast<float>(i) + 0.5f)
+                          / static_cast<float>(kSteps);
+        const float x = std::sin(phase);
+        const float y = std::tanh(driveGain * x);
+        sumSq += static_cast<double>(y) * static_cast<double>(y);
+    }
+
+    const float drivenRms = std::sqrt(static_cast<float>(sumSq / static_cast<double>(kSteps)));
+    return kRefRms / std::max(0.0001f, drivenRms);
+}
+
 void samplerProcessorDebugLog(const juce::String& message)
 {
     if constexpr (kSamplerDebugLogging)
@@ -109,7 +129,15 @@ bool T5ynthProcessor::canUseStepHoldPreview() const
 void T5ynthProcessor::beginStepHoldPreview(int midiNote, float velocity)
 {
     const juce::ScopedLock sl(getCallbackLock());
-    const int note = juce::jlimit(0, 127, midiNote);
+
+    // Apply the same seq-wide octave shift the step sequencer adds to its
+    // emitted MIDI (see PluginProcessor.cpp:1060 + StepSequencer.cpp:208).
+    // The drone is the GUI mirror of the step's effective pitch, so it must
+    // include this shift; the per-voice oscOctave is applied later inside
+    // SynthVoice::noteOn via octaveShift_ from BlockParams.
+    const int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue(PID::seqOctave)->load());
+    const int seqOctaveSemi = (seqOctaveIdx - 2) * 12;
+    const int note = juce::jlimit(0, 127, midiNote + seqOctaveSemi);
     const float vel = juce::jlimit(0.0f, 1.0f, velocity);
     const bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Mode)->load()) == 1;
     const bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Mode)->load()) == 1;
@@ -807,11 +835,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.filterDriveMakeup = parameters.getRawParameterValue(PID::filterDriveMakeup)->load() > 0.5f;
     bp.filterDriveOs = static_cast<int>(parameters.getRawParameterValue(PID::filterDriveOs)->load());
     bp.filterDriveGain = std::pow(10.0f, bp.filterDriveDb * (1.0f / 20.0f));
-    // Peak-match the tanh shaper instead of cancelling its small-signal gain.
-    // 1/driveGain over-attenuates hot settings; 1/tanh(gain) keeps saturated
-    // peaks in the same ballpark without pretending to be a loudness match.
+    // Reference compensation for the tanh shaper using a full-scale sine.
+    // This is not exact loudness matching for arbitrary material, but it is
+    // stable, audible, and avoids both the extreme 1/gain drop and the near-
+    // no-op behaviour of 1/tanh(gain) at hot drive settings.
     bp.filterDriveMakeupGain = bp.filterDriveMakeup
-        ? 1.0f / std::max(0.001f, std::tanh(bp.filterDriveGain))
+        ? computeTanhDriveMakeupGain(bp.filterDriveGain)
         : 1.0f;
 
     // Scan
