@@ -24,7 +24,7 @@ _rt.unregister = lambda *a, **kw: None     # no-op unregistration
 
 import importlib
 
-for _pkg in ('torchsde', 'safetensors'):
+for _pkg in ('safetensors',):
     try:
         importlib.import_module(_pkg)
     except Exception:

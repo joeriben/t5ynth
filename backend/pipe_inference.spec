@@ -32,7 +32,10 @@ hidden += ['diffusers.utils.outputs']
 
 # transformers: T5 encoder loaded by diffusers pipeline
 hidden += collect_submodules('transformers.models.t5')
+hidden += collect_submodules('transformers.generation')
+hidden += ['transformers.generation.utils']
 hidden += ['transformers.models.auto.modeling_auto']
+hidden += ['transformers.models.auto.tokenization_auto']
 hidden += ['transformers.utils.quantization_config']
 
 # stable_audio_tools: keep the runtime inference/model-loading modules only.
@@ -159,41 +162,24 @@ a = Analysis(
         'numba',
         'llvmlite',
         # Torch subsystems not used by inference, but expensive to bundle
-        'torch.testing',
-        'torch.testing._internal',
-        'torch.distributed',
-        'torch.onnx',
-        'torch._inductor',
-        'torch._dynamo',
         'torch.utils.benchmark',
         'torch.utils.tensorboard',
     ],
     noarchive=False,
 )
 
-# ── Strip CUDA libraries not needed for inference (saves ~800 MB) ────
-# Keep: cublas, cublasLt, cudnn, curand, cudart (required for GPU inference)
-# Drop: training-only, multi-GPU, JIT, and profiling libs
+# ── Keep CUDA runtime binaries conservative for packaged builds ─────────
+# Torch can import a broader CUDA userspace set eagerly on some builds. Keep
+# those binaries intact for installability; only drop the Triton package/data
+# because this backend does not use torch.compile.
 import re as _re
 
-_cuda_exclude = _re.compile(
-    r'libnccl|nccl\d'           # multi-GPU communication
-    r'|libcufft|cufft\d'        # FFT (only in training losses)
-    r'|libcusparse|cusparse\d'  # sparse matrices
-    r'|libcusolver|cusolver\d'  # dense/sparse solvers
-    r'|libnvrtc|nvrtc\d'        # runtime compiler
-    r'|libnvJitLink|nvJitLink'  # JIT linker
-    r'|libcupti|cupti\d'        # profiling tools
-    r'|triton'                  # Triton JIT (no torch.compile used)
-)
-
-a.binaries = [b for b in a.binaries if not _cuda_exclude.search(b[0])]
 a.datas    = [d for d in a.datas    if 'triton' not in d[0]]
 
 # Torch wheels also contain build/test/tooling assets that are not needed for
 # inference bundles and inflate the packaged backend substantially.
 _torch_data_exclude = _re.compile(
-    r'(^|.*/)torch/(testing|distributed|onnx|include|share)(/|$)'
+    r'(^|.*/)torch/(testing|onnx|include|share)(/|$)'
     r'|(^|.*/)torch/bin/(ptxas|protoc)(-|$)'
 )
 
@@ -201,11 +187,11 @@ a.datas = [d for d in a.datas if not _torch_data_exclude.search(d[0])]
 a.binaries = [b for b in a.binaries if not _torch_data_exclude.search(b[0])]
 
 # PyInstaller's torch hook can re-add NVIDIA helper packages explicitly. Keep
-# the inference runtime, but drop profiling / telemetry components.
+# CUDA runtime pieces such as CUPTI/NVTX because some torch builds import them
+# eagerly, but drop the extra profiler helper binaries that are not required for
+# normal inference startup.
 _nvidia_runtime_exclude = _re.compile(
-    r'(^|.*/)nvidia/(cuda_cupti|nvtx)(/|$)'
-    r'|libnvToolsExt'
-    r'|libnvperf_'
+    r'libnvperf_'
     r'|libcheckpoint\.so'
     r'|libpcsamplingutil\.so'
 )

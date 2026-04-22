@@ -15,10 +15,12 @@ Noise generation is patched to use numpy PCG64 for cross-platform determinism
 
 import json
 import math
+import os
 import struct
 import sys
 import time
 import logging
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -54,6 +56,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 log = logging.getLogger("pipe_inference")
 
 MAX_DIMENSION_OFFSET = 4.0
+BLACKWELL_MIN_CUDA = (12, 8)
 
 
 def _sanitize_dimension_offsets(raw_offsets):
@@ -109,6 +112,77 @@ def _apply_dimension_offsets(tensor, dim_offsets):
         if 0 <= idx < last_dim:
             tensor[:, :, idx] += value
 
+
+def _parse_version_tuple(raw_value):
+    """Parse '12.8' or '2.11.0.dev...' into a comparable integer tuple."""
+    if not raw_value:
+        return None
+
+    parts = []
+    for chunk in str(raw_value).split("."):
+        digits = ""
+        for char in chunk:
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        if not digits:
+            break
+        parts.append(int(digits))
+
+    if not parts:
+        return None
+    if len(parts) == 1:
+        parts.append(0)
+    return tuple(parts[:2])
+
+
+def _is_blackwell_capability(capability):
+    """Treat sm_120+ GPUs as Blackwell-class devices."""
+    return bool(capability) and capability[0] >= 12
+
+
+def _validate_cuda_runtime_or_raise():
+    """Fail closed when the bundled torch runtime is too old for the host GPU."""
+    if os.environ.get("T5YNTH_ALLOW_INCOMPATIBLE_CUDA") == "1":
+        return
+
+    if not torch.cuda.is_available():
+        return
+
+    bundle_cuda_version = _parse_version_tuple(torch.version.cuda)
+    incompatible_devices = []
+
+    for device_index in range(torch.cuda.device_count()):
+        capability = torch.cuda.get_device_capability(device_index)
+        if not _is_blackwell_capability(capability):
+            continue
+
+        if bundle_cuda_version is None or bundle_cuda_version < BLACKWELL_MIN_CUDA:
+            incompatible_devices.append(
+                (
+                    device_index,
+                    torch.cuda.get_device_name(device_index),
+                    f"sm_{capability[0]}{capability[1]}",
+                )
+            )
+
+    if not incompatible_devices:
+        return
+
+    device_summary = ", ".join(
+        f"GPU{device_index} {name} ({sm_name})"
+        for device_index, name, sm_name in incompatible_devices
+    )
+    required_cuda = ".".join(str(part) for part in BLACKWELL_MIN_CUDA)
+    raise RuntimeError(
+        "Incompatible CUDA backend bundle: detected Blackwell GPU(s) "
+        f"{device_summary}, but this backend was built with torch "
+        f"{torch.__version__} / CUDA {torch.version.cuda or 'unknown'}. "
+        f"Blackwell requires a bundle built with CUDA {required_cuda}+ "
+        "(use the pinned Blackwell torch stack, not cu124)."
+    )
+
 # ─── Model loading ──────────────────────────────────────────────────
 
 def _model_format(model_dir):
@@ -136,6 +210,7 @@ def find_models():
     base_dirs = [
         Path.home() / "Library" / "Application Support" / "T5ynth" / "models",  # per-user macOS (primary)
         Path.home() / "Library" / "T5ynth" / "models",       # legacy macOS
+        Path.home() / ".config" / "share" / "T5ynth" / "models",  # Linux current app data path
         Path.home() / ".local" / "share" / "T5ynth" / "models",  # Linux
         Path.home() / "t5ynth" / "models",                    # legacy
     ]
@@ -153,6 +228,122 @@ def find_models():
                 models[child.name] = child
                 _model_formats[child.name] = fmt
     return models
+
+
+def _user_model_roots():
+    """Return known per-user model roots across supported platforms."""
+    return [
+        Path.home() / "Library" / "Application Support" / "T5ynth" / "models",
+        Path.home() / "Library" / "T5ynth" / "models",
+        Path.home() / ".config" / "share" / "T5ynth" / "models",
+        Path.home() / ".local" / "share" / "T5ynth" / "models",
+        Path.home() / "t5ynth" / "models",
+    ]
+
+
+def _is_local_transformers_model_dir(path):
+    """Return True if the directory looks like a self-contained HF model."""
+    if not path.is_dir():
+        return False
+
+    has_config = (path / "config.json").is_file()
+    has_weights = any(
+        (path / name).is_file()
+        for name in ("model.safetensors", "pytorch_model.bin", "pytorch_model.safetensors")
+    )
+    has_tokenizer = any(
+        (path / name).is_file()
+        for name in ("tokenizer.json", "tokenizer_config.json", "spiece.model")
+    )
+    return has_config and has_weights and has_tokenizer
+
+
+def _candidate_transformers_dirs(model_name, model_dir):
+    """Yield likely local locations for additional HF transformer assets."""
+    model_path = Path(model_name).expanduser()
+    short_name = model_name.rsplit("/", 1)[-1]
+    canonical_name = model_name.replace("/", "--")
+
+    roots = [model_dir, model_dir.parent]
+    roots.extend(_user_model_roots())
+
+    rel_candidates = [
+        model_path,
+        Path(short_name),
+        Path("_hf") / short_name,
+        Path("_hf") / canonical_name,
+        Path("transformers") / short_name,
+        Path("huggingface") / short_name,
+        Path("huggingface") / canonical_name,
+    ]
+
+    seen = set()
+    for root in roots:
+        for rel in rel_candidates:
+            candidate = rel if rel.is_absolute() else root / rel
+            resolved = candidate.expanduser()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            yield resolved
+
+
+def _resolve_local_transformers_model_dir(model_name, model_dir):
+    """Resolve a local HF model directory for a model id like ``t5-base``."""
+    for candidate in _candidate_transformers_dirs(model_name, model_dir):
+        if _is_local_transformers_model_dir(candidate):
+            return candidate
+    return None
+
+
+def _prepare_native_model_config(model_dir, model_config):
+    """Rewrite native model config to use local auxiliary HF assets only."""
+    patched = copy.deepcopy(model_config)
+    conditioning_cfg = patched.get("model", {}).get("conditioning", {})
+    configs = conditioning_cfg.get("configs", [])
+    resolved_t5_models = []
+
+    for cond in configs:
+        if cond.get("type") != "t5":
+            continue
+
+        cond_cfg = cond.setdefault("config", {})
+        model_name = cond_cfg.get("t5_model_name")
+        if not model_name:
+            continue
+
+        resolved = _resolve_local_transformers_model_dir(model_name, model_dir)
+        if resolved is None:
+            searched = [str(path) for path in _candidate_transformers_dirs(model_name, model_dir)]
+            raise RuntimeError(
+                "Native model requires local Hugging Face assets for "
+                f"'{model_name}'. Expected a self-contained transformers model directory "
+                f"(config + tokenizer + weights) in one of: {searched}"
+            )
+
+        cond_cfg["t5_model_name"] = str(resolved)
+        log.info("Resolved local transformers asset %s -> %s", model_name, resolved)
+        resolved_t5_models.append((model_name, str(resolved)))
+
+    return patched, resolved_t5_models
+
+
+def _patch_stable_audio_tools_t5_registry(resolved_t5_models):
+    """Allow stable-audio-tools to accept resolved local T5 model directories."""
+    if not resolved_t5_models:
+        return
+
+    from stable_audio_tools.models import conditioners as sat_conditioners
+
+    for original_name, resolved_path in resolved_t5_models:
+        if original_name not in sat_conditioners.T5Conditioner.T5_MODEL_DIMS:
+            continue
+
+        if resolved_path not in sat_conditioners.T5Conditioner.T5_MODELS:
+            sat_conditioners.T5Conditioner.T5_MODELS.append(resolved_path)
+        sat_conditioners.T5Conditioner.T5_MODEL_DIMS[resolved_path] = (
+            sat_conditioners.T5Conditioner.T5_MODEL_DIMS[original_name]
+        )
 
 
 # ─── Lazy pipeline cache ──────────────────────────────────────────────
@@ -178,6 +369,7 @@ def available_devices():
     if torch.backends.mps.is_available():
         devices.append("mps")
     if torch.cuda.is_available():
+        _validate_cuda_runtime_or_raise()
         devices.append("cuda")
     devices.append("cpu")
     return devices
@@ -323,6 +515,21 @@ def _load_native_pipeline(model_dir, device):
     """Load native stable-audio-tools model."""
     _mock_optional_deps()
 
+    # stable-audio-tools imports these via the top-level transformers package.
+    # In the frozen bundle, pre-import them explicitly so the lazy export table
+    # is populated before the conditioner constructs the T5 stack.
+    import transformers
+    from transformers.generation.utils import GenerationMixin
+    from transformers.models.auto.tokenization_auto import AutoTokenizer
+    from transformers.models.t5.modeling_t5 import T5EncoderModel
+
+    # The frozen transformers package can fail to resolve some top-level lazy
+    # exports even though the concrete implementation modules are present.
+    # stable-audio-tools expects these names on the package root.
+    transformers.GenerationMixin = GenerationMixin
+    transformers.AutoTokenizer = AutoTokenizer
+    transformers.T5EncoderModel = T5EncoderModel
+
     from stable_audio_tools.models.factory import create_model_from_config
     from stable_audio_tools.models.utils import load_ckpt_state_dict
 
@@ -338,7 +545,9 @@ def _load_native_pipeline(model_dir, device):
     sys.stdout = sys.stderr
     try:
         with open(config_path) as f:
-            model_config = json.load(f)
+            model_config, resolved_t5_models = _prepare_native_model_config(model_dir, json.load(f))
+
+        _patch_stable_audio_tools_t5_registry(resolved_t5_models)
 
         model = create_model_from_config(model_config)
         model.load_state_dict(load_ckpt_state_dict(str(weights_path)))
@@ -1045,9 +1254,8 @@ def main():
         send_error("No model directories found")
         return
 
-    devices = available_devices()
-
     try:
+        devices = available_devices()
         default_model, default_device, startup_failures = choose_startup_model(_available_models, devices)
     except Exception as e:
         log.error(f"Failed to load default model: {e}")
