@@ -6,6 +6,45 @@
 namespace
 {
 constexpr bool kSamplerDebugLogging = true;
+constexpr float kAlphaAnchorSnapThreshold = 0.04f;
+constexpr float kMagnitudeUnitySnapThreshold = 0.03f;
+
+float snapIfNear(float value, float target, float threshold)
+{
+    return std::abs(value - target) <= threshold ? target : value;
+}
+
+float snapGenerationAlpha(float rangeStart, float rangeEnd, float value)
+{
+    juce::ignoreUnused(rangeStart, rangeEnd);
+    value = snapIfNear(value, -1.0f, kAlphaAnchorSnapThreshold);
+    value = snapIfNear(value,  1.0f, kAlphaAnchorSnapThreshold);
+    return juce::jlimit(rangeStart, rangeEnd, value);
+}
+
+float snapGenerationMagnitude(float rangeStart, float rangeEnd, float value)
+{
+    constexpr float interval = 0.001f;
+    value = snapIfNear(value, 1.0f, kMagnitudeUnitySnapThreshold);
+    value = rangeStart + interval * std::floor((value - rangeStart) / interval + 0.5f);
+    return juce::jlimit(rangeStart, rangeEnd, value);
+}
+
+float convertMagnitudeFrom0To1(float rangeStart, float rangeEnd, float proportion)
+{
+    constexpr float skew = 0.3f;
+    proportion = juce::jlimit(0.0f, 1.0f, proportion);
+    if (proportion > 0.0f)
+        proportion = std::exp(std::log(proportion) / skew);
+    return rangeStart + (rangeEnd - rangeStart) * proportion;
+}
+
+float convertMagnitudeTo0To1(float rangeStart, float rangeEnd, float value)
+{
+    constexpr float skew = 0.3f;
+    auto proportion = juce::jlimit(0.0f, 1.0f, (value - rangeStart) / (rangeEnd - rangeStart));
+    return std::pow(proportion, skew);
+}
 
 void samplerProcessorDebugLog(const juce::String& message)
 {
@@ -129,25 +168,30 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
 
     // Generation
     // Alpha: quadratic curve around 0 for fine control near center (±0.15 sensitive zone)
+    auto alphaRange = juce::NormalisableRange<float>(-2.0f, 2.0f,
+        [](float s, float e, float n) {
+            float c = n * 2.0f - 1.0f;
+            float curved = (c >= 0.0f ? 1.0f : -1.0f) * c * c;
+            return s + (e - s) * (curved * 0.5f + 0.5f);
+        },
+        [](float s, float e, float v) {
+            float norm = (v - s) / (e - s);
+            float c = norm * 2.0f - 1.0f;
+            float uncurved = (c >= 0.0f ? 1.0f : -1.0f) * std::sqrt(std::abs(c));
+            return uncurved * 0.5f + 0.5f;
+        },
+        snapGenerationAlpha);
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::genAlpha, 1}, "Alpha",
-        juce::NormalisableRange<float>(-2.0f, 2.0f,
-            [](float s, float e, float n) {
-                float c = n * 2.0f - 1.0f;
-                float curved = (c >= 0.0f ? 1.0f : -1.0f) * c * c;
-                return s + (e - s) * (curved * 0.5f + 0.5f);
-            },
-            [](float s, float e, float v) {
-                float norm = (v - s) / (e - s);
-                float c = norm * 2.0f - 1.0f;
-                float uncurved = (c >= 0.0f ? 1.0f : -1.0f) * std::sqrt(std::abs(c));
-                return uncurved * 0.5f + 0.5f;
-            },
-            [](float s, float e, float v) { return juce::jlimit(s, e, v); }
-        ), 0.0f));
+        alphaRange, 0.0f));
+
+    auto magnitudeRange = juce::NormalisableRange<float>(0.001f, 5.0f,
+        convertMagnitudeFrom0To1,
+        convertMagnitudeTo0To1,
+        snapGenerationMagnitude);
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::genMagnitude, 1}, "Magnitude",
-        juce::NormalisableRange<float>(0.001f, 5.0f, 0.001f, 0.3f), 1.0f));
+        magnitudeRange, 1.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::genNoise, 1}, "Noise",
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f, 0.3f), 0.0f));
