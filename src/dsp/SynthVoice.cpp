@@ -18,6 +18,23 @@ float computeEffectiveLfoDepth(const BlockParams& p, int target, float baseDepth
         depth = applyNormalizedOffset(depth, mod2EnvVal);
     return depth;
 }
+
+float computeVelocityTimeScale(int mode, float velSens, float velocity)
+{
+    if (mode == EnvVelTimeMode::Off || velSens <= 0.0f)
+        return 1.0f;
+
+    const float centeredVelocity = juce::jlimit(0.0f, 1.0f, velocity) * 2.0f - 1.0f;
+    float exponent = centeredVelocity * velSens;
+    if (mode == EnvVelTimeMode::Negative)
+        exponent = -exponent;
+    return std::pow(2.0f, exponent);
+}
+
+float computeVelocityTimedMs(float baseMs, int mode, float velSens, float velocity)
+{
+    return std::max(0.0f, baseMs * computeVelocityTimeScale(mode, velSens, velocity));
+}
 }
 
 void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
@@ -57,6 +74,7 @@ void SynthVoice::noteOn(int note, float velocity, bool legato)
     currentVelocity = velocity;
     noteHeld = true;
     active = true;
+    applyVelocityTimedEnvelopeTimes();
 
     if (!legato)
     {
@@ -86,6 +104,7 @@ void SynthVoice::noteOn(int note, float velocity, bool legato)
 void SynthVoice::noteOff()
 {
     noteHeld = false;
+    applyVelocityTimedEnvelopeTimes();
     ampEnv.noteOff();
     modEnv1.noteOff();
     modEnv2.noteOff();
@@ -110,41 +129,66 @@ void SynthVoice::glideToNote(int note, float glideMs)
 
 void SynthVoice::configureForBlock(const BlockParams& p)
 {
-    if (!active) return;
-
     octaveShift_ = p.octaveShift;
-
-    ampEnv.setAttack(p.ampAttack);
-    ampEnv.setDecay(p.ampDecay);
+    ampAttackBaseMs_ = p.ampAttack;
+    ampDecayBaseMs_ = p.ampDecay;
+    ampReleaseBaseMs_ = p.ampRelease;
+    ampAttackVelMode_ = p.ampAttackVelMode;
+    ampDecayVelMode_ = p.ampDecayVelMode;
+    ampReleaseVelMode_ = p.ampReleaseVelMode;
     ampEnv.setSustain(p.ampSustain);
-    ampEnv.setRelease(p.ampRelease);
     ampEnv.setLooping(p.ampLoop);
     ampEnv.setAttackCurve(static_cast<CurveShape>(p.ampAttackCurve));
     ampEnv.setDecayCurve(static_cast<CurveShape>(p.ampDecayCurve));
     ampEnv.setReleaseCurve(static_cast<CurveShape>(p.ampReleaseCurve));
     ampVelSens_ = p.ampVelSens;
 
-    modEnv1.setAttack(p.mod1Attack);
-    modEnv1.setDecay(p.mod1Decay);
+    mod1AttackBaseMs_ = p.mod1Attack;
+    mod1DecayBaseMs_ = p.mod1Decay;
+    mod1ReleaseBaseMs_ = p.mod1Release;
+    mod1AttackVelMode_ = p.mod1AttackVelMode;
+    mod1DecayVelMode_ = p.mod1DecayVelMode;
+    mod1ReleaseVelMode_ = p.mod1ReleaseVelMode;
     modEnv1.setSustain(p.mod1Sustain);
-    modEnv1.setRelease(p.mod1Release);
     modEnv1.setLooping(p.mod1Loop);
     modEnv1.setAttackCurve(static_cast<CurveShape>(p.mod1AttackCurve));
     modEnv1.setDecayCurve(static_cast<CurveShape>(p.mod1DecayCurve));
     modEnv1.setReleaseCurve(static_cast<CurveShape>(p.mod1ReleaseCurve));
     mod1VelSens_ = p.mod1VelSens;
 
-    modEnv2.setAttack(p.mod2Attack);
-    modEnv2.setDecay(p.mod2Decay);
+    mod2AttackBaseMs_ = p.mod2Attack;
+    mod2DecayBaseMs_ = p.mod2Decay;
+    mod2ReleaseBaseMs_ = p.mod2Release;
+    mod2AttackVelMode_ = p.mod2AttackVelMode;
+    mod2DecayVelMode_ = p.mod2DecayVelMode;
+    mod2ReleaseVelMode_ = p.mod2ReleaseVelMode;
     modEnv2.setSustain(p.mod2Sustain);
-    modEnv2.setRelease(p.mod2Release);
     modEnv2.setLooping(p.mod2Loop);
     modEnv2.setAttackCurve(static_cast<CurveShape>(p.mod2AttackCurve));
     modEnv2.setDecayCurve(static_cast<CurveShape>(p.mod2DecayCurve));
     modEnv2.setReleaseCurve(static_cast<CurveShape>(p.mod2ReleaseCurve));
     mod2VelSens_ = p.mod2VelSens;
 
+    applyVelocityTimedEnvelopeTimes();
+
+    if (!active) return;
+
     updateSamplerPreStretchNorm(p);
+}
+
+void SynthVoice::applyVelocityTimedEnvelopeTimes()
+{
+    ampEnv.setAttack(computeVelocityTimedMs(ampAttackBaseMs_, ampAttackVelMode_, ampVelSens_, currentVelocity));
+    ampEnv.setDecay(computeVelocityTimedMs(ampDecayBaseMs_, ampDecayVelMode_, ampVelSens_, currentVelocity));
+    ampEnv.setRelease(computeVelocityTimedMs(ampReleaseBaseMs_, ampReleaseVelMode_, ampVelSens_, currentVelocity));
+
+    modEnv1.setAttack(computeVelocityTimedMs(mod1AttackBaseMs_, mod1AttackVelMode_, mod1VelSens_, currentVelocity));
+    modEnv1.setDecay(computeVelocityTimedMs(mod1DecayBaseMs_, mod1DecayVelMode_, mod1VelSens_, currentVelocity));
+    modEnv1.setRelease(computeVelocityTimedMs(mod1ReleaseBaseMs_, mod1ReleaseVelMode_, mod1VelSens_, currentVelocity));
+
+    modEnv2.setAttack(computeVelocityTimedMs(mod2AttackBaseMs_, mod2AttackVelMode_, mod2VelSens_, currentVelocity));
+    modEnv2.setDecay(computeVelocityTimedMs(mod2DecayBaseMs_, mod2DecayVelMode_, mod2VelSens_, currentVelocity));
+    modEnv2.setRelease(computeVelocityTimedMs(mod2ReleaseBaseMs_, mod2ReleaseVelMode_, mod2VelSens_, currentVelocity));
 }
 
 bool SynthVoice::preStretchNormStateMatches(const BlockParams& p) const
@@ -164,6 +208,9 @@ bool SynthVoice::preStretchNormStateMatches(const BlockParams& p) const
         && preStretchNormState_.ampAttackCurve == p.ampAttackCurve
         && preStretchNormState_.ampDecayCurve == p.ampDecayCurve
         && preStretchNormState_.ampReleaseCurve == p.ampReleaseCurve
+        && preStretchNormState_.ampAttackVelMode == p.ampAttackVelMode
+        && preStretchNormState_.ampDecayVelMode == p.ampDecayVelMode
+        && preStretchNormState_.ampReleaseVelMode == p.ampReleaseVelMode
         && preStretchNormState_.mod1Target == p.mod1Target
         && nearlyEqual(preStretchNormState_.mod1Attack, p.mod1Attack)
         && nearlyEqual(preStretchNormState_.mod1Decay, p.mod1Decay)
@@ -175,6 +222,9 @@ bool SynthVoice::preStretchNormStateMatches(const BlockParams& p) const
         && preStretchNormState_.mod1AttackCurve == p.mod1AttackCurve
         && preStretchNormState_.mod1DecayCurve == p.mod1DecayCurve
         && preStretchNormState_.mod1ReleaseCurve == p.mod1ReleaseCurve
+        && preStretchNormState_.mod1AttackVelMode == p.mod1AttackVelMode
+        && preStretchNormState_.mod1DecayVelMode == p.mod1DecayVelMode
+        && preStretchNormState_.mod1ReleaseVelMode == p.mod1ReleaseVelMode
         && preStretchNormState_.mod2Target == p.mod2Target
         && nearlyEqual(preStretchNormState_.mod2Attack, p.mod2Attack)
         && nearlyEqual(preStretchNormState_.mod2Decay, p.mod2Decay)
@@ -186,6 +236,9 @@ bool SynthVoice::preStretchNormStateMatches(const BlockParams& p) const
         && preStretchNormState_.mod2AttackCurve == p.mod2AttackCurve
         && preStretchNormState_.mod2DecayCurve == p.mod2DecayCurve
         && preStretchNormState_.mod2ReleaseCurve == p.mod2ReleaseCurve
+        && preStretchNormState_.mod2AttackVelMode == p.mod2AttackVelMode
+        && preStretchNormState_.mod2DecayVelMode == p.mod2DecayVelMode
+        && preStretchNormState_.mod2ReleaseVelMode == p.mod2ReleaseVelMode
         && nearlyEqual(preStretchNormState_.velocity, currentVelocity)
         && nearlyEqual(preStretchNormState_.startPos, sampler.getStartPos())
         && nearlyEqual(preStretchNormState_.loopStart, sampler.getLoopStart())
@@ -222,11 +275,21 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
         return base;
     };
 
-    float analysisMs = envWindowMs(p.ampAttack, p.ampDecay, p.ampRelease, p.ampLoop);
+    const float ampAttackMs = computeVelocityTimedMs(p.ampAttack, p.ampAttackVelMode, p.ampVelSens, currentVelocity);
+    const float ampDecayMs = computeVelocityTimedMs(p.ampDecay, p.ampDecayVelMode, p.ampVelSens, currentVelocity);
+    const float ampReleaseMs = computeVelocityTimedMs(p.ampRelease, p.ampReleaseVelMode, p.ampVelSens, currentVelocity);
+    const float mod1AttackMs = computeVelocityTimedMs(p.mod1Attack, p.mod1AttackVelMode, p.mod1VelSens, currentVelocity);
+    const float mod1DecayMs = computeVelocityTimedMs(p.mod1Decay, p.mod1DecayVelMode, p.mod1VelSens, currentVelocity);
+    const float mod1ReleaseMs = computeVelocityTimedMs(p.mod1Release, p.mod1ReleaseVelMode, p.mod1VelSens, currentVelocity);
+    const float mod2AttackMs = computeVelocityTimedMs(p.mod2Attack, p.mod2AttackVelMode, p.mod2VelSens, currentVelocity);
+    const float mod2DecayMs = computeVelocityTimedMs(p.mod2Decay, p.mod2DecayVelMode, p.mod2VelSens, currentVelocity);
+    const float mod2ReleaseMs = computeVelocityTimedMs(p.mod2Release, p.mod2ReleaseVelMode, p.mod2VelSens, currentVelocity);
+
+    float analysisMs = envWindowMs(ampAttackMs, ampDecayMs, ampReleaseMs, p.ampLoop);
     if (p.mod1Target == EnvTarget::DCA)
-        analysisMs = std::max(analysisMs, envWindowMs(p.mod1Attack, p.mod1Decay, p.mod1Release, p.mod1Loop));
+        analysisMs = std::max(analysisMs, envWindowMs(mod1AttackMs, mod1DecayMs, mod1ReleaseMs, p.mod1Loop));
     if (p.mod2Target == EnvTarget::DCA)
-        analysisMs = std::max(analysisMs, envWindowMs(p.mod2Attack, p.mod2Decay, p.mod2Release, p.mod2Loop));
+        analysisMs = std::max(analysisMs, envWindowMs(mod2AttackMs, mod2DecayMs, mod2ReleaseMs, p.mod2Loop));
 
     int analysisSamples = std::max(referencePathSamples,
         static_cast<int>(std::ceil(sr * analysisMs * 0.001)));
@@ -241,28 +304,28 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
     mod1Ref.prepare(sr);
     mod2Ref.prepare(sr);
 
-    ampRef.setAttack(p.ampAttack);
-    ampRef.setDecay(p.ampDecay);
+    ampRef.setAttack(ampAttackMs);
+    ampRef.setDecay(ampDecayMs);
     ampRef.setSustain(p.ampSustain);
-    ampRef.setRelease(p.ampRelease);
+    ampRef.setRelease(ampReleaseMs);
     ampRef.setLooping(p.ampLoop);
     ampRef.setAttackCurve(static_cast<CurveShape>(p.ampAttackCurve));
     ampRef.setDecayCurve(static_cast<CurveShape>(p.ampDecayCurve));
     ampRef.setReleaseCurve(static_cast<CurveShape>(p.ampReleaseCurve));
 
-    mod1Ref.setAttack(p.mod1Attack);
-    mod1Ref.setDecay(p.mod1Decay);
+    mod1Ref.setAttack(mod1AttackMs);
+    mod1Ref.setDecay(mod1DecayMs);
     mod1Ref.setSustain(p.mod1Sustain);
-    mod1Ref.setRelease(p.mod1Release);
+    mod1Ref.setRelease(mod1ReleaseMs);
     mod1Ref.setLooping(p.mod1Loop);
     mod1Ref.setAttackCurve(static_cast<CurveShape>(p.mod1AttackCurve));
     mod1Ref.setDecayCurve(static_cast<CurveShape>(p.mod1DecayCurve));
     mod1Ref.setReleaseCurve(static_cast<CurveShape>(p.mod1ReleaseCurve));
 
-    mod2Ref.setAttack(p.mod2Attack);
-    mod2Ref.setDecay(p.mod2Decay);
+    mod2Ref.setAttack(mod2AttackMs);
+    mod2Ref.setDecay(mod2DecayMs);
     mod2Ref.setSustain(p.mod2Sustain);
-    mod2Ref.setRelease(p.mod2Release);
+    mod2Ref.setRelease(mod2ReleaseMs);
     mod2Ref.setLooping(p.mod2Loop);
     mod2Ref.setAttackCurve(static_cast<CurveShape>(p.mod2AttackCurve));
     mod2Ref.setDecayCurve(static_cast<CurveShape>(p.mod2DecayCurve));
@@ -316,6 +379,9 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
     preStretchNormState_.ampAttackCurve = p.ampAttackCurve;
     preStretchNormState_.ampDecayCurve = p.ampDecayCurve;
     preStretchNormState_.ampReleaseCurve = p.ampReleaseCurve;
+    preStretchNormState_.ampAttackVelMode = p.ampAttackVelMode;
+    preStretchNormState_.ampDecayVelMode = p.ampDecayVelMode;
+    preStretchNormState_.ampReleaseVelMode = p.ampReleaseVelMode;
     preStretchNormState_.mod1Target = p.mod1Target;
     preStretchNormState_.mod1Attack = p.mod1Attack;
     preStretchNormState_.mod1Decay = p.mod1Decay;
@@ -327,6 +393,9 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
     preStretchNormState_.mod1AttackCurve = p.mod1AttackCurve;
     preStretchNormState_.mod1DecayCurve = p.mod1DecayCurve;
     preStretchNormState_.mod1ReleaseCurve = p.mod1ReleaseCurve;
+    preStretchNormState_.mod1AttackVelMode = p.mod1AttackVelMode;
+    preStretchNormState_.mod1DecayVelMode = p.mod1DecayVelMode;
+    preStretchNormState_.mod1ReleaseVelMode = p.mod1ReleaseVelMode;
     preStretchNormState_.mod2Target = p.mod2Target;
     preStretchNormState_.mod2Attack = p.mod2Attack;
     preStretchNormState_.mod2Decay = p.mod2Decay;
@@ -338,6 +407,9 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
     preStretchNormState_.mod2AttackCurve = p.mod2AttackCurve;
     preStretchNormState_.mod2DecayCurve = p.mod2DecayCurve;
     preStretchNormState_.mod2ReleaseCurve = p.mod2ReleaseCurve;
+    preStretchNormState_.mod2AttackVelMode = p.mod2AttackVelMode;
+    preStretchNormState_.mod2DecayVelMode = p.mod2DecayVelMode;
+    preStretchNormState_.mod2ReleaseVelMode = p.mod2ReleaseVelMode;
     preStretchNormState_.velocity = currentVelocity;
     preStretchNormState_.startPos = sampler.getStartPos();
     preStretchNormState_.loopStart = sampler.getLoopStart();

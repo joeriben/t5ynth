@@ -114,6 +114,8 @@ private:
         CurveButton aCurveBtn, dCurveBtn, rCurveBtn;
         juce::ComboBox aCurveHidden, dCurveHidden, rCurveHidden;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aCurveA, dCurveA, rCurveA;
+        juce::ComboBox aVelModeHidden, dVelModeHidden, rVelModeHidden;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aVelModeA, dVelModeA, rVelModeA;
     };
     EnvSection ampEnv, mod1Env, mod2Env;
 
@@ -170,6 +172,8 @@ private:
                  const juce::String& sId, const juce::String& rId,
                  const juce::String& aCurveId, const juce::String& dCurveId,
                  const juce::String& rCurveId,
+                 const juce::String& aVelModeId, const juce::String& dVelModeId,
+                 const juce::String& rVelModeId,
                  const juce::String& amtId, const juce::String& velId,
                  const juce::String& loopId,
                  juce::AudioProcessorValueTreeState& apvts);

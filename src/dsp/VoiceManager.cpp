@@ -51,6 +51,13 @@ void VoiceManager::reset()
     targetGain = 1.0f;
     gainRampSamplesLeft = 0;
     currentSamplerMaster_ = nullptr;
+    hasCurrentBlockParams_ = false;
+}
+
+void VoiceManager::setBlockParams(const BlockParams& bp)
+{
+    currentBlockParams_ = bp;
+    hasCurrentBlockParams_ = true;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -65,6 +72,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
     {
         auto& v = voices[0];
         v.setTuningTable(tuningHz_);
+        if (hasCurrentBlockParams_)
+            v.configureForBlock(currentBlockParams_);
         bool legato = v.isActive() && !v.isReleasing();
         if (legato || (isBind && v.isActive()))
         {
@@ -137,6 +146,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
 
     auto& v = voices[static_cast<size_t>(idx)];
     v.setTuningTable(tuningHz_);
+    if (hasCurrentBlockParams_)
+        v.configureForBlock(currentBlockParams_);
 
     // If stealing an active voice, give it a fast release to avoid click
     if (v.isActive())
@@ -183,7 +194,11 @@ void VoiceManager::noteOff(int note)
     for (auto& v : voices)
     {
         if (v.isActive() && !v.isReleasing() && v.getCurrentNote() == note)
+        {
+            if (hasCurrentBlockParams_)
+                v.configureForBlock(currentBlockParams_);
             v.noteOff();
+        }
     }
     // Update gain: held voice count decreased (releasing voices don't count).
     updateGainTarget();

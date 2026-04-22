@@ -46,6 +46,9 @@ namespace PID {
     static constexpr const char* ampAttackCurve   = "amp_attack_curve";
     static constexpr const char* ampDecayCurve    = "amp_decay_curve";
     static constexpr const char* ampReleaseCurve  = "amp_release_curve";
+    static constexpr const char* ampAttackVelMode = "amp_attack_vel_mode";
+    static constexpr const char* ampDecayVelMode  = "amp_decay_vel_mode";
+    static constexpr const char* ampReleaseVelMode= "amp_release_vel_mode";
     static constexpr const char* mod1Attack       = "mod1_attack";
     static constexpr const char* mod1Decay        = "mod1_decay";
     static constexpr const char* mod1Sustain      = "mod1_sustain";
@@ -57,6 +60,9 @@ namespace PID {
     static constexpr const char* mod1AttackCurve  = "mod1_attack_curve";
     static constexpr const char* mod1DecayCurve   = "mod1_decay_curve";
     static constexpr const char* mod1ReleaseCurve = "mod1_release_curve";
+    static constexpr const char* mod1AttackVelMode = "mod1_attack_vel_mode";
+    static constexpr const char* mod1DecayVelMode  = "mod1_decay_vel_mode";
+    static constexpr const char* mod1ReleaseVelMode= "mod1_release_vel_mode";
     static constexpr const char* mod2Attack       = "mod2_attack";
     static constexpr const char* mod2Decay        = "mod2_decay";
     static constexpr const char* mod2Sustain      = "mod2_sustain";
@@ -68,6 +74,9 @@ namespace PID {
     static constexpr const char* mod2AttackCurve  = "mod2_attack_curve";
     static constexpr const char* mod2DecayCurve   = "mod2_decay_curve";
     static constexpr const char* mod2ReleaseCurve = "mod2_release_curve";
+    static constexpr const char* mod2AttackVelMode = "mod2_attack_vel_mode";
+    static constexpr const char* mod2DecayVelMode  = "mod2_decay_vel_mode";
+    static constexpr const char* mod2ReleaseVelMode= "mod2_release_vel_mode";
     static constexpr const char* lfo1Rate         = "lfo1_rate";
     static constexpr const char* lfo1Depth        = "lfo1_depth";
     static constexpr const char* lfo1Wave         = "lfo1_wave";
@@ -435,6 +444,18 @@ namespace EnvCurve {
     static_assert(Exp + 1 == kCount, "EnvCurve out of sync.");
 }
 
+// ── Envelope velocity→time mode ──
+namespace EnvVelTimeMode {
+    enum : int { Off = 0, Positive = 1, Negative = 2 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off", "Off"  },
+        { "pos", "Vel+" },
+        { "neg", "Vel-" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Negative + 1 == kCount, "EnvVelTimeMode out of sync.");
+}
+
 // ── Drift regenerate mode (UTF-8 quarter-note glyph in labels) ──
 namespace DriftRegen {
     enum : int { Manual = 0, Auto = 1, Max1 = 2, Max4 = 3, Max16 = 4 };
@@ -703,6 +724,9 @@ struct BlockParams
     float ampAmount = 1.0f;
     float ampVelSens = 1.0f;  // 0=fixed, 1=full velocity
     int   ampAttackCurve = 2, ampDecayCurve = 2, ampReleaseCurve = 4; // CurveShape indices
+    int   ampAttackVelMode = EnvVelTimeMode::Off;
+    int   ampDecayVelMode = EnvVelTimeMode::Off;
+    int   ampReleaseVelMode = EnvVelTimeMode::Off;
     bool  ampLoop = false;
 
     // Mod envelope 1
@@ -711,6 +735,9 @@ struct BlockParams
     float mod1VelSens = 1.0f;
     int   mod1Target = 0; // EnvTarget::None
     int   mod1AttackCurve = 2, mod1DecayCurve = 2, mod1ReleaseCurve = 4;
+    int   mod1AttackVelMode = EnvVelTimeMode::Off;
+    int   mod1DecayVelMode = EnvVelTimeMode::Off;
+    int   mod1ReleaseVelMode = EnvVelTimeMode::Off;
     bool  mod1Loop = false;
 
     // Mod envelope 2
@@ -719,6 +746,9 @@ struct BlockParams
     float mod2VelSens = 1.0f;
     int   mod2Target = 0; // EnvTarget::None
     int   mod2AttackCurve = 2, mod2DecayCurve = 2, mod2ReleaseCurve = 4;
+    int   mod2AttackVelMode = EnvVelTimeMode::Off;
+    int   mod2DecayVelMode = EnvVelTimeMode::Off;
+    int   mod2ReleaseVelMode = EnvVelTimeMode::Off;
     bool  mod2Loop = false;
 
     // LFOs (global rates/depths for cross-mod, targets for routing)

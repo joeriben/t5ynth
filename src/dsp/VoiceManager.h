@@ -20,6 +20,7 @@ public:
 
     void prepare(double sampleRate, int samplesPerBlock);
     void reset();
+    void setBlockParams(const BlockParams& bp);
 
     // ── MIDI handling ──
     void noteOn(int note, float velocity, bool isBind, float glideMs,
@@ -83,6 +84,8 @@ private:
     int voiceLimit = 8; // runtime polyphony (1=mono)
     const float* tuningHz_ = nullptr;
     const SamplePlayer* currentSamplerMaster_ = nullptr;
+    BlockParams currentBlockParams_;
+    bool hasCurrentBlockParams_ = false;
 
     // Pre-allocated per-voice scratch buffers
     std::array<std::vector<float>, MAX_VOICES> voiceScratch;

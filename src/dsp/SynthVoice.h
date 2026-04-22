@@ -119,6 +119,24 @@ private:
     float ampVelSens_ = 1.0f;
     float mod1VelSens_ = 1.0f;
     float mod2VelSens_ = 1.0f;
+    float ampAttackBaseMs_ = 0.0f;
+    float ampDecayBaseMs_ = 0.0f;
+    float ampReleaseBaseMs_ = 0.0f;
+    int ampAttackVelMode_ = EnvVelTimeMode::Off;
+    int ampDecayVelMode_ = EnvVelTimeMode::Off;
+    int ampReleaseVelMode_ = EnvVelTimeMode::Off;
+    float mod1AttackBaseMs_ = 0.0f;
+    float mod1DecayBaseMs_ = 0.0f;
+    float mod1ReleaseBaseMs_ = 0.0f;
+    int mod1AttackVelMode_ = EnvVelTimeMode::Off;
+    int mod1DecayVelMode_ = EnvVelTimeMode::Off;
+    int mod1ReleaseVelMode_ = EnvVelTimeMode::Off;
+    float mod2AttackBaseMs_ = 0.0f;
+    float mod2DecayBaseMs_ = 0.0f;
+    float mod2ReleaseBaseMs_ = 0.0f;
+    int mod2AttackVelMode_ = EnvVelTimeMode::Off;
+    int mod2DecayVelMode_ = EnvVelTimeMode::Off;
+    int mod2ReleaseVelMode_ = EnvVelTimeMode::Off;
 
     // Cached mod values from last renderBlock (for VoiceManager capture)
     float lastMod1Val_ = 0.0f;
@@ -143,6 +161,9 @@ private:
         int ampAttackCurve = -1;
         int ampDecayCurve = -1;
         int ampReleaseCurve = -1;
+        int ampAttackVelMode = EnvVelTimeMode::Off;
+        int ampDecayVelMode = EnvVelTimeMode::Off;
+        int ampReleaseVelMode = EnvVelTimeMode::Off;
 
         int mod1Target = EnvTarget::None;
         float mod1Attack = -1.0f;
@@ -155,6 +176,9 @@ private:
         int mod1AttackCurve = -1;
         int mod1DecayCurve = -1;
         int mod1ReleaseCurve = -1;
+        int mod1AttackVelMode = EnvVelTimeMode::Off;
+        int mod1DecayVelMode = EnvVelTimeMode::Off;
+        int mod1ReleaseVelMode = EnvVelTimeMode::Off;
 
         int mod2Target = EnvTarget::None;
         float mod2Attack = -1.0f;
@@ -167,6 +191,9 @@ private:
         int mod2AttackCurve = -1;
         int mod2DecayCurve = -1;
         int mod2ReleaseCurve = -1;
+        int mod2AttackVelMode = EnvVelTimeMode::Off;
+        int mod2DecayVelMode = EnvVelTimeMode::Off;
+        int mod2ReleaseVelMode = EnvVelTimeMode::Off;
 
         float velocity = -1.0f;
         float startPos = -1.0f;
@@ -180,6 +207,7 @@ private:
 
     void updateSamplerPreStretchNorm(const BlockParams& p);
     bool preStretchNormStateMatches(const BlockParams& p) const;
+    void applyVelocityTimedEnvelopeTimes();
 
     PreStretchNormState preStretchNormState_;
     float samplerPreStretchNormGain_ = 1.0f;

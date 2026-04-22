@@ -435,6 +435,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::ampDecayCurve, 2},   "Amp Decay Curve",   curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::ampReleaseCurve, 2}, "Amp Release Curve", curveChoices, 4));
+    const juce::StringArray envVelTimeChoices = toChoices(EnvVelTimeMode::kEntries);
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::ampAttackVelMode, 1}, "Amp Attack Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::ampDecayVelMode, 1}, "Amp Decay Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::ampReleaseVelMode, 1}, "Amp Release Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::mod1AttackCurve, 2},  "Mod1 Attack Curve",  curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -442,11 +449,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::mod1ReleaseCurve, 2}, "Mod1 Release Curve", curveChoices, 4));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::mod1AttackVelMode, 1}, "Mod1 Attack Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::mod1DecayVelMode, 1}, "Mod1 Decay Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::mod1ReleaseVelMode, 1}, "Mod1 Release Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::mod2AttackCurve, 2},  "Mod2 Attack Curve",  curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::mod2DecayCurve, 2},   "Mod2 Decay Curve",   curveChoices, 2));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::mod2ReleaseCurve, 2}, "Mod2 Release Curve", curveChoices, 4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::mod2AttackVelMode, 1}, "Mod2 Attack Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::mod2DecayVelMode, 1}, "Mod2 Decay Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::mod2ReleaseVelMode, 1}, "Mod2 Release Vel Mode", envVelTimeChoices, EnvVelTimeMode::Off));
 
     // ENV / LFO target choice lists — the single source of truth lives in
     // src/dsp/BlockParams.h (EnvTarget::kEntries / LfoTarget::kEntries). The
@@ -724,6 +743,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.ampAttackCurve  = static_cast<int>(parameters.getRawParameterValue(PID::ampAttackCurve)->load());
     bp.ampDecayCurve   = static_cast<int>(parameters.getRawParameterValue(PID::ampDecayCurve)->load());
     bp.ampReleaseCurve = static_cast<int>(parameters.getRawParameterValue(PID::ampReleaseCurve)->load());
+    bp.ampAttackVelMode  = static_cast<int>(parameters.getRawParameterValue(PID::ampAttackVelMode)->load());
+    bp.ampDecayVelMode   = static_cast<int>(parameters.getRawParameterValue(PID::ampDecayVelMode)->load());
+    bp.ampReleaseVelMode = static_cast<int>(parameters.getRawParameterValue(PID::ampReleaseVelMode)->load());
 
     bp.mod1Attack  = parameters.getRawParameterValue(PID::mod1Attack)->load();
     bp.mod1Decay   = parameters.getRawParameterValue(PID::mod1Decay)->load();
@@ -736,6 +758,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.mod1AttackCurve  = static_cast<int>(parameters.getRawParameterValue(PID::mod1AttackCurve)->load());
     bp.mod1DecayCurve   = static_cast<int>(parameters.getRawParameterValue(PID::mod1DecayCurve)->load());
     bp.mod1ReleaseCurve = static_cast<int>(parameters.getRawParameterValue(PID::mod1ReleaseCurve)->load());
+    bp.mod1AttackVelMode  = static_cast<int>(parameters.getRawParameterValue(PID::mod1AttackVelMode)->load());
+    bp.mod1DecayVelMode   = static_cast<int>(parameters.getRawParameterValue(PID::mod1DecayVelMode)->load());
+    bp.mod1ReleaseVelMode = static_cast<int>(parameters.getRawParameterValue(PID::mod1ReleaseVelMode)->load());
 
     bp.mod2Attack  = parameters.getRawParameterValue(PID::mod2Attack)->load();
     bp.mod2Decay   = parameters.getRawParameterValue(PID::mod2Decay)->load();
@@ -748,6 +773,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.mod2AttackCurve  = static_cast<int>(parameters.getRawParameterValue(PID::mod2AttackCurve)->load());
     bp.mod2DecayCurve   = static_cast<int>(parameters.getRawParameterValue(PID::mod2DecayCurve)->load());
     bp.mod2ReleaseCurve = static_cast<int>(parameters.getRawParameterValue(PID::mod2ReleaseCurve)->load());
+    bp.mod2AttackVelMode  = static_cast<int>(parameters.getRawParameterValue(PID::mod2AttackVelMode)->load());
+    bp.mod2DecayVelMode   = static_cast<int>(parameters.getRawParameterValue(PID::mod2DecayVelMode)->load());
+    bp.mod2ReleaseVelMode = static_cast<int>(parameters.getRawParameterValue(PID::mod2ReleaseVelMode)->load());
 
     // LFOs (global)
     bp.lfo1Rate = parameters.getRawParameterValue(PID::lfo1Rate)->load();
@@ -818,6 +846,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     masterSampler.setCrossfadeMs(parameters.getRawParameterValue(PID::crossfadeMs)->load());
     masterSampler.setNormalize(parameters.getRawParameterValue(PID::normalize)->load() > 0.5f);
     masterSampler.setLoopOptimizeLevel(static_cast<int>(parameters.getRawParameterValue(PID::loopOptimize)->load()));
+
+    // Give noteOn/noteOff access to the current envelope/modulation block state.
+    voiceManager.setBlockParams(bp);
 
     // ── Sequencer / Arpeggiator (in series: Seq → Arp → synth) ─────────────
     // (seqRunning already read above for idle detection)
@@ -2057,23 +2088,29 @@ static juce::String driftWaveToString(int i)            { return choiceToKey(i, 
 
 static int curveShapeFromString(const juce::String& s)  { return choiceFromKey(s, EnvCurve::kEntries); }
 static juce::String curveShapeToString(int i)           { return choiceToKey(i, EnvCurve::kEntries); }
+static int envVelTimeModeFromString(const juce::String& s) { return choiceFromKey(s, EnvVelTimeMode::kEntries); }
+static juce::String envVelTimeModeToString(int i)          { return choiceToKey(i, EnvVelTimeMode::kEntries); }
 
 // ── PID group tables for looped save/load of envelopes, LFOs, drift ──
 struct EnvPIDs {
     const char* attack; const char* decay; const char* sustain; const char* release;
     const char* amount; const char* velSens; const char* loop; const char* target;
     const char* attackCurve; const char* decayCurve; const char* releaseCurve;
+    const char* attackVelMode; const char* decayVelMode; const char* releaseVelMode;
 };
 static constexpr EnvPIDs kEnvPIDs[] = {
     { PID::ampAttack, PID::ampDecay, PID::ampSustain, PID::ampRelease,
       PID::ampAmount, PID::ampVelSens, PID::ampLoop, nullptr,
-      PID::ampAttackCurve, PID::ampDecayCurve, PID::ampReleaseCurve },
+      PID::ampAttackCurve, PID::ampDecayCurve, PID::ampReleaseCurve,
+      PID::ampAttackVelMode, PID::ampDecayVelMode, PID::ampReleaseVelMode },
     { PID::mod1Attack, PID::mod1Decay, PID::mod1Sustain, PID::mod1Release,
       PID::mod1Amount, PID::mod1VelSens, PID::mod1Loop, PID::mod1Target,
-      PID::mod1AttackCurve, PID::mod1DecayCurve, PID::mod1ReleaseCurve },
+      PID::mod1AttackCurve, PID::mod1DecayCurve, PID::mod1ReleaseCurve,
+      PID::mod1AttackVelMode, PID::mod1DecayVelMode, PID::mod1ReleaseVelMode },
     { PID::mod2Attack, PID::mod2Decay, PID::mod2Sustain, PID::mod2Release,
       PID::mod2Amount, PID::mod2VelSens, PID::mod2Loop, PID::mod2Target,
-      PID::mod2AttackCurve, PID::mod2DecayCurve, PID::mod2ReleaseCurve },
+      PID::mod2AttackCurve, PID::mod2DecayCurve, PID::mod2ReleaseCurve,
+      PID::mod2AttackVelMode, PID::mod2DecayVelMode, PID::mod2ReleaseVelMode },
 };
 
 struct LfoPIDs {
@@ -2214,6 +2251,9 @@ juce::String T5ynthProcessor::exportJsonPreset() const
         env->setProperty("attackCurve", curveShapeToString(static_cast<int>(get(ep.attackCurve))));
         env->setProperty("decayCurve", curveShapeToString(static_cast<int>(get(ep.decayCurve))));
         env->setProperty("releaseCurve", curveShapeToString(static_cast<int>(get(ep.releaseCurve))));
+        env->setProperty("attackVelMode", envVelTimeModeToString(static_cast<int>(get(ep.attackVelMode))));
+        env->setProperty("decayVelMode", envVelTimeModeToString(static_cast<int>(get(ep.decayVelMode))));
+        env->setProperty("releaseVelMode", envVelTimeModeToString(static_cast<int>(get(ep.releaseVelMode))));
         envArr.add(env.get());
     }
     modObj->setProperty("envs", envArr);
@@ -2429,6 +2469,15 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
                 if (env->hasProperty("releaseCurve"))
                     setParam(parameters, ep.releaseCurve,
                              static_cast<float>(curveShapeFromString(env->getProperty("releaseCurve").toString())));
+                if (env->hasProperty("attackVelMode"))
+                    setParam(parameters, ep.attackVelMode,
+                             static_cast<float>(envVelTimeModeFromString(env->getProperty("attackVelMode").toString())));
+                if (env->hasProperty("decayVelMode"))
+                    setParam(parameters, ep.decayVelMode,
+                             static_cast<float>(envVelTimeModeFromString(env->getProperty("decayVelMode").toString())));
+                if (env->hasProperty("releaseVelMode"))
+                    setParam(parameters, ep.releaseVelMode,
+                             static_cast<float>(envVelTimeModeFromString(env->getProperty("releaseVelMode").toString())));
                 if (ep.target != nullptr)
                     setParam(parameters, ep.target, static_cast<float>(envTargetFromString(env->getProperty("target").toString())));
             }

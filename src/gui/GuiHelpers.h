@@ -231,6 +231,8 @@ inline ResponsiveStripResult layoutResponsiveStrip(juce::Rectangle<int> area,
 class SliderRow : public juce::Component
 {
 public:
+    enum class LabelMode { Off, Positive, Negative };
+
     SliderRow(const juce::String& name,
               std::function<juce::String(double)> formatter,
               juce::Colour trackColor = kAccent)
@@ -238,7 +240,7 @@ public:
           trackCol(trackColor)
     {
         label.setText(name, juce::dontSendNotification);
-        label.setColour(juce::Label::textColourId, kDim);
+        label.setInterceptsMouseClicks(false, false);
         label.setJustificationType(juce::Justification::centredLeft);
         addAndMakeVisible(label);
 
@@ -252,6 +254,7 @@ public:
         value.setColour(juce::Label::textColourId, trackCol);
         value.setJustificationType(juce::Justification::centredLeft);
         addAndMakeVisible(value);
+        updateLabelAppearance();
     }
 
     juce::Slider& getSlider() { return slider; }
@@ -281,7 +284,20 @@ public:
         trackCol = c;
         slider.setColour(juce::Slider::trackColourId, c);
         value.setColour(juce::Label::textColourId, c);
+        updateLabelAppearance();
     }
+
+    void setLabelMode(LabelMode newMode)
+    {
+        if (labelMode == newMode)
+            return;
+        labelMode = newMode;
+        updateLabelAppearance();
+        repaint();
+    }
+
+    LabelMode getLabelMode() const { return labelMode; }
+    void setLabelClickHandler(std::function<void()> handler) { onLabelClick = std::move(handler); }
 
     void updateValue()
     {
@@ -317,6 +333,12 @@ public:
 
     void paintOverChildren(juce::Graphics& g) override
     {
+        if (labelMode == LabelMode::Negative)
+        {
+            g.setColour(juce::Colour(0xccff9800));
+            g.drawRect(label.getBounds().toFloat().reduced(0.5f), 1.0f);
+        }
+
         if (std::isnan(ghostSmoothed)) return;
 
         auto sb = slider.getBounds();
@@ -340,6 +362,12 @@ public:
         slider.setBounds(b);
     }
 
+    void mouseUp(const juce::MouseEvent& e) override
+    {
+        if (onLabelClick && label.getBounds().contains(e.getPosition()))
+            onLabelClick();
+    }
+
 private:
     struct SliderLayoutProfile
     {
@@ -357,6 +385,8 @@ private:
     juce::Slider slider;
     std::function<juce::String(double)> valueFormatter;
     juce::Colour trackCol;
+    LabelMode labelMode = LabelMode::Off;
+    std::function<void()> onLabelClick;
 
     // Ghost marker smoothing
     static constexpr float NaN_ = std::numeric_limits<float>::quiet_NaN();
@@ -429,6 +459,14 @@ private:
         int thumbW = slider.getLookAndFeel().getSliderThumbRadius(slider) * 2;
         return static_cast<float>(sb.getX() + thumbW / 2)
              + static_cast<float>(sb.getWidth() - thumbW) * static_cast<float>(norm);
+    }
+
+    void updateLabelAppearance()
+    {
+        juce::Colour textColour = kDimmer;
+        if (labelMode == LabelMode::Positive || labelMode == LabelMode::Negative)
+            textColour = kDim;
+        label.setColour(juce::Label::textColourId, textColour);
     }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderRow)

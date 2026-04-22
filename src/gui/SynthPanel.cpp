@@ -26,6 +26,8 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
                           const juce::String& sId, const juce::String& rId,
                           const juce::String& aCurveId, const juce::String& dCurveId,
                           const juce::String& rCurveId,
+                          const juce::String& aVelModeId, const juce::String& dVelModeId,
+                          const juce::String& rVelModeId,
                           const juce::String& amtId, const juce::String& velId,
                           const juce::String& loopId,
                           juce::AudioProcessorValueTreeState& apvts)
@@ -88,6 +90,37 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
     setupCurveBtn(env.aCurveBtn, env.aCurveHidden, aCurveId, apvts, env.aCurveA);
     setupCurveBtn(env.dCurveBtn, env.dCurveHidden, dCurveId, apvts, env.dCurveA);
     setupCurveBtn(env.rCurveBtn, env.rCurveHidden, rCurveId, apvts, env.rCurveA);
+
+    auto setupVelMode = [](SliderRow& row, juce::ComboBox& hidden,
+                           const juce::String& paramId,
+                           juce::AudioProcessorValueTreeState& vts,
+                           std::unique_ptr<CA>& attachment)
+    {
+        juce::StringArray items;
+        for (const auto& e : EnvVelTimeMode::kEntries)
+            items.add(e.label);
+        hidden.addItemList(items, 1);
+        hidden.onChange = [&row, &hidden]
+        {
+            const int index = hidden.getSelectedId() - 1;
+            SliderRow::LabelMode mode = SliderRow::LabelMode::Off;
+            if (index == EnvVelTimeMode::Positive)
+                mode = SliderRow::LabelMode::Positive;
+            else if (index == EnvVelTimeMode::Negative)
+                mode = SliderRow::LabelMode::Negative;
+            row.setLabelMode(mode);
+        };
+        row.setLabelClickHandler([&hidden]
+        {
+            const int next = (hidden.getSelectedId() % EnvVelTimeMode::kCount) + 1;
+            hidden.setSelectedId(next);
+        });
+        attachment = std::make_unique<CA>(vts, paramId, hidden);
+        hidden.onChange();
+    };
+    setupVelMode(*env.aRow, env.aVelModeHidden, aVelModeId, apvts, env.aVelModeA);
+    setupVelMode(*env.dRow, env.dVelModeHidden, dVelModeId, apvts, env.dVelModeA);
+    setupVelMode(*env.rRow, env.rVelModeHidden, rVelModeId, apvts, env.rVelModeA);
 
     // Trigger initial value display
     env.aRow->updateValue();
@@ -632,12 +665,15 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     // ── Envelopes ──
     initEnv(ampEnv,  "ENV 1", 2, PID::ampAttack,  PID::ampDecay,  PID::ampSustain,  PID::ampRelease,
             PID::ampAttackCurve, PID::ampDecayCurve, PID::ampReleaseCurve,
+            PID::ampAttackVelMode, PID::ampDecayVelMode, PID::ampReleaseVelMode,
             PID::ampAmount,  PID::ampVelSens,  PID::ampLoop,  apvts);
     initEnv(mod1Env, "ENV 2", 1, PID::mod1Attack, PID::mod1Decay, PID::mod1Sustain, PID::mod1Release,
             PID::mod1AttackCurve, PID::mod1DecayCurve, PID::mod1ReleaseCurve,
+            PID::mod1AttackVelMode, PID::mod1DecayVelMode, PID::mod1ReleaseVelMode,
             PID::mod1Amount, PID::mod1VelSens, PID::mod1Loop, apvts);
     initEnv(mod2Env, "ENV 3", 1, PID::mod2Attack, PID::mod2Decay, PID::mod2Sustain, PID::mod2Release,
             PID::mod2AttackCurve, PID::mod2DecayCurve, PID::mod2ReleaseCurve,
+            PID::mod2AttackVelMode, PID::mod2DecayVelMode, PID::mod2ReleaseVelMode,
             PID::mod2Amount, PID::mod2VelSens, PID::mod2Loop, apvts);
 
     // ── LFOs ──
