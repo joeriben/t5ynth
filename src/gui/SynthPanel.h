@@ -65,7 +65,7 @@ private:
     juce::ComboBox framesHidden;
     juce::Rectangle<int> framesSwitchBounds;
     juce::TextButton smoothToggle { "Smooth" };
-    juce::TextButton autoScanToggle { "Auto" };
+    juce::TextButton autoScanToggle { "AutoScan" };
     juce::Label frameCountLabel;
 
     // ── Octave shift ──
