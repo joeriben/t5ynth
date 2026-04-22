@@ -8,10 +8,16 @@ namespace
 constexpr bool kSamplerDebugLogging = true;
 constexpr float kAlphaAnchorSnapThreshold = 0.04f;
 constexpr float kMagnitudeUnitySnapThreshold = 0.03f;
+constexpr float kDurationSecondSnapThreshold = 0.05f;
 
 float snapIfNear(float value, float target, float threshold)
 {
     return std::abs(value - target) <= threshold ? target : value;
+}
+
+float snapToInterval(float rangeStart, float value, float interval)
+{
+    return rangeStart + interval * std::floor((value - rangeStart) / interval + 0.5f);
 }
 
 float snapGenerationAlpha(float rangeStart, float rangeEnd, float value)
@@ -26,11 +32,21 @@ float snapGenerationMagnitude(float rangeStart, float rangeEnd, float value)
 {
     constexpr float interval = 0.001f;
     value = snapIfNear(value, 1.0f, kMagnitudeUnitySnapThreshold);
-    value = rangeStart + interval * std::floor((value - rangeStart) / interval + 0.5f);
+    value = snapToInterval(rangeStart, value, interval);
     return juce::jlimit(rangeStart, rangeEnd, value);
 }
 
-float convertMagnitudeFrom0To1(float rangeStart, float rangeEnd, float proportion)
+float snapGenerationDuration(float rangeStart, float rangeEnd, float value)
+{
+    constexpr float interval = 0.01f;
+    for (int seconds = 1; seconds <= 11; ++seconds)
+        value = snapIfNear(value, static_cast<float>(seconds), kDurationSecondSnapThreshold);
+
+    value = snapToInterval(rangeStart, value, interval);
+    return juce::jlimit(rangeStart, rangeEnd, value);
+}
+
+float convertSkew03From0To1(float rangeStart, float rangeEnd, float proportion)
 {
     constexpr float skew = 0.3f;
     proportion = juce::jlimit(0.0f, 1.0f, proportion);
@@ -39,7 +55,7 @@ float convertMagnitudeFrom0To1(float rangeStart, float rangeEnd, float proportio
     return rangeStart + (rangeEnd - rangeStart) * proportion;
 }
 
-float convertMagnitudeTo0To1(float rangeStart, float rangeEnd, float value)
+float convertSkew03To0To1(float rangeStart, float rangeEnd, float value)
 {
     constexpr float skew = 0.3f;
     auto proportion = juce::jlimit(0.0f, 1.0f, (value - rangeStart) / (rangeEnd - rangeStart));
@@ -186,8 +202,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         alphaRange, 0.0f));
 
     auto magnitudeRange = juce::NormalisableRange<float>(0.001f, 5.0f,
-        convertMagnitudeFrom0To1,
-        convertMagnitudeTo0To1,
+        convertSkew03From0To1,
+        convertSkew03To0To1,
         snapGenerationMagnitude);
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::genMagnitude, 1}, "Magnitude",
@@ -195,12 +211,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::genNoise, 1}, "Noise",
         juce::NormalisableRange<float>(0.0f, 1.0f, 0.001f, 0.3f), 0.0f));
+
+    auto durationRange = juce::NormalisableRange<float>(0.1f, 11.0f,
+        convertSkew03From0To1,
+        convertSkew03To0To1,
+        snapGenerationDuration);
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::genDuration, 1}, "Duration",
         // 11s hard cap in the UI — Stable Audio Open Small tops out at 11s
         // and T5ynth is for short sound samples, not music. SA 1.0 can do
         // more internally but the slider stays unified at 11s.
-        juce::NormalisableRange<float>(0.1f, 11.0f, 0.01f, 0.3f), 3.0f));
+        durationRange, 3.0f));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{PID::infSteps, 1}, "Steps", 1, 100, 8));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
