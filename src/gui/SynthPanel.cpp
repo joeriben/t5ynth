@@ -643,6 +643,34 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         }
     }
 
+    // ── Filter topology switchbox: VCA->VCF / VCF->VCA ──
+    {
+        juce::StringArray topologyLabels;
+        for (const auto& e : FilterTopology::kEntries) topologyLabels.add(e.label);
+        filterTopologyHidden.addItemList(topologyLabels, 1);
+        filterTopologyHidden.onChange = [this] {
+            int id = filterTopologyHidden.getSelectedId();
+            for (int i = 0; i < kNumTopologyBtns; ++i)
+                filterTopologyBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+        };
+        for (int i = 0; i < kNumTopologyBtns; ++i)
+        {
+            filterTopologyBtns[i].setButtonText(topologyLabels[i]);
+            filterTopologyBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+            filterTopologyBtns[i].setColour(juce::TextButton::buttonOnColourId, kFilterCol);
+            filterTopologyBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+            filterTopologyBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+            filterTopologyBtns[i].setClickingTogglesState(true);
+            filterTopologyBtns[i].setRadioGroupId(3003);
+            { int edges = 0;
+              if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+              if (i < kNumTopologyBtns - 1) edges |= juce::Button::ConnectedOnRight;
+              filterTopologyBtns[i].setConnectedEdges(edges); }
+            filterTopologyBtns[i].onClick = [this, i] { filterTopologyHidden.setSelectedId(i + 1); };
+            addAndMakeVisible(filterTopologyBtns[i]);
+        }
+    }
+
     cutoffRow    = std::make_unique<SliderRow>("Cutoff",    fmtHz,  kFilterCol);
     resoRow      = std::make_unique<SliderRow>("Resonance", fmtF2, kFilterCol);
     filterMixRow = std::make_unique<SliderRow>("Mix",       fmtPct, kFilterCol);
@@ -657,6 +685,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
 
     filterTypeA  = std::make_unique<CA>(apvts, PID::filterType,  filterTypeHidden);
     filterSlopeA = std::make_unique<CA>(apvts, PID::filterSlope, filterSlopeHidden);
+    filterTopologyA = std::make_unique<CA>(apvts, PID::filterTopology, filterTopologyHidden);
 
     cutoffRow->updateValue();
     resoRow->updateValue();
@@ -844,6 +873,11 @@ void SynthPanel::updateVisibility()
     {
         filterSlopeBtns[i].setAlpha(filterAlpha);
         filterSlopeBtns[i].setEnabled(filterOn);
+    }
+    for (int i = 0; i < kNumTopologyBtns; ++i)
+    {
+        filterTopologyBtns[i].setAlpha(filterAlpha);
+        filterTopologyBtns[i].setEnabled(filterOn);
     }
     for (auto* r : { cutoffRow.get(), resoRow.get(), filterMixRow.get(), kbdTrackRow.get() })
     {
@@ -1078,6 +1112,7 @@ void SynthPanel::paint(juce::Graphics& g)
         // Filter switchbox borders
         paintSwitchBoxBorder(g, filterTypeSwitchBounds);
         paintSwitchBoxBorder(g, filterSlopeSwitchBounds);
+        paintSwitchBoxBorder(g, filterTopologySwitchBounds);
     }
 
     // Card: Modulation (ENVs + LFOs + Drift)
@@ -1244,7 +1279,7 @@ void SynthPanel::resized()
     // Always reserve same space for engine controls (max of sampler/WT)
     // so waveform height stays stable when switching modes
     int samplerCtrlH = rowH + gap * 2; // one controls row (sampler or wavetable)
-    int filterH = headerH + headerGap + rowH + gap + rowH * 2 + gap; // header + type row + cutoff/reso + mix/kbd
+    int filterH = headerH + headerGap + rowH + gap + rowH * 2 + gap; // header + type/slope/topology + cutoff/reso + mix/kbd
     int modH = gap * 3 + headerH + headerGap; // section gap + header
     int envH = (rowH * 4 + gap) * 3; // 3 envelopes × (header + 3 slider rows + gap)
     int lfoH = gap + (rowH * 2 + gap) * 2; // 2 LFOs × (header + rate row + gap)
@@ -1372,22 +1407,40 @@ void SynthPanel::resized()
     filterHeader.setBounds(area.removeFromTop(headerH));
     area.removeFromTop(headerGap);
 
-    // ── Filter switchboxes: [OFF LP HP BP]  [6dB 12dB 18dB 24dB] ──
+    // ── Filter switchboxes: [OFF LP HP BP] [6dB 12dB 18dB 24dB] [VCA->VCF VCF->VCA] ──
     auto filterHdr = area.removeFromTop(rowH);
     {
-        int cellW = juce::roundToInt(f * 3.2f);
+        const int groupGap = juce::roundToInt(f * 0.75f);
+        const int typeCellW = juce::roundToInt(f * 3.2f);
+        const int slopeCellW = juce::roundToInt(f * 3.2f);
+        const int topologyCellW = juce::roundToInt(f * 6.8f);
+
+        auto typeArea = filterHdr.removeFromLeft(typeCellW * kNumTypeBtns);
+        filterHdr.removeFromLeft(groupGap);
+        auto slopeArea = filterHdr.removeFromLeft(slopeCellW * kNumSlopeBtns);
+        filterHdr.removeFromLeft(groupGap);
+        auto topologyArea = filterHdr.removeFromLeft(topologyCellW * kNumTopologyBtns + 4);
+
+        int cellW = typeCellW;
         for (int i = 0; i < kNumTypeBtns; ++i)
-            filterTypeBtns[i].setBounds(filterHdr.removeFromLeft(cellW));
+            filterTypeBtns[i].setBounds(typeArea.removeFromLeft(cellW));
         filterTypeSwitchBounds = filterTypeBtns[0].getBounds()
             .getUnion(filterTypeBtns[kNumTypeBtns - 1].getBounds());
 
-        filterHdr.removeFromLeft(juce::roundToInt(f * 0.5f));
-
-        int slopeCellW = juce::roundToInt(f * 3.2f);
         for (int i = 0; i < kNumSlopeBtns; ++i)
-            filterSlopeBtns[i].setBounds(filterHdr.removeFromLeft(slopeCellW));
+            filterSlopeBtns[i].setBounds(slopeArea.removeFromLeft(slopeCellW));
         filterSlopeSwitchBounds = filterSlopeBtns[0].getBounds()
             .getUnion(filterSlopeBtns[kNumSlopeBtns - 1].getBounds());
+
+        for (int i = 0; i < kNumTopologyBtns; ++i)
+        {
+            auto bounds = topologyArea.removeFromLeft(topologyCellW);
+            if (i + 1 < kNumTopologyBtns)
+                topologyArea.removeFromLeft(4);
+            filterTopologyBtns[i].setBounds(bounds);
+        }
+        filterTopologySwitchBounds = filterTopologyBtns[0].getBounds()
+            .getUnion(filterTopologyBtns[kNumTopologyBtns - 1].getBounds());
     }
     area.removeFromTop(gap);
 

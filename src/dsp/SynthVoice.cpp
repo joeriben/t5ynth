@@ -490,11 +490,12 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     result.modulatedNoiseLevel = noiseLevel;
     lastModulatedNoiseLevel_ = noiseLevel;
 
+    const bool vcaBeforeFilter = p.filterTopology == FilterTopology::VcaPreFilter;
+
     // DCA
     float vca = ampEnvVal;
     if (p.mod1Target == EnvTarget::DCA) vca *= (1.0f + mod1EnvVal);
     if (p.mod2Target == EnvTarget::DCA) vca *= (1.0f + mod2EnvVal);
-    sample *= vca;
 
     // Per-voice filter with envelope/LFO modulation
     if (p.filterEnabled)
@@ -533,8 +534,13 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
         filter.setType(p.filterType);
         filter.setSlope(p.filterSlope);
         filter.setMix(p.filterMix);
+        if (vcaBeforeFilter)
+            sample *= vca;
         sample = filter.processSample(sample);
     }
+
+    if (!p.filterEnabled || !vcaBeforeFilter)
+        sample *= vca;
 
     // Check if voice has finished (envelope idle after release)
     if (ampEnv.isIdle() && !noteHeld)
@@ -618,7 +624,9 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             filter.setMix(p.filterMix);
         }
 
-        // ── Per-sample inner loop: envelopes + audio + VCA ──
+        const bool vcaBeforeFilter = p.filterTopology == FilterTopology::VcaPreFilter;
+
+        // ── Per-sample inner loop: envelopes + audio + VCA/filter routing ──
         for (int i = pos; i < subBlockEnd; ++i)
         {
             float ampEnvVal = ampEnv.processSample() * p.ampAmount;
@@ -689,6 +697,10 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             float vca = ampEnvVal;
             if (p.mod1Target == EnvTarget::DCA) vca *= (1.0f + mod1EnvVal);
             if (p.mod2Target == EnvTarget::DCA) vca *= (1.0f + mod2EnvVal);
+
+            if (p.filterEnabled && !vcaBeforeFilter)
+                sample = filter.processSample(sample);
+
             sample *= vca;
 
             output[i] = sample;
@@ -702,8 +714,8 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             }
         }
 
-        // ── Apply filter to sub-block (uses cached coefficients) ──
-        if (p.filterEnabled)
+        // ── Post-VCA topology: filter the already-shaped sub-block ──
+        if (p.filterEnabled && vcaBeforeFilter)
         {
             for (int i = pos; i < subBlockEnd; ++i)
                 output[i] = filter.processSample(output[i]);

@@ -104,6 +104,7 @@ namespace PID {
     static constexpr const char* drift3Wave       = "drift3_wave";
     static constexpr const char* filterEnabled    = "filter_enabled";
     static constexpr const char* filterType       = "filter_type";
+    static constexpr const char* filterTopology   = "filter_topology";
     static constexpr const char* filterSlope      = "filter_slope";
     static constexpr const char* filterCutoff     = "filter_cutoff";
     static constexpr const char* filterResonance  = "filter_resonance";
@@ -349,6 +350,17 @@ namespace FilterSlope {
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(Slope24 + 1 == kCount, "FilterSlope out of sync.");
+}
+
+// ── Filter topology ──
+namespace FilterTopology {
+    enum : int { VcaPreFilter = 0, VcaPostFilter = 1 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "vca_pre_filter",  "VCA->VCF" },
+        { "vca_post_filter", "VCF->VCA" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(VcaPostFilter + 1 == kCount, "FilterTopology out of sync.");
 }
 
 // ── Delay type ──
@@ -762,6 +774,7 @@ struct BlockParams
     float baseCutoff = 20000.0f;
     float baseReso = 0.0f;
     int   filterType = 0;  // FilterType index
+    int   filterTopology = FilterTopology::VcaPreFilter;
     int   filterSlope = 0; // FilterSlope index
     float filterMix = 1.0f;
     float kbdTrack = 0.0f;
