@@ -275,7 +275,7 @@ juce::File PresetFormat::getFactoryPresetsDirectory()
    #if JUCE_MAC
     return juce::File("/Library/Application Support/T5ynth/presets");
    #elif JUCE_LINUX
-    return juce::File("/usr/local/share/T5ynth/presets");
+    return juce::File("/usr/share/T5ynth/presets");
    #else
     // Windows: C:\ProgramData\T5ynth\presets (installed by Setup)
     return juce::File::getSpecialLocation(juce::File::commonApplicationDataDirectory)
