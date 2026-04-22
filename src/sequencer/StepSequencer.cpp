@@ -205,11 +205,12 @@ void T5ynthStepSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         // Note-on for current step if enabled
         if (step.enabled)
         {
+            int midiNote = juce::jlimit(0, 127, step.note + octaveShiftSemitones);
             int vel = juce::jlimit(1, 127, juce::roundToInt(step.velocity * 127.0f));
             int channel = step.bind ? 2 : 1;
-            midi.addEvent(juce::MidiMessage::noteOn(channel, step.note,
+            midi.addEvent(juce::MidiMessage::noteOn(channel, midiNote,
                           static_cast<juce::uint8>(vel)), eventPos);
-            lastPlayedNote = step.note;
+            lastPlayedNote = midiNote;
 
             // If the NEXT step has bind, hold this note for the full step
             // (no early gate-off, so the voice stays alive for the pitch change)

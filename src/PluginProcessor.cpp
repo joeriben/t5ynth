@@ -867,28 +867,14 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         stepSequencer.setNumSteps(seqSteps);
         stepSequencer.setDivision(seqDivision);
         stepSequencer.setAllGates(seqGate);
+        int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue(PID::seqOctave)->load());
+        stepSequencer.setOctaveShiftSemitones((seqOctaveIdx - 2) * 12);
 
         if (seqRunning)
             stepSequencer.start();
         else
             stepSequencer.stop();
         stepSequencer.processBlock(buffer, midiMessages);
-    }
-
-    // Octave transposition (both modes)
-    int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue(PID::seqOctave)->load());
-    int semitoneShift = (seqOctaveIdx - 2) * 12;
-    if (semitoneShift != 0 && seqRunning)
-    {
-        juce::MidiBuffer transposed;
-        for (const auto metadata : midiMessages)
-        {
-            auto msg = metadata.getMessage();
-            if (msg.isNoteOnOrOff())
-                msg.setNoteNumber(juce::jlimit(0, 127, msg.getNoteNumber() + semitoneShift));
-            transposed.addEvent(msg, metadata.samplePosition);
-        }
-        midiMessages.swapWith(transposed);
     }
 
     // Consume bar-start flag (still used for sequencer display)
