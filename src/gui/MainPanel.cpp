@@ -202,6 +202,10 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     // Load default preset (if no audio loaded yet)
     loadDefaultPreset();
 
+    // Normalize any previously discovered external model directories into
+    // T5ynth's canonical model slots before the backend scans them.
+    settingsPage.importDiscoveredModels();
+
     // Load native inference models
     tryLoadInferenceModels();
 

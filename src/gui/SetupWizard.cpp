@@ -333,16 +333,17 @@ bool SettingsPage::hasAnyInstalledModel()
     return false;
 }
 
-juce::Result SettingsPage::importModelDirectory(const juce::File& sourceDir,
-                                                juce::File& activeDir,
-                                                bool replaceExistingTarget)
+juce::Result SettingsPage::importModelDirectoryForId(const juce::String& modelId,
+                                                     const juce::File& sourceDir,
+                                                     juce::File& activeDir,
+                                                     bool replaceExistingTarget)
 {
     activeDir = juce::File();
 
     if (!sourceDir.isDirectory() || !hasModelMarker(sourceDir))
         return juce::Result::fail("This directory does not contain a valid model.");
 
-    auto targetDir = getAppSupportModelDir(selectedModelId());
+    auto targetDir = getAppSupportModelDir(modelId);
     const auto sourcePath = sourceDir.getFullPathName();
     const auto targetPath = targetDir.getFullPathName();
 
@@ -390,6 +391,26 @@ juce::Result SettingsPage::importModelDirectory(const juce::File& sourceDir,
     return juce::Result::ok();
 }
 
+void SettingsPage::importDiscoveredModels()
+{
+    for (int i = 0; i < kNumKnownModels; ++i)
+    {
+        const auto& km = kKnownModels[i];
+        auto found = scanForModelById(km.id, km.hfRepo);
+        if (!found.exists())
+            continue;
+
+        juce::File activeDir;
+        auto result = importModelDirectoryForId(km.id, found, activeDir, false);
+        if (result.failed())
+        {
+            juce::Logger::writeToLog("Model auto-import skipped for "
+                                     + juce::String(km.id) + ": "
+                                     + result.getErrorMessage());
+        }
+    }
+}
+
 void SettingsPage::setModelPath(const juce::File& dir)
 {
     modelPath = dir;
@@ -428,7 +449,7 @@ void SettingsPage::browseForModel()
                 return;
             }
             juce::File activeDir;
-            auto importResult = self->importModelDirectory(result, activeDir, true);
+            auto importResult = self->importModelDirectoryForId(modelId, result, activeDir, true);
             if (importResult.failed())
             {
                 juce::AlertWindow::showMessageBoxAsync(
@@ -681,7 +702,7 @@ void SettingsPage::performAutoScan()
     if (found.exists())
     {
         juce::File activeDir;
-        auto importResult = importModelDirectory(found, activeDir, true);
+        auto importResult = importModelDirectoryForId(selectedModelId(), found, activeDir, true);
         if (importResult.failed())
         {
             updateStatus();
