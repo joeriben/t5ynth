@@ -812,10 +812,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.filterDriveDb = parameters.getRawParameterValue(PID::filterDrive)->load();
     bp.filterDriveMakeup = parameters.getRawParameterValue(PID::filterDriveMakeup)->load() > 0.5f;
     bp.filterDriveGain = std::pow(10.0f, bp.filterDriveDb * (1.0f / 20.0f));
-    // Peak make-up: after tanh a full-scale sine peaks at tanh(driveGain).
-    // Dividing by that restores the peak to ±1. At driveDb==0 both gains are 1.0.
-    bp.filterDriveMakeupGain = (bp.filterDriveMakeup && bp.filterDriveDb > 0.01f)
-        ? 1.0f / std::tanh(bp.filterDriveGain)
+    // Input-gain compensation: drive pushes the input by +N dB into the
+    // shaper, makeup trims the output by -N dB, so small signals stay unity-
+    // gain and hot signals come out as a level-matched, saturation-squashed
+    // peak. Continuous through 0 dB (gain = 1 at dB = 0).
+    bp.filterDriveMakeupGain = bp.filterDriveMakeup
+        ? 1.0f / bp.filterDriveGain
         : 1.0f;
 
     // Scan
