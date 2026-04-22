@@ -14,6 +14,7 @@ Files in this directory:
 - [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md) — Linux / Fedora 42 source build path for developers and build hosts.
 - [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md) — Fedora RPM packaging path using a named prebuilt isolated backend bundle.
 - [`PYTORCH_BUNDLING_NOTES.md`](PYTORCH_BUNDLING_NOTES.md) — Detailed findings from freezing and packaging the Python/Torch backend on Linux, including Blackwell-specific pitfalls.
+- [`CUDA_BUNDLE_TARGETS.md`](CUDA_BUNDLE_TARGETS.md) — Short target matrix for generic NVIDIA vs. Blackwell bundles and the future Windows installer.
 - [`MACOS_INSTALLATION.md`](MACOS_INSTALLATION.md) — End-user macOS installer and Gatekeeper override notes.
 - [`IPC_PROTOCOL.md`](IPC_PROTOCOL.md) — JUCE ↔ Python binary pipe protocol specification.
 - [`ADDING_A_MODEL.md`](ADDING_A_MODEL.md) — HOWTO for adding a new inference engine.
@@ -69,6 +70,7 @@ In `docs/`:
 - …build T5ynth from source on Fedora / Linux → [`LINUX_INSTALLATION.md`](LINUX_INSTALLATION.md)
 - …build a Fedora RPM → [`LINUX_PACKAGING.md`](LINUX_PACKAGING.md)
 - …understand what actually broke while freezing the PyTorch backend → [`PYTORCH_BUNDLING_NOTES.md`](PYTORCH_BUNDLING_NOTES.md)
+- …see the short GPU/bundle target matrix for RTX 3080-class hosts and Windows → [`CUDA_BUNDLE_TARGETS.md`](CUDA_BUNDLE_TARGETS.md)
 - …install the current macOS build → [`MACOS_INSTALLATION.md`](MACOS_INSTALLATION.md)
 - …understand the code layout → [`/ARCHITECTURE.md`](../ARCHITECTURE.md)
 - …add a new diffusion model → [`ADDING_A_MODEL.md`](ADDING_A_MODEL.md)
