@@ -93,6 +93,60 @@ bool T5ynthProcessor::launchPipeInference(const juce::File& backendDir)
     return pipeInference->launch(backendDir);
 }
 
+bool T5ynthProcessor::canUseStepHoldPreview() const
+{
+    const bool seqRunning = parameters.getRawParameterValue(PID::seqRunning)->load() > 0.5f;
+    const bool genRunning = parameters.getRawParameterValue(PID::genSeqRunning)->load() > 0.5f;
+    return !seqRunning && !genRunning;
+}
+
+void T5ynthProcessor::beginStepHoldPreview(int midiNote, float velocity)
+{
+    if (!canUseStepHoldPreview())
+        return;
+
+    const juce::ScopedLock sl(getCallbackLock());
+    const int note = juce::jlimit(0, 127, midiNote);
+    const bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Mode)->load()) == 1;
+    const bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Mode)->load()) == 1;
+
+    if (stepHoldPreviewActive && stepHoldPreviewNote == note)
+        return;
+
+    if (stepHoldPreviewActive && stepHoldPreviewNote >= 0)
+        voiceManager.noteOff(stepHoldPreviewNote);
+
+    voiceManager.noteOn(note, juce::jlimit(0.0f, 1.0f, velocity), false, 0.0f,
+                        lfo1TrigMode, lfo2TrigMode);
+
+    stepHoldPreviewActive = true;
+    stepHoldPreviewNote = note;
+    lastMidiNote.store(note, std::memory_order_relaxed);
+    lastMidiVelocity.store(juce::roundToInt(juce::jlimit(0.0f, 1.0f, velocity) * 127.0f),
+                           std::memory_order_relaxed);
+    lastMidiNoteOn.store(true, std::memory_order_relaxed);
+}
+
+void T5ynthProcessor::updateStepHoldPreview(int midiNote, float velocity)
+{
+    beginStepHoldPreview(midiNote, velocity);
+}
+
+void T5ynthProcessor::endStepHoldPreview()
+{
+    const juce::ScopedLock sl(getCallbackLock());
+
+    if (!stepHoldPreviewActive || stepHoldPreviewNote < 0)
+        return;
+
+    voiceManager.noteOff(stepHoldPreviewNote);
+    stepHoldPreviewActive = false;
+    stepHoldPreviewNote = -1;
+
+    if (!voiceManager.hasActiveVoices())
+        lastMidiNoteOn.store(false, std::memory_order_relaxed);
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;

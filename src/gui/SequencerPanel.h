@@ -74,6 +74,8 @@ private:
         bool isCurrentStep = false;
         int dragZone = -1;        // 0=dot, 1=note, 2=glide, 3=velocity
         float dragStartVal = 0.f;
+        bool noteHoldPreviewActive = false;
+        int noteHoldPreviewNote = -1;
         void paint(juce::Graphics& g) override;
         void mouseDown(const juce::MouseEvent& e) override;
         void mouseDrag(const juce::MouseEvent& e) override;

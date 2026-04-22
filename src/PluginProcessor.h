@@ -93,6 +93,10 @@ public:
     T5ynthStepSequencer& getStepSequencer() { return stepSequencer; }
     T5ynthGenerativeSequencer& getGenerativeSequencer() { return generativeSequencer; }
     T5ynthArpeggiator& getArpeggiator() { return arpeggiator; }
+    bool canUseStepHoldPreview() const;
+    void beginStepHoldPreview(int midiNote, float velocity = 0.8f);
+    void updateStepHoldPreview(int midiNote, float velocity = 0.8f);
+    void endStepHoldPreview();
 
     // Waveform display data
     bool hasNewWaveform() const { return newWaveformReady.load(std::memory_order_acquire); }
@@ -192,6 +196,10 @@ private:
     // Track loaded reverb IR / seq preset to avoid reloading every block
     int lastReverbIr = -1;
     int lastSeqPreset = -1;
+
+    // Temporary preview note from step-grid mouse-hold editing.
+    bool stepHoldPreviewActive = false;
+    int stepHoldPreviewNote = -1;
 
     // Idle detection (audio thread only — not atomic)
     int silentBlockCount = 0;

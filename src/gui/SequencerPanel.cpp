@@ -125,6 +125,10 @@ void SequencerPanel::StepColumn::mouseDown(const juce::MouseEvent& e)
         // Start note drag
         dragZone = 1;
         dragStartVal = static_cast<float>(step.note);
+        noteHoldPreviewActive = processor->canUseStepHoldPreview();
+        noteHoldPreviewNote = step.note;
+        if (noteHoldPreviewActive)
+            processor->beginStepHoldPreview(step.note);
     }
     else if (y < velBottom())
     {
@@ -160,6 +164,11 @@ void SequencerPanel::StepColumn::mouseDrag(const juce::MouseEvent& e)
         float deltaSemi = -deltaY / static_cast<float>(noteH) * 48.0f;
         int newNote = juce::jlimit(36, 84, juce::roundToInt(dragStartVal + deltaSemi));
         seq.setStepNote(stepIndex, newNote);
+        if (noteHoldPreviewActive && newNote != noteHoldPreviewNote)
+        {
+            processor->updateStepHoldPreview(newNote);
+            noteHoldPreviewNote = newNote;
+        }
         repaint();
     }
     else if (dragZone == 3)
@@ -174,6 +183,11 @@ void SequencerPanel::StepColumn::mouseDrag(const juce::MouseEvent& e)
 
 void SequencerPanel::StepColumn::mouseUp(const juce::MouseEvent&)
 {
+    if (processor != nullptr && noteHoldPreviewActive)
+        processor->endStepHoldPreview();
+
+    noteHoldPreviewActive = false;
+    noteHoldPreviewNote = -1;
     dragZone = -1;
 }
 
