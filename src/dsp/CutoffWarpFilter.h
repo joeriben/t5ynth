@@ -32,6 +32,15 @@
  * dependent k multiplier evens out the perceived "resonance strength" across
  * styles so Sin doesn't ring at r = 0.25 while SoftClip stays silent at r = 1.
  *
+ * Thermal-voltage-normalised Tanh style (Huovilainen / Surge): style 0 uses
+ * `satStage(x) = 2·Vt · tanh(x / (2·Vt))` instead of plain `tanh(x)`, which
+ * widens the per-stage saturation ceiling to ±2·Vt. The feedback tap `k·y4`
+ * therefore gets more headroom to swing the first-stage summing node across
+ * its linear region when the hot signal is pinned at saturation, restoring
+ * resonance / self-oscillation at high drive. See MoogLadderFilter.h for the
+ * derivation. Other styles keep their original curves on this first pass —
+ * revisit per-style if the acceptance matrix fails for one of them.
+ *
  * Saturation styles must all be monotonic and centered at 0 (sat(0) == 0)
  * so the feedback loop has a well-defined equilibrium. OJD was previously
  * biased and caused DC drift / glitches under modulation; it now subtracts
@@ -189,6 +198,23 @@ private:
         return 1.0f;
     }
 
+    // Thermal-voltage scale for the Tanh style's saturation. Vt = 0.5 reduces
+    // `satStage` to plain tanh; raising Vt widens the per-stage ceiling to
+    // ±2·Vt and therefore the allowed swing of the feedback tap, which is
+    // what keeps resonance alive at high drive.
+    //
+    // NOTE: MoogLadderFilter.h has its own copy of this constant. Keep the
+    // two in sync — if you change kVt here, change it there too. Both were
+    // left local to keep each filter self-contained.
+    static constexpr float kVt = 1.22f;
+
+    static inline float satStage(float x)
+    {
+        constexpr float k2Vt    = 2.0f * kVt;
+        constexpr float kInv2Vt = 1.0f / (2.0f * kVt);
+        return k2Vt * std::tanh(x * kInv2Vt);
+    }
+
     // Saturation functions indexed by FilterWarpStyle::*. All must be
     // monotonic, bounded, and sat(0) == 0 so the ZDF loop has a clean
     // zero equilibrium.
@@ -196,8 +222,8 @@ private:
     {
         switch (style)
         {
-            case 0: // Tanh — symmetric soft, classic
-                return std::tanh(x);
+            case 0: // Tanh — thermal-voltage-normalised (see satStage / kVt)
+                return satStage(x);
 
             case 1: // SoftClip — x / (1 + |x|), gentler than tanh
                 return x / (1.0f + std::abs(x));

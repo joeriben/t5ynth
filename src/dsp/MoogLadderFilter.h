@@ -22,6 +22,18 @@
  * the inverse on the output tap; upstream code feeds the `filter_drive` knob
  * in here and skips the pre-filter tanh when the ladder is active.
  *
+ * Thermal-voltage-normalised saturation (Huovilainen / Surge-style): each
+ * stage uses `satStage(x) = 2·Vt · tanh(x / (2·Vt))` instead of plain tanh.
+ * This preserves the slope at zero (so `k = 4` is still the self-oscillation
+ * threshold) but scales the stage's saturation ceiling to ±2·Vt, which in
+ * turn scales the allowed swing of the feedback tap `k · y4`. With plain
+ * tanh (equivalent to Vt = 0.5) the resonance ring collapses at high drive
+ * because `|y4| ≤ 1` and `|k·y4| ≤ 4.2` can no longer swing a permanently-
+ * saturated first stage through its linear region. Raising Vt gives the
+ * feedback enough headroom to oscillate the first-stage summing node across
+ * zero each cycle — that's what restores the Minimoog ROAR at 24–36 dB of
+ * drive. Vt is tunable (see kVt); typical canonical Surge value is ~1.22.
+ *
  * Slope switch picks which ladder tap is the output (y1 = 6, y2 = 12, y3 = 18,
  * y4 = 24 dB/oct) — classic Moog multi-mode. HP = input − LP tap, BP = y2 − y4.
  *
@@ -89,21 +101,25 @@ public:
         const float halfIn = 0.5f * (hot + xPrev);
         xPrev = hot;
 
-        // Feedback is linear on y4 (NOT t4). Bounding the feedback tap with a
-        // tanh caps loop gain at k·1, which prevents the resonant peak from
-        // ever ringing up: the filter merely "controls something" instead of
-        // resonating / self-oscillating. Stability is provided by the tanh at
-        // each stage input; the feedback itself needs to be free to grow for
-        // the classic Moog peak and self-oscillation to appear.
+        // Feedback is linear on y4 (NOT t4). Bounding the feedback tap would
+        // cap loop gain at k·1 and stop the peak from ringing up — stability
+        // already comes from the per-stage satStage on each stage input. The
+        // feedback amplitude is allowed to grow up to |k · 2·Vt|, which is
+        // exactly the headroom that lets it swing a drive-pinned first stage
+        // through its linear region each cycle (the canonical ROAR mechanism
+        // from the class-level comment).
         const float fbIn = halfIn - k * y4;
 
-        // 4 stacked one-pole stages with tanh saturation at each stage input.
-        // Caching tanh(y_i) between samples saves 4 tanh calls per sample.
-        const float in0 = std::tanh(fbIn);
-        y1 += g * (in0 - t1);  t1 = std::tanh(y1);
-        y2 += g * (t1  - t2);  t2 = std::tanh(y2);
-        y3 += g * (t2  - t3);  t3 = std::tanh(y3);
-        y4 += g * (t3  - t4);  t4 = std::tanh(y4);
+        // 4 stacked one-pole stages with thermal-voltage-normalised saturation
+        // at each stage input. Caching sat(y_i) between samples saves 4 calls
+        // per sample. See the class-level comment for why `satStage` — rather
+        // than plain `tanh` — is the knob that makes the ladder roar at high
+        // drive instead of going silent.
+        const float in0 = satStage(fbIn);
+        y1 += g * (in0 - t1);  t1 = satStage(y1);
+        y2 += g * (t1  - t2);  t2 = satStage(y2);
+        y3 += g * (t2  - t3);  t3 = satStage(y3);
+        y4 += g * (t3  - t4);  t4 = satStage(y4);
 
         // Tap gain compensates for the half-sample input averaging, which is
         // a cos(ω/2) FIR lowpass (−3 dB at sr/4, 0 at Nyquist). Without it
@@ -118,6 +134,26 @@ public:
     }
 
 private:
+    // Thermal-voltage scale for the per-stage saturation. Vt = 0.5 recovers
+    // plain tanh exactly (the pre-fix baseline). Raising Vt widens the per-
+    // stage saturation ceiling to ±2·Vt, which is the ceiling for |y4| and
+    // therefore the ceiling for the feedback tap |k·y4| — higher Vt = more
+    // feedback authority at high drive. Surge XT's VintageLadders uses
+    // Vt ≈ 1.22 for its Huovilainen implementation. Tune by ear against the
+    // acceptance matrix in docs/handover_session16_filter_drive.md §8.
+    //
+    // NOTE: CutoffWarpFilter.h has its own copy of this constant for its
+    // Tanh style. Keep the two in sync — if you change kVt here, change it
+    // there too. Both were left local to keep each filter self-contained.
+    static constexpr float kVt = 1.22f;
+
+    static inline float satStage(float x)
+    {
+        constexpr float k2Vt    = 2.0f * kVt;
+        constexpr float kInv2Vt = 1.0f / (2.0f * kVt);
+        return k2Vt * std::tanh(x * kInv2Vt);
+    }
+
     void updateCoeffs()
     {
         // Standard Huovilainen coefficient: g = 1 − exp(−2π·fc/fs). More
