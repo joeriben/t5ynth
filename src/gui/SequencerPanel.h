@@ -103,6 +103,16 @@ private:
     // Fix toggle buttons (lock/unlock icons)
     juce::TextButton genFixStepsBtn, genFixPulsesBtn, genFixRotationBtn, genFixMutationBtn;
 
+    // ── Polyphony (Phase 5) ──────────────────────────────────────────────
+    // Shared pitch-field controls
+    juce::ComboBox genFieldModeBox;
+    std::unique_ptr<SliderRow> genFieldRateRow;
+    // Per-extra-strand (indices 0..2 map to strands 2..4)
+    static constexpr int kNumExtraStrands = 3;
+    juce::TextButton strandEnableBtns[kNumExtraStrands];
+    juce::ComboBox   strandRoleBoxes[kNumExtraStrands];
+    juce::Label      strandLabels[kNumExtraStrands];
+
 
     // Gen visualisation (painted in paint(), positioned in resized())
     juce::Rectangle<int> genVisArea;
@@ -128,6 +138,12 @@ private:
                         genScaleRootA, genScaleTypeA, genRangeA;
     std::unique_ptr<BA> genRunningA;
     std::unique_ptr<BA> genFixStepsA, genFixPulsesA, genFixRotationA, genFixMutationA;
+
+    // Polyphony attachments
+    std::unique_ptr<CA> genFieldModeA;
+    std::unique_ptr<SA> genFieldRateA;
+    std::unique_ptr<BA> strandEnableA[kNumExtraStrands];
+    std::unique_ptr<CA> strandRoleA[kNumExtraStrands];
 
     int currentStep = -1;
 

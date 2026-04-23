@@ -429,6 +429,62 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     genFixRotationA = std::make_unique<BA>(apvts, PID::genFixRotation, genFixRotationBtn);
     genFixMutationA = std::make_unique<BA>(apvts, PID::genFixMutation, genFixMutationBtn);
 
+    // ── Polyphony (Phase 5): field mode + rate, 3 extra strands ──
+    {
+        juce::StringArray fieldModeItems;
+        for (const auto& e : FieldMode::kEntries) fieldModeItems.add(e.label);
+        genFieldModeBox.addItemList(fieldModeItems, 1);
+        genFieldModeBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
+        genFieldModeBox.setColour(juce::ComboBox::textColourId, kSeqCol);
+        genFieldModeBox.setColour(juce::ComboBox::outlineColourId, kBorder);
+        addAndMakeVisible(genFieldModeBox);
+        genFieldModeA = std::make_unique<CA>(apvts, PID::genFieldMode, genFieldModeBox);
+
+        genFieldRateRow = std::make_unique<SliderRow>("Field",
+            [](double v) { return juce::String(juce::roundToInt(v)) + " cyc"; },
+            kSeqCol);
+        addAndMakeVisible(*genFieldRateRow);
+        genFieldRateA = std::make_unique<SA>(apvts, PID::genFieldRate, genFieldRateRow->getSlider());
+        genFieldRateRow->getSlider().onValueChange = [this] { genFieldRateRow->updateValue(); };
+        genFieldRateRow->updateValue();
+    }
+    {
+        juce::StringArray roleItems;
+        for (const auto& e : StrandRole::kEntries) roleItems.add(e.label);
+        static const char* kEnablePIDs[kNumExtraStrands] = {
+            PID::gen2Enable, PID::gen3Enable, PID::gen4Enable
+        };
+        static const char* kRolePIDs[kNumExtraStrands] = {
+            PID::gen2Role, PID::gen3Role, PID::gen4Role
+        };
+        static const char* kLabels[kNumExtraStrands] = { "S2", "S3", "S4" };
+
+        for (int i = 0; i < kNumExtraStrands; ++i)
+        {
+            strandLabels[i].setText(kLabels[i], juce::dontSendNotification);
+            strandLabels[i].setColour(juce::Label::textColourId, kDim);
+            strandLabels[i].setJustificationType(juce::Justification::centredRight);
+            addAndMakeVisible(strandLabels[i]);
+
+            strandEnableBtns[i].setButtonText("ON");
+            strandEnableBtns[i].setClickingTogglesState(true);
+            strandEnableBtns[i].setColour(juce::TextButton::buttonColourId,   kSurface);
+            strandEnableBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
+            strandEnableBtns[i].setColour(juce::TextButton::textColourOffId,  kDim);
+            strandEnableBtns[i].setColour(juce::TextButton::textColourOnId,   juce::Colours::white);
+            strandEnableBtns[i].setTooltip("Enable polyphonic strand " + juce::String(i + 2));
+            addAndMakeVisible(strandEnableBtns[i]);
+            strandEnableA[i] = std::make_unique<BA>(apvts, kEnablePIDs[i], strandEnableBtns[i]);
+
+            strandRoleBoxes[i].addItemList(roleItems, 1);
+            strandRoleBoxes[i].setColour(juce::ComboBox::backgroundColourId, kSurface);
+            strandRoleBoxes[i].setColour(juce::ComboBox::textColourId, kSeqCol);
+            strandRoleBoxes[i].setColour(juce::ComboBox::outlineColourId, kBorder);
+            addAndMakeVisible(strandRoleBoxes[i]);
+            strandRoleA[i] = std::make_unique<CA>(apvts, kRolePIDs[i], strandRoleBoxes[i]);
+        }
+    }
+
     juce::StringArray scaleRootItems;
     for (const auto& e : ScaleRoot::kEntries) scaleRootItems.add(e.label);
     genScaleRootBox.addItemList(scaleRootItems, 1);
@@ -1076,6 +1132,14 @@ void SequencerPanel::resized()
     genFixPulsesBtn.setVisible(genModeActive);
     genFixRotationBtn.setVisible(genModeActive);
     genFixMutationBtn.setVisible(genModeActive);
+    genFieldModeBox.setVisible(genModeActive);
+    if (genFieldRateRow) genFieldRateRow->setVisible(genModeActive);
+    for (int i = 0; i < kNumExtraStrands; ++i)
+    {
+        strandLabels[i].setVisible(genModeActive);
+        strandEnableBtns[i].setVisible(genModeActive);
+        strandRoleBoxes[i].setVisible(genModeActive);
+    }
 
     if (genModeActive)
     {
@@ -1126,6 +1190,38 @@ void SequencerPanel::resized()
         }
 
         area.removeFromTop(g);
+
+        // Row 4 (Field):  [Mode▾ 80px] [Field Rate slider]
+        {
+            auto rowF = area.removeFromTop(genCtrlH);
+            genFieldModeBox.setBounds(rowF.removeFromLeft(80));
+            rowF.removeFromLeft(g);
+            if (genFieldRateRow) genFieldRateRow->setBounds(rowF);
+            area.removeFromTop(2);
+        }
+
+        // Row 5 (Strands):  [S2 ON][Role▾] [S3 ON][Role▾] [S4 ON][Role▾]
+        {
+            auto rowS = area.removeFromTop(genCtrlH);
+            int groupW = rowS.getWidth() / kNumExtraStrands;
+            int lblW   = 22;
+            int onW    = 30;
+            for (int i = 0; i < kNumExtraStrands; ++i)
+            {
+                auto cell = (i == kNumExtraStrands - 1)
+                              ? rowS
+                              : rowS.removeFromLeft(groupW - g);
+                if (i < kNumExtraStrands - 1) rowS.removeFromLeft(g);
+
+                strandLabels[i].setFont(juce::FontOptions(juce::jmax(9.0f, genCtrlH * 0.55f)));
+                strandLabels[i].setBounds(cell.removeFromLeft(lblW));
+                cell.removeFromLeft(2);
+                strandEnableBtns[i].setBounds(cell.removeFromLeft(onW));
+                cell.removeFromLeft(2);
+                strandRoleBoxes[i].setBounds(cell);
+            }
+            area.removeFromTop(g);
+        }
 
         // Visualization area (remaining space)
         genVisArea = area;
