@@ -167,6 +167,63 @@ namespace PID {
     static constexpr const char* genFixMutation   = "gen_fix_mutation";
     static constexpr const char* scaleRoot        = "scale_root";
     static constexpr const char* scaleType        = "scale_type";
+
+    // ── Polyphonic generative sequencer — shared pitch field ──
+    static constexpr const char* genFieldMode     = "gen_field_mode";
+    static constexpr const char* genFieldRate     = "gen_field_rate";
+    static constexpr const char* genFieldCenterPc = "gen_field_center_pc";
+    static constexpr const char* genFieldPivot    = "gen_field_pivot";
+
+    // Strand 0 (shares existing gen_* Euclidean/fix params — this block adds role/texture)
+    static constexpr const char* genRole          = "gen_role";
+    static constexpr const char* genOctave        = "gen_octave";
+    static constexpr const char* genDivMult       = "gen_div_mult";
+    static constexpr const char* genDominance     = "gen_dominance";
+
+    // Strand 2
+    static constexpr const char* gen2Enable       = "gen2_enable";
+    static constexpr const char* gen2Role         = "gen2_role";
+    static constexpr const char* gen2Octave       = "gen2_octave";
+    static constexpr const char* gen2DivMult      = "gen2_div_mult";
+    static constexpr const char* gen2Dominance    = "gen2_dominance";
+    static constexpr const char* gen2Steps        = "gen2_steps";
+    static constexpr const char* gen2Pulses       = "gen2_pulses";
+    static constexpr const char* gen2Rotation     = "gen2_rotation";
+    static constexpr const char* gen2Mutation     = "gen2_mutation";
+    static constexpr const char* gen2FixSteps     = "gen2_fix_steps";
+    static constexpr const char* gen2FixPulses    = "gen2_fix_pulses";
+    static constexpr const char* gen2FixRotation  = "gen2_fix_rotation";
+    static constexpr const char* gen2FixMutation  = "gen2_fix_mutation";
+
+    // Strand 3
+    static constexpr const char* gen3Enable       = "gen3_enable";
+    static constexpr const char* gen3Role         = "gen3_role";
+    static constexpr const char* gen3Octave       = "gen3_octave";
+    static constexpr const char* gen3DivMult      = "gen3_div_mult";
+    static constexpr const char* gen3Dominance    = "gen3_dominance";
+    static constexpr const char* gen3Steps        = "gen3_steps";
+    static constexpr const char* gen3Pulses       = "gen3_pulses";
+    static constexpr const char* gen3Rotation     = "gen3_rotation";
+    static constexpr const char* gen3Mutation     = "gen3_mutation";
+    static constexpr const char* gen3FixSteps     = "gen3_fix_steps";
+    static constexpr const char* gen3FixPulses    = "gen3_fix_pulses";
+    static constexpr const char* gen3FixRotation  = "gen3_fix_rotation";
+    static constexpr const char* gen3FixMutation  = "gen3_fix_mutation";
+
+    // Strand 4
+    static constexpr const char* gen4Enable       = "gen4_enable";
+    static constexpr const char* gen4Role         = "gen4_role";
+    static constexpr const char* gen4Octave       = "gen4_octave";
+    static constexpr const char* gen4DivMult      = "gen4_div_mult";
+    static constexpr const char* gen4Dominance    = "gen4_dominance";
+    static constexpr const char* gen4Steps        = "gen4_steps";
+    static constexpr const char* gen4Pulses       = "gen4_pulses";
+    static constexpr const char* gen4Rotation     = "gen4_rotation";
+    static constexpr const char* gen4Mutation     = "gen4_mutation";
+    static constexpr const char* gen4FixSteps     = "gen4_fix_steps";
+    static constexpr const char* gen4FixPulses    = "gen4_fix_pulses";
+    static constexpr const char* gen4FixRotation  = "gen4_fix_rotation";
+    static constexpr const char* gen4FixMutation  = "gen4_fix_mutation";
 }
 
 // ── Modulation envelope targets ──
@@ -733,6 +790,61 @@ namespace GenRange {
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(R4 + 1 == kCount, "GenRange out of sync.");
+}
+
+// ── Pitch-field evolution mode (polyphonic generative sequencer) ──
+namespace FieldMode {
+    enum : int { Static = 0, Drift = 1, Transform = 2, Pivot = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "static",    "Static"    },
+        { "drift",     "Drift"     },
+        { "transform", "Transform" },
+        { "pivot",     "Pivot"     }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Pivot + 1 == kCount, "FieldMode out of sync.");
+}
+
+// ── Pitch-field pivot interval (semitones) — Coltrane-matrix shift amount ──
+namespace FieldPivot {
+    enum : int { m3 = 0, M3 = 1, TT = 2, P5 = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "m3", "m3"  },
+        { "M3", "M3"  },
+        { "tt", "Tri" },
+        { "p5", "P5"  }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(P5 + 1 == kCount, "FieldPivot out of sync.");
+    static constexpr int kSemitones[kCount] = { 3, 4, 6, 7 };
+}
+
+// ── Strand role (textural function — deliberately post-tonal labels) ──
+namespace StrandRole {
+    enum : int { Anchor = 0, Line = 1, Density = 2, Gesture = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "anchor",  "Anchor"  },
+        { "line",    "Line"    },
+        { "density", "Density" },
+        { "gesture", "Gesture" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Gesture + 1 == kCount, "StrandRole out of sync.");
+}
+
+// ── Strand division multiplier (speed factor relative to global division) ──
+namespace StrandDivMult {
+    enum : int { Q = 0, H = 1, X = 2, D = 3, F = 4 };  // ¼× ½× 1× 2× 4×
+    static constexpr ChoiceEntry kEntries[] = {
+        { "quarter", "1/4\xc3\x97" },   // UTF-8 ×
+        { "half",    "1/2\xc3\x97" },
+        { "x1",      "1\xc3\x97"   },
+        { "x2",      "2\xc3\x97"   },
+        { "x4",      "4\xc3\x97"   }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(F + 1 == kCount, "StrandDivMult out of sync.");
+    static constexpr float kFactor[kCount] = { 0.25f, 0.5f, 1.0f, 2.0f, 4.0f };
 }
 
 // ── Sequencer pattern preset ──

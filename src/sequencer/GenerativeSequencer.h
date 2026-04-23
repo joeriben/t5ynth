@@ -60,6 +60,28 @@ public:
     /** Seed strand 0's pattern from step sequencer data (skips Euclidean generation). */
     void seedFromSteps(const int* midiNotes, const bool* enabled, int count);
 
+    // Per-strand setters (Phase 4 polyphonic API; idx ∈ [0, MAX_STRANDS)).
+    void setStrandEnabled   (int idx, bool  en);
+    void setStrandRole      (int idx, int   roleIdx);
+    void setStrandOctave    (int idx, int   shift);
+    void setStrandDivMult   (int idx, float mult);
+    void setStrandDominance (int idx, float d);
+    void setStrandSteps     (int idx, int   n);
+    void setStrandPulses    (int idx, int   n);
+    void setStrandRotation  (int idx, int   n);
+    void setStrandMutation  (int idx, float r);
+    void setStrandBaseMutation (int idx, float r);
+    void setStrandFixSteps    (int idx, bool f);
+    void setStrandFixPulses   (int idx, bool f);
+    void setStrandFixRotation (int idx, bool f);
+    void setStrandFixMutation (int idx, bool f);
+
+    // Shared pitch-field setters.
+    void setFieldMode          (int mode);       // 0..3 (FieldMode enum)
+    void setFieldChangeRate    (int cycles);
+    void setFieldCenterPc      (int pc);
+    void setFieldPivotInterval (int semitones);
+
     // Shared / global
     void setRange(int octaves);
     void setScale(int scaleType, int root);

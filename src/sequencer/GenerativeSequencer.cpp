@@ -105,6 +105,128 @@ void T5ynthGenerativeSequencer::setBaseMutation(float rate)
         s.mutationRate = s.baseMutation;
 }
 
+// ─── Per-strand setters (Phase 4) ──────────────────────────────────────────
+
+void T5ynthGenerativeSequencer::setStrandEnabled(int idx, bool en)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    // strand 0 is always on — guard its enabled flag.
+    if (idx == 0) return;
+    auto& s = strands[static_cast<size_t>(idx)];
+    if (en && !s.enabled)
+    {
+        // Coming online — reset clocks and request fresh pattern.
+        s.samplesUntilNextStep = 0.0;
+        s.samplesUntilGateOff  = -1.0;
+        s.currentStep          = 0;
+        s.scheduledStep        = 0;
+        s.cycleCount           = 0;
+        if (!s.patternSeeded) s.patternDirty = true;
+    }
+    s.enabled = en;
+}
+
+void T5ynthGenerativeSequencer::setStrandRole(int idx, int roleIdx)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    strands[static_cast<size_t>(idx)].role =
+        static_cast<Role>(juce::jlimit(0, 3, roleIdx));
+}
+
+void T5ynthGenerativeSequencer::setStrandOctave(int idx, int shift)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    strands[static_cast<size_t>(idx)].octaveShift = juce::jlimit(-2, 2, shift);
+}
+
+void T5ynthGenerativeSequencer::setStrandDivMult(int idx, float mult)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    strands[static_cast<size_t>(idx)].divisionMultiplier = juce::jlimit(0.125f, 8.0f, mult);
+}
+
+void T5ynthGenerativeSequencer::setStrandDominance(int idx, float d)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    strands[static_cast<size_t>(idx)].chordToneDominance = juce::jlimit(0.0f, 1.0f, d);
+}
+
+void T5ynthGenerativeSequencer::setStrandSteps(int idx, int n)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    auto& s = strands[static_cast<size_t>(idx)];
+    n = juce::jlimit(2, MAX_STEPS, n);
+    if (n != s.numSteps) { s.numSteps = n; s.patternDirty = true; }
+    if (idx == 0) effectiveStepsForGui.store(s.numSteps, std::memory_order_relaxed);
+}
+
+void T5ynthGenerativeSequencer::setStrandPulses(int idx, int n)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    auto& s = strands[static_cast<size_t>(idx)];
+    n = juce::jlimit(1, s.numSteps, n);
+    if (n != s.numPulses) { s.numPulses = n; s.patternDirty = true; }
+    if (idx == 0) effectivePulsesForGui.store(s.numPulses, std::memory_order_relaxed);
+}
+
+void T5ynthGenerativeSequencer::setStrandRotation(int idx, int n)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    auto& s = strands[static_cast<size_t>(idx)];
+    n = s.numSteps > 0 ? ((n % s.numSteps) + s.numSteps) % s.numSteps : 0;
+    if (n != s.rotation) { s.rotation = n; s.patternDirty = true; }
+}
+
+void T5ynthGenerativeSequencer::setStrandMutation(int idx, float r)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    auto& s = strands[static_cast<size_t>(idx)];
+    s.mutationRate = juce::jlimit(0.0f, 1.0f, r);
+    if (idx == 0) effectiveMutationForGui.store(s.mutationRate, std::memory_order_relaxed);
+}
+
+void T5ynthGenerativeSequencer::setStrandBaseMutation(int idx, float r)
+{
+    if (idx < 0 || idx >= MAX_STRANDS) return;
+    auto& s = strands[static_cast<size_t>(idx)];
+    s.baseMutation = juce::jlimit(0.0f, 1.0f, r);
+    if (s.fixMutation) s.mutationRate = s.baseMutation;
+}
+
+void T5ynthGenerativeSequencer::setStrandFixSteps   (int idx, bool f) { if (idx>=0 && idx<MAX_STRANDS) strands[static_cast<size_t>(idx)].fixSteps    = f; }
+void T5ynthGenerativeSequencer::setStrandFixPulses  (int idx, bool f) { if (idx>=0 && idx<MAX_STRANDS) strands[static_cast<size_t>(idx)].fixPulses   = f; }
+void T5ynthGenerativeSequencer::setStrandFixRotation(int idx, bool f) { if (idx>=0 && idx<MAX_STRANDS) strands[static_cast<size_t>(idx)].fixRotation = f; }
+void T5ynthGenerativeSequencer::setStrandFixMutation(int idx, bool f) { if (idx>=0 && idx<MAX_STRANDS) strands[static_cast<size_t>(idx)].fixMutation = f; }
+
+// ─── Pitch-field setters ───────────────────────────────────────────────────
+
+void T5ynthGenerativeSequencer::setFieldMode(int mode)
+{
+    pitchField.mode = static_cast<PitchField::Mode>(juce::jlimit(0, 3, mode));
+}
+
+void T5ynthGenerativeSequencer::setFieldChangeRate(int cycles)
+{
+    const int n = juce::jlimit(1, 64, cycles);
+    if (n != pitchField.changeRate)
+    {
+        pitchField.changeRate = n;
+        // Only clamp the in-flight countdown down; don't reset if it's below.
+        if (pitchField.cyclesUntilChange > n)
+            pitchField.cyclesUntilChange = n;
+    }
+}
+
+void T5ynthGenerativeSequencer::setFieldCenterPc(int pc)
+{
+    pitchField.centerPc = ((pc % 12) + 12) % 12;
+}
+
+void T5ynthGenerativeSequencer::setFieldPivotInterval(int semitones)
+{
+    pitchField.pivotInterval = juce::jlimit(1, 11, semitones);
+}
+
 // ─── Start / Stop ──────────────────────────────────────────────────────────
 
 void T5ynthGenerativeSequencer::start()

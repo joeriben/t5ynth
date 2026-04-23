@@ -607,6 +607,128 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::genFixRotation, 1}, "Fix Rotation", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{PID::genFixMutation, 1}, "Fix Mutation", true));
+
+    // ── Polyphonic generative sequencer — shared pitch field ──
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::genFieldMode, 1}, "Field Mode",
+        toChoices(FieldMode::kEntries), FieldMode::Drift));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::genFieldRate, 1}, "Field Rate", 1, 32, 8));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::genFieldCenterPc, 1}, "Field Center PC", 0, 11, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::genFieldPivot, 1}, "Field Pivot",
+        toChoices(FieldPivot::kEntries), FieldPivot::m3));
+
+    // ── Strand 0 — role/octave/divMult/dominance (Euclidean params share legacy gen_* IDs) ──
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::genRole, 1}, "S1 Role",
+        toChoices(StrandRole::kEntries), StrandRole::Line));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::genOctave, 1}, "S1 Octave", -2, 2, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::genDivMult, 1}, "S1 Div",
+        toChoices(StrandDivMult::kEntries), StrandDivMult::X));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::genDominance, 1}, "S1 Dominance",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+
+    // ── Strand 2 ──
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen2Enable, 1}, "S2 Enable", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen2Role, 1}, "S2 Role",
+        toChoices(StrandRole::kEntries), StrandRole::Line));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen2Octave, 1}, "S2 Octave", -2, 2, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen2DivMult, 1}, "S2 Div",
+        toChoices(StrandDivMult::kEntries), StrandDivMult::X));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen2Dominance, 1}, "S2 Dominance",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen2Steps, 1}, "S2 Steps", 2, 32, 16));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen2Pulses, 1}, "S2 Pulses", 1, 32, 5));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen2Rotation, 1}, "S2 Rotation", 0, 31, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen2Mutation, 1}, "S2 Mutation",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.20f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen2FixSteps, 1}, "S2 Fix Steps", true));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen2FixPulses, 1}, "S2 Fix Pulses", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen2FixRotation, 1}, "S2 Fix Rotation", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen2FixMutation, 1}, "S2 Fix Mutation", true));
+
+    // ── Strand 3 ──
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen3Enable, 1}, "S3 Enable", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen3Role, 1}, "S3 Role",
+        toChoices(StrandRole::kEntries), StrandRole::Line));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen3Octave, 1}, "S3 Octave", -2, 2, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen3DivMult, 1}, "S3 Div",
+        toChoices(StrandDivMult::kEntries), StrandDivMult::X));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen3Dominance, 1}, "S3 Dominance",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen3Steps, 1}, "S3 Steps", 2, 32, 16));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen3Pulses, 1}, "S3 Pulses", 1, 32, 5));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen3Rotation, 1}, "S3 Rotation", 0, 31, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen3Mutation, 1}, "S3 Mutation",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.20f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen3FixSteps, 1}, "S3 Fix Steps", true));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen3FixPulses, 1}, "S3 Fix Pulses", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen3FixRotation, 1}, "S3 Fix Rotation", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen3FixMutation, 1}, "S3 Fix Mutation", true));
+
+    // ── Strand 4 ──
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen4Enable, 1}, "S4 Enable", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen4Role, 1}, "S4 Role",
+        toChoices(StrandRole::kEntries), StrandRole::Line));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen4Octave, 1}, "S4 Octave", -2, 2, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen4DivMult, 1}, "S4 Div",
+        toChoices(StrandDivMult::kEntries), StrandDivMult::X));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen4Dominance, 1}, "S4 Dominance",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen4Steps, 1}, "S4 Steps", 2, 32, 16));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen4Pulses, 1}, "S4 Pulses", 1, 32, 5));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen4Rotation, 1}, "S4 Rotation", 0, 31, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen4Mutation, 1}, "S4 Mutation",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.20f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen4FixSteps, 1}, "S4 Fix Steps", true));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen4FixPulses, 1}, "S4 Fix Pulses", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen4FixRotation, 1}, "S4 Fix Rotation", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen4FixMutation, 1}, "S4 Fix Mutation", true));
+
     // Scale (shared between gen seq and future features)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::scaleRoot, 1}, "Scale Root",
@@ -1003,6 +1125,99 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         generativeSequencer.setScale(
             static_cast<int>(parameters.getRawParameterValue(PID::scaleType)->load()),
             static_cast<int>(parameters.getRawParameterValue(PID::scaleRoot)->load()));
+
+        // ── Shared pitch-field setters ──
+        generativeSequencer.setFieldMode(static_cast<int>(
+            parameters.getRawParameterValue(PID::genFieldMode)->load()));
+        generativeSequencer.setFieldChangeRate(static_cast<int>(
+            parameters.getRawParameterValue(PID::genFieldRate)->load()));
+        generativeSequencer.setFieldCenterPc(static_cast<int>(
+            parameters.getRawParameterValue(PID::genFieldCenterPc)->load()));
+        {
+            int pivotIdx = juce::jlimit(0, FieldPivot::kCount - 1, static_cast<int>(
+                parameters.getRawParameterValue(PID::genFieldPivot)->load()));
+            generativeSequencer.setFieldPivotInterval(FieldPivot::kSemitones[pivotIdx]);
+        }
+
+        // ── Per-strand setters (0..3) ──
+        {
+            struct StrandPIDs {
+                const char* enable;
+                const char* role;
+                const char* octave;
+                const char* divMult;
+                const char* dominance;
+                const char* steps;
+                const char* pulses;
+                const char* rotation;
+                const char* mutation;
+                const char* fixSteps;
+                const char* fixPulses;
+                const char* fixRotation;
+                const char* fixMutation;
+            };
+            static const StrandPIDs kStrands[4] = {
+                { nullptr,         PID::genRole,  PID::genOctave,  PID::genDivMult,  PID::genDominance,
+                  PID::genSteps,   PID::genPulses, PID::genRotation, PID::genMutation,
+                  PID::genFixSteps, PID::genFixPulses, PID::genFixRotation, PID::genFixMutation },
+                { PID::gen2Enable, PID::gen2Role, PID::gen2Octave, PID::gen2DivMult, PID::gen2Dominance,
+                  PID::gen2Steps,  PID::gen2Pulses, PID::gen2Rotation, PID::gen2Mutation,
+                  PID::gen2FixSteps, PID::gen2FixPulses, PID::gen2FixRotation, PID::gen2FixMutation },
+                { PID::gen3Enable, PID::gen3Role, PID::gen3Octave, PID::gen3DivMult, PID::gen3Dominance,
+                  PID::gen3Steps,  PID::gen3Pulses, PID::gen3Rotation, PID::gen3Mutation,
+                  PID::gen3FixSteps, PID::gen3FixPulses, PID::gen3FixRotation, PID::gen3FixMutation },
+                { PID::gen4Enable, PID::gen4Role, PID::gen4Octave, PID::gen4DivMult, PID::gen4Dominance,
+                  PID::gen4Steps,  PID::gen4Pulses, PID::gen4Rotation, PID::gen4Mutation,
+                  PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation }
+            };
+
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto& ids = kStrands[i];
+
+                if (ids.enable != nullptr)
+                {
+                    const bool en = parameters.getRawParameterValue(ids.enable)->load() > 0.5f;
+                    generativeSequencer.setStrandEnabled(i, en);
+                }
+
+                generativeSequencer.setStrandRole(i, static_cast<int>(
+                    parameters.getRawParameterValue(ids.role)->load()));
+                generativeSequencer.setStrandOctave(i, static_cast<int>(
+                    parameters.getRawParameterValue(ids.octave)->load()));
+                {
+                    int dIdx = juce::jlimit(0, StrandDivMult::kCount - 1, static_cast<int>(
+                        parameters.getRawParameterValue(ids.divMult)->load()));
+                    generativeSequencer.setStrandDivMult(i, StrandDivMult::kFactor[dIdx]);
+                }
+                generativeSequencer.setStrandDominance(i, static_cast<float>(
+                    parameters.getRawParameterValue(ids.dominance)->load()));
+
+                // Strand 0's Euclidean params are already pushed above via setSteps/setPulses/etc.
+                // (kept distinct so the existing drift-writeback logic remains untouched).
+                if (i == 0) continue;
+
+                const bool sFix = parameters.getRawParameterValue(ids.fixSteps   )->load() > 0.5f;
+                const bool pFix = parameters.getRawParameterValue(ids.fixPulses  )->load() > 0.5f;
+                const bool rFix = parameters.getRawParameterValue(ids.fixRotation)->load() > 0.5f;
+                const bool mFix = parameters.getRawParameterValue(ids.fixMutation)->load() > 0.5f;
+                generativeSequencer.setStrandFixSteps   (i, sFix);
+                generativeSequencer.setStrandFixPulses  (i, pFix);
+                generativeSequencer.setStrandFixRotation(i, rFix);
+                generativeSequencer.setStrandFixMutation(i, mFix);
+
+                const int gs = static_cast<int>(parameters.getRawParameterValue(ids.steps   )->load());
+                const int gp = static_cast<int>(parameters.getRawParameterValue(ids.pulses  )->load());
+                const int gr = static_cast<int>(parameters.getRawParameterValue(ids.rotation)->load());
+                generativeSequencer.setStrandSteps   (i, gs);
+                generativeSequencer.setStrandPulses  (i, gp);
+                generativeSequencer.setStrandRotation(i, gr);
+
+                const float gm = parameters.getRawParameterValue(ids.mutation)->load();
+                generativeSequencer.setStrandBaseMutation(i, gm);
+                generativeSequencer.setStrandMutation    (i, gm);
+            }
+        }
 
         if (seqRunning)
             generativeSequencer.start();
