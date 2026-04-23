@@ -1,5 +1,53 @@
 # T5ynth Development Log
 
+## 2026-04-24 — Polyphonic Generative Sequencer (feature/polyphonic-gen-seq)
+
+Turned the previously mono `T5ynthGenerativeSequencer` into a four-strand polyrhythmic, post-tonal engine. Five atomic commits on a feature branch off main; every phase builds clean as an isolated step.
+
+### Aesthetic framing
+User explicitly rejected functional harmony defaults ("keine 1625-Klischees") in favor of Lewis/Coltrane/Satie/serial-music idioms. No chord progressions, no I-IV-V Markov — the polyphony is coupled through a **shared Pitch-Field** (pc-set + center + optional row) that evolves under one of four modes:
+- **Static** — Satie-esque modal stasis
+- **Drift** (default) — one pc swaps per tick, non-functional glide
+- **Transform** — Webern-style row ops (Tn / In / R / RI)
+- **Pivot** — Coltrane-matrix shift by pivotInterval (m3 default)
+
+### Architecture (three layers)
+
+1. **Strand struct** holds per-pattern state (Euclidean params, playback clocks, drift counters, Turing degree-walk, fix flags). `strands[MAX_STRANDS=4]` at class level.
+2. **PitchField struct** holds shared pc-set + row + evolution-mode state. Advances on strand 0's cycle boundary.
+3. **pickNote()** projects a strand's raw Turing-walked scale degree into MIDI via role + metric weighting:
+   - **Density role** → `chromaticFieldWalk` (Sheets-of-Sound: ±1 semitone from last note, ignores metric weighting)
+   - **Others** → strong beats snap to centerPc with probability = `chordToneDominance`; otherwise `voiceLedFieldMember` picks the field's nearest pc to the raw. Weak beats that fall inside the field keep their raw pc (preserves Turing dynamics).
+
+### processBlock scheduler
+Replaced the single-strand `while (samplePos < numSamples)` loop with a multi-strand event scheduler: each iteration finds the earliest upcoming step-boundary-or-gate-off across all enabled strands and processes one event. Each strand runs its own clock at `stepDur / divisionMultiplier`, producing real polymeter (e.g. Anchor ½× alongside Density 2×). Gate-off and note-emission track per-strand `lastPlayedNote` separately; VoiceManager handles concurrent voices naturally.
+
+### APVTS surface
+~50 new params across `gen_field_*` (mode, rate, centerPc, pivot-interval), strand-0's new role/octave/div-mult/dominance (`gen_role` etc.), and strands 2–4's full 13-param set (`gen2_*`, `gen3_*`, `gen4_*`). Existing `gen_steps`/`gen_pulses`/… IDs retained — strand 0 still uses them, so old presets load with strand 0's drift/writeback behavior bit-identical for the first ~8 cycles; then the shared pc-set begins to drift (intended).
+
+### UI
+Minimal compact addition to `SequencerPanel` visible in GEN mode:
+- Row 4: Field-Mode dropdown + Field-Rate slider
+- Row 5: three `[ON][Role▾]` clusters for strands 2/3/4
+
+All other per-strand parameters (steps, pulses, rotation, mutation, octave, div-mult, dominance, fix-flags) and the remaining field params (centerPc, pivot-interval) stay at the APVTS level so the panel stays tight. Full per-strand sliders + 4-lane viz were scoped out as a v2 follow-up.
+
+### Commits on `feature/polyphonic-gen-seq`
+1. `refactor(sequencer): extract per-strand state into Strand struct` — mechanical
+2. `feat(sequencer): pitch field + static/drift/transform/pivot modes`
+3. `feat(sequencer): metric weighting + strand roles + sheets-of-sound`
+4. `feat(processor): wire polyphonic generative sequencer params`
+5. `ui(sequencer): polyphonic strand controls + field block`
+
+### Audio-thread safety
+All new code uses stack-local `std::uniform_*_distribution`s, fixed-size `std::array`, atomic stores only with `memory_order_relaxed`. No allocations, no locks, no I/O in `processBlock`. Grep-verified against `new`/`malloc`/`std::cout`/`printf`/`std::mutex`/`std::lock` in the diff.
+
+### Open follow-ups (plan-documented)
+- Full 12-slot row editor for Transform mode (v1 only has the auto-seeded ascending row)
+- Sheets-of-Sound saturation parameter per Density strand (chromatic bridging density)
+- Live MIDI-input → Field-adaptation (Lewis/Voyager-style interactive listening)
+- Per-strand pitch-field override (one strand contrasts against the shared field)
+
 ## 2026-04-23 — Session 16: Ladder Drive × Resonance ROAR
 
 Resolves the "drive kills resonance" open item from the earlier entry today. The previous tree had a Version C hot-ceiling hack (`hot = kHotCeil · tanh(raw/kHotCeil)`) that was strictly worse than Version B — it killed both the drive harmonics *and* the resonance peak. Reverted it; the fix lives at the per-stage saturation instead.
@@ -41,7 +89,7 @@ Credit: Huovilainen 2004 DAFx paper for the Moog algorithm; Surge XT project (GP
 
 UI: Algorithm switchbox + Warp Style combo live in the filter header row next to TYPE/SLOPE (Drive slider shortened accordingly). Drive-OS default is 4×; old .t5p files without the new fields load on Algorithm=SVF, Warp Style=Tanh, Drive OS=Off so existing sessions stay bit-identical to pre-Ladder/Warp builds.
 
-
+## 2026-04-18 — Sampler Wave Cursor Reverted
 
 Tested a live playback cursor in the sampler waveform view and reverted it. On loop-heavy material the 30 Hz smoothed marker felt visually late relative to the audio and was more distracting than helpful. If this is revisited, it should probably use a different visualization approach rather than a lagged dot/cursor over the waveform.
 
