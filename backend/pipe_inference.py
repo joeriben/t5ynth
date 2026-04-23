@@ -187,6 +187,10 @@ def _validate_cuda_runtime_or_raise():
 
 def _model_format(model_dir):
     """Detect model format. Returns 'diffusers', 'audioldm2', 'native', or None."""
+    native_weights = any(
+        (model_dir / name).is_file()
+        for name in ("model.safetensors", "model.ckpt")
+    )
     model_index = model_dir / "model_index.json"
     if model_index.is_file():
         try:
@@ -196,8 +200,10 @@ def _model_format(model_dir):
                 return "audioldm2"
         except (json.JSONDecodeError, OSError):
             pass
+        if native_weights and (model_dir / "model_config.json").is_file():
+            return "native"
         return "diffusers"
-    if (model_dir / "model_config.json").is_file():
+    if native_weights and (model_dir / "model_config.json").is_file():
         return "native"
     return None
 
@@ -433,32 +439,36 @@ def _mock_optional_deps():
     """Mock non-essential stable-audio-tools dependencies for minimal import."""
     import types
     import importlib.machinery
+    try:
+        import pkg_resources  # noqa: F401
+    except ImportError:
+        import packaging
+
+        pkg_resources = types.ModuleType('pkg_resources')
+        pkg_resources.__spec__ = importlib.machinery.ModuleSpec('pkg_resources', None)
+        pkg_resources.packaging = packaging
+        sys.modules['pkg_resources'] = pkg_resources
+
     mocks = ['skimage', 'skimage.transform', 'dac', 'encodec', 'laion_clap',
              'pedalboard', 'pedalboard.io', 'pytorch_lightning', 'wandb',
              'v_diffusion_pytorch', 'gradio', 'jsonmerge', 'clean_fid', 'kornia']
-    k_diff = types.ModuleType('k_diffusion')
-    k_diff.__spec__ = importlib.machinery.ModuleSpec('k_diffusion', None)
-    for sub in ['augmentation', 'config', 'evaluation', 'external', 'gns',
-                'layers', 'models', 'sampling', 'utils']:
-        m = types.ModuleType(f'k_diffusion.{sub}')
-        m.__spec__ = importlib.machinery.ModuleSpec(f'k_diffusion.{sub}', None)
-        setattr(k_diff, sub, m)
-        sys.modules[f'k_diffusion.{sub}'] = m
-    sys.modules['k_diffusion'] = k_diff
     for name in mocks:
         if name not in sys.modules:
             m = types.ModuleType(name)
             m.__spec__ = importlib.machinery.ModuleSpec(name, None)
+            if name == "jsonmerge":
+                m.merge = lambda base, override, *args, **kwargs: override if override is not None else base
             sys.modules[name] = m
 
 
 class NativePipeline:
     """Wrapper for stable-audio-tools native format models."""
 
-    def __init__(self, model, model_config, device):
+    def __init__(self, model, model_config, device, model_name):
         self.model = model
         self.model_config = model_config
         self.device = device
+        self.model_name = model_name
         self.sample_size = model_config["sample_size"]
         self.sample_rate = model_config["sample_rate"]
         # Extract T5 encoder reference for embedding access
@@ -557,7 +567,29 @@ def _load_native_pipeline(model_dir, device):
         sys.stdout = real_stdout
 
     log.info(f"Native pipeline loaded on {device}.")
-    return NativePipeline(model, model_config, device)
+    return NativePipeline(model, model_config, device, model_dir.name)
+
+
+def _native_conditioning_ids(pipe):
+    """Return configured native conditioner ids for a stable-audio-tools model."""
+    configs = pipe.model_config.get("model", {}).get("conditioning", {}).get("configs", [])
+    return {cfg.get("id") for cfg in configs if cfg.get("id")}
+
+
+def _build_native_conditioning_input(pipe, prompt, duration, start_pos=0.0):
+    """Build one metadata dict matching the native model's configured conditioners."""
+    payload = {"prompt": prompt}
+    cond_ids = _native_conditioning_ids(pipe)
+
+    if "seconds_start" in cond_ids or "seconds_total" in cond_ids:
+        start_pos = max(0.0, min(1.0, float(start_pos)))
+        virtual_total = duration / (1.0 - start_pos) if start_pos < 1.0 else duration
+        if "seconds_start" in cond_ids:
+            payload["seconds_start"] = start_pos * virtual_total
+        if "seconds_total" in cond_ids:
+            payload["seconds_total"] = virtual_total
+
+    return payload
 
 
 def load_default_model(model_name, devices):
@@ -922,7 +954,8 @@ def _generate_native(pipe, request):
     magnitude = request.get("magnitude", 1.0)
     noise_sigma = request.get("noise_sigma", 0.0)
     duration = request.get("duration", 3.0)
-    steps = request.get("steps", 8)
+    start_pos = request.get("start_pos", 0.0)
+    steps = max(1, int(request.get("steps", 8)))
     cfg_scale = request.get("cfg_scale", 4.0)
     seed = request.get("seed", -1)
     dim_offsets = _sanitize_dimension_offsets(request.get("dimension_offsets"))
@@ -933,13 +966,25 @@ def _generate_native(pipe, request):
 
     sr = pipe.sample_rate
     device = pipe.device
+    effective_steps = steps
+    if getattr(pipe.model, "diffusion_objective", None) == "v" and effective_steps < 2:
+        log.warning(
+            "Native %s requested with %d step; clamping to 2 because the k-diffusion sampler "
+            "is unstable below 2 steps",
+            pipe.model_name,
+            effective_steps,
+        )
+        effective_steps = 2
 
     # ── Encode prompts via the model's built-in T5 conditioner ──
     # Then manipulate embeddings (alpha, magnitude, noise, dim offsets)
     # and pass as pre-computed conditioning_tensors.
     with torch.no_grad():
         # Run full conditioner to get base conditioning tensors
-        cond_a = pipe.model.conditioner([{"prompt": prompt_a, "seconds_total": duration}], device)
+        cond_a = pipe.model.conditioner(
+            [_build_native_conditioning_input(pipe, prompt_a, duration, start_pos)],
+            device,
+        )
 
         # Extract T5 embedding for manipulation: {"prompt": [emb_tensor, None], ...}
         prompt_emb_a = cond_a["prompt"][0]   # [1, seq, 768]
@@ -950,7 +995,10 @@ def _generate_native(pipe, request):
         emb_a_pooled = prompt_emb_a.squeeze(0).mean(dim=0).cpu().float().numpy()
 
         if prompt_b:
-            cond_b = pipe.model.conditioner([{"prompt": prompt_b, "seconds_total": duration}], device)
+            cond_b = pipe.model.conditioner(
+                [_build_native_conditioning_input(pipe, prompt_b, duration, start_pos)],
+                device,
+            )
             prompt_emb_b = cond_b["prompt"][0]
             mask_b = cond_b["prompt"][1]
             emb_b_pooled = prompt_emb_b.squeeze(0).mean(dim=0).cpu().float().numpy()
@@ -988,9 +1036,12 @@ def _generate_native(pipe, request):
         sem_axes = request.get("semantic_axes")
         if sem_axes:
             def native_encode(text):
-                cond = pipe.model.conditioner([{"prompt": text, "seconds_total": 1}], device)
+                cond = pipe.model.conditioner(
+                    [_build_native_conditioning_input(pipe, text, 1.0, 0.0)],
+                    device,
+                )
                 return cond["prompt"][0], None
-            manipulated = _apply_semantic_axes(manipulated, sem_axes, native_encode, "native")
+            manipulated = _apply_semantic_axes(manipulated, sem_axes, native_encode, pipe.model_name)
 
         baseline = manipulated
         if combined_mask is not None:
@@ -1010,7 +1061,7 @@ def _generate_native(pipe, request):
         cond_a["prompt"] = [manipulated, combined_mask]
 
     offsets_str = f", {len(dim_offsets)} offsets" if dim_offsets else ""
-    log.info(f"Generating (native) on {device}: '{prompt_a[:60]}' ({duration}s, {steps} steps, "
+    log.info(f"Generating (native) on {device}: '{prompt_a[:60]}' ({duration}s, {effective_steps} steps, "
              f"CFG={cfg_scale}, mag={magnitude}, noise={noise_sigma}, seed={seed}{offsets_str})")
     t0 = time.time()
 
@@ -1021,7 +1072,7 @@ def _generate_native(pipe, request):
     try:
         output = generate_diffusion_cond(
             pipe.model,
-            steps=steps,
+            steps=effective_steps,
             cfg_scale=cfg_scale,
             conditioning_tensors=cond_a,
             sample_size=pipe.sample_size,
@@ -1299,12 +1350,12 @@ def main():
             emb_stats = None
 
             if mode == "interpolate":
-                if isinstance(pipe, AudioLDM2Wrapper):
-                    raise ValueError("Latent interpolation not yet supported for AudioLDM2")
+                if isinstance(pipe, AudioLDM2Wrapper) or not hasattr(pipe, "vae"):
+                    raise ValueError("Latent interpolation is only supported for diffusers Stable Audio pipelines")
                 audio, sr, seed, elapsed = interpolate_and_decode(pipe, request)
             elif mode == "decode_cached":
-                if isinstance(pipe, AudioLDM2Wrapper):
-                    raise ValueError("Latent cache decode not yet supported for AudioLDM2")
+                if isinstance(pipe, AudioLDM2Wrapper) or not hasattr(pipe, "vae"):
+                    raise ValueError("Latent cache decode is only supported for diffusers Stable Audio pipelines")
                 audio, sr, seed, elapsed = decode_cached(pipe, request)
             else:
                 audio, sr, seed, elapsed, emb_stats = generate(pipe, request)
