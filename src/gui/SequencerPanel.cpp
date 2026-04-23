@@ -440,13 +440,17 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         addAndMakeVisible(genFieldModeBox);
         genFieldModeA = std::make_unique<CA>(apvts, PID::genFieldMode, genFieldModeBox);
 
-        genFieldRateRow = std::make_unique<SliderRow>("Field",
-            [](double v) { return juce::String(juce::roundToInt(v)) + " cyc"; },
-            kSeqCol);
-        addAndMakeVisible(*genFieldRateRow);
-        genFieldRateA = std::make_unique<SA>(apvts, PID::genFieldRate, genFieldRateRow->getSlider());
-        genFieldRateRow->getSlider().onValueChange = [this] { genFieldRateRow->updateValue(); };
-        genFieldRateRow->updateValue();
+        genFieldRateSlider.setSliderStyle(juce::Slider::LinearBar);
+        genFieldRateSlider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 40, 16);
+        genFieldRateSlider.setTextValueSuffix(" cyc");
+        genFieldRateSlider.setColour(juce::Slider::backgroundColourId, kSurface);
+        genFieldRateSlider.setColour(juce::Slider::trackColourId, kSeqCol.withAlpha(0.55f));
+        genFieldRateSlider.setColour(juce::Slider::textBoxTextColourId, kSeqCol);
+        genFieldRateSlider.setColour(juce::Slider::textBoxBackgroundColourId, kSurface);
+        genFieldRateSlider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        genFieldRateSlider.setTooltip("Cycles between pitch-field evolution ticks");
+        addAndMakeVisible(genFieldRateSlider);
+        genFieldRateA = std::make_unique<SA>(apvts, PID::genFieldRate, genFieldRateSlider);
     }
     {
         juce::StringArray roleItems;
@@ -457,16 +461,11 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         static const char* kRolePIDs[kNumExtraStrands] = {
             PID::gen2Role, PID::gen3Role, PID::gen4Role
         };
-        static const char* kLabels[kNumExtraStrands] = { "S2", "S3", "S4" };
+        static const char* kStrandLabels[kNumExtraStrands] = { "S2", "S3", "S4" };
 
         for (int i = 0; i < kNumExtraStrands; ++i)
         {
-            strandLabels[i].setText(kLabels[i], juce::dontSendNotification);
-            strandLabels[i].setColour(juce::Label::textColourId, kDim);
-            strandLabels[i].setJustificationType(juce::Justification::centredRight);
-            addAndMakeVisible(strandLabels[i]);
-
-            strandEnableBtns[i].setButtonText("ON");
+            strandEnableBtns[i].setButtonText(kStrandLabels[i]);
             strandEnableBtns[i].setClickingTogglesState(true);
             strandEnableBtns[i].setColour(juce::TextButton::buttonColourId,   kSurface);
             strandEnableBtns[i].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
@@ -512,7 +511,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         for (int i = 0; i < kNumModeBtns; ++i)
             arpModeBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
     };
-    static const char* modeLabels[] = {"OFF","Up","Dn","U/D","Rnd"};
+    static const char* modeLabels[] = {"ARP off","Up","Dn","U/D","Rnd"};
     for (int i = 0; i < kNumModeBtns; ++i)
     {
         arpModeBtns[i].setButtonText(modeLabels[i]);
@@ -1133,10 +1132,9 @@ void SequencerPanel::resized()
     genFixRotationBtn.setVisible(genModeActive);
     genFixMutationBtn.setVisible(genModeActive);
     genFieldModeBox.setVisible(genModeActive);
-    if (genFieldRateRow) genFieldRateRow->setVisible(genModeActive);
+    genFieldRateSlider.setVisible(genModeActive);
     for (int i = 0; i < kNumExtraStrands; ++i)
     {
-        strandLabels[i].setVisible(genModeActive);
         strandEnableBtns[i].setVisible(genModeActive);
         strandRoleBoxes[i].setVisible(genModeActive);
     }
@@ -1191,34 +1189,21 @@ void SequencerPanel::resized()
 
         area.removeFromTop(g);
 
-        // Row 4 (Field):  [Mode▾ 80px] [Field Rate slider]
+        // Polyphony row: [Mode▾] [Rate==] | [S2][Role▾] [S3][Role▾] [S4][Role▾]
         {
-            auto rowF = area.removeFromTop(genCtrlH);
-            genFieldModeBox.setBounds(rowF.removeFromLeft(80));
-            rowF.removeFromLeft(g);
-            if (genFieldRateRow) genFieldRateRow->setBounds(rowF);
-            area.removeFromTop(2);
-        }
-
-        // Row 5 (Strands):  [S2 ON][Role▾] [S3 ON][Role▾] [S4 ON][Role▾]
-        {
-            auto rowS = area.removeFromTop(genCtrlH);
-            int groupW = rowS.getWidth() / kNumExtraStrands;
-            int lblW   = 22;
-            int onW    = 30;
+            auto rowP = area.removeFromTop(genCtrlH);
+            genFieldModeBox.setBounds(rowP.removeFromLeft(60));
+            rowP.removeFromLeft(3);
+            genFieldRateSlider.setBounds(rowP.removeFromLeft(75));
+            rowP.removeFromLeft(6);
+            const int onW   = 24;
+            const int roleW = 52;
             for (int i = 0; i < kNumExtraStrands; ++i)
             {
-                auto cell = (i == kNumExtraStrands - 1)
-                              ? rowS
-                              : rowS.removeFromLeft(groupW - g);
-                if (i < kNumExtraStrands - 1) rowS.removeFromLeft(g);
-
-                strandLabels[i].setFont(juce::FontOptions(juce::jmax(9.0f, genCtrlH * 0.55f)));
-                strandLabels[i].setBounds(cell.removeFromLeft(lblW));
-                cell.removeFromLeft(2);
-                strandEnableBtns[i].setBounds(cell.removeFromLeft(onW));
-                cell.removeFromLeft(2);
-                strandRoleBoxes[i].setBounds(cell);
+                strandEnableBtns[i].setBounds(rowP.removeFromLeft(onW));
+                rowP.removeFromLeft(1);
+                strandRoleBoxes[i].setBounds(rowP.removeFromLeft(roleW));
+                if (i < kNumExtraStrands - 1) rowP.removeFromLeft(3);
             }
             area.removeFromTop(g);
         }
