@@ -654,6 +654,10 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                     filterLadder.setType(p.filterType);
                     filterLadder.setSlope(p.filterSlope);
                     filterLadder.setMix(p.filterMix);
+                    // Drive feeds the ladder's own tanh stages (Phase B stays
+                    // linear for Ladder), so the character comes from the
+                    // filter saturating, not from a shortcut pre-filter tanh.
+                    filterLadder.setInputDrive(p.filterDriveGain);
                     break;
                 case FilterAlgorithm::Warp:
                     filterWarp.setCutoff(cutoffMod);
@@ -662,6 +666,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                     filterWarp.setSlope(p.filterSlope);
                     filterWarp.setMix(p.filterMix);
                     filterWarp.setStyle(p.filterWarpStyle);
+                    filterWarp.setInputDrive(p.filterDriveGain);
                     break;
             }
         }
@@ -760,8 +765,16 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
 
         const int driveLen = lastI - pos;
 
-        // ── Phase B: pre-filter drive (tanh), with optional block-level oversampling ──
-        if (p.filterEnabled && p.filterDriveDb > 0.01f && driveLen > 0)
+        // ── Phase B: drive stage ──
+        // For SVF (linear filter): apply tanh as the saturation, optionally
+        // oversampled — the SVF is LTI so the pre-filter tanh *is* the drive
+        // character.
+        // For Ladder / Warp (own nonlinearities): pre-filter tanh would flat-
+        // clip the signal and leave nothing for the filter's internal stages
+        // to shape. Instead the drive amount is forwarded to the filter via
+        // setInputDrive() at sub-block setup time, and Phase B is a no-op.
+        if (p.filterEnabled && p.filterDriveDb > 0.01f && driveLen > 0
+            && p.filterAlgorithm == FilterAlgorithm::SVF)
         {
             const float driveGain = p.filterDriveGain;
 
