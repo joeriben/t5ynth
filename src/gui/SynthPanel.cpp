@@ -738,6 +738,16 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     filterAlgA       = std::make_unique<CA>(apvts, PID::filterAlgorithm, filterAlgHidden);
     filterWarpStyleA = std::make_unique<CA>(apvts, PID::filterWarpStyle, filterWarpStyleBox);
 
+    // The ComboBoxAttachment sets the hidden combo's selected ID from APVTS
+    // at construction, but some JUCE versions dispatch that initial set with
+    // dontSendNotification, so the on-change lambdas that drive the radio-
+    // style TextButton toggle states never fire. Poke them explicitly so the
+    // active SVF / LP / 12dB / Off-OS / Tanh buttons light up on first paint.
+    if (filterTypeHidden.onChange)     filterTypeHidden.onChange();
+    if (filterSlopeHidden.onChange)    filterSlopeHidden.onChange();
+    if (filterAlgHidden.onChange)      filterAlgHidden.onChange();
+    if (filterDriveOsHidden.onChange)  filterDriveOsHidden.onChange();
+
     cutoffRow->updateValue();
     resoRow->updateValue();
     filterMixRow->updateValue();
@@ -1473,20 +1483,30 @@ void SynthPanel::resized()
     filterHeader.setBounds(area.removeFromTop(headerH));
     area.removeFromTop(headerGap);
 
-    // ── Filter header: [TYPE] [SLOPE] [Drive] [OS-Switchbox] ──
+    // ── Filter header: [TYPE] [SLOPE] [ALG] [STYLE] [Drive] [OS-Switchbox] ──
     auto filterHdr = area.removeFromTop(rowH);
     {
-        auto filterHdrFull = filterHdr;
-        const int groupGap = juce::roundToInt(f * 0.75f);
+        const int groupGap  = juce::roundToInt(f * 0.75f);
         const int typeCellW = juce::roundToInt(f * 3.2f);
-        const int slopeCellW = juce::roundToInt(f * 3.2f);
-        const int osCellW = juce::roundToInt(f * 1.5f);
-        const auto driveColumnBounds = layoutSliderRowPairBounds(filterHdrFull, *cutoffRow, *resoRow, 4)[1];
+        const int slopeCellW= juce::roundToInt(f * 3.2f);
+        const int algCellW  = juce::roundToInt(f * 2.2f);   // short labels (SVF, Ladder, Warp)
+        const int styleW    = juce::roundToInt(f * 7.0f);   // ~10 chars incl. arrow
+        const int osCellW   = juce::roundToInt(f * 1.5f);
 
-        auto typeArea = filterHdr.removeFromLeft(typeCellW * kNumTypeBtns);
+        auto typeArea  = filterHdr.removeFromLeft(typeCellW * kNumTypeBtns);
         filterHdr.removeFromLeft(groupGap);
         auto slopeArea = filterHdr.removeFromLeft(slopeCellW * kNumSlopeBtns);
         filterHdr.removeFromLeft(groupGap);
+        auto algArea   = filterHdr.removeFromLeft(algCellW * kNumAlgBtns);
+        filterHdr.removeFromLeft(juce::roundToInt(f * 0.5f));
+        auto styleArea = filterHdr.removeFromLeft(styleW);
+        filterHdr.removeFromLeft(groupGap);
+
+        auto osArea = filterHdr.removeFromRight(osCellW * kNumDriveOsBtns);
+        filterHdr.removeFromRight(4);
+        // Whatever's between Style and OS goes to Drive — same row now, so Drive
+        // shortens to accommodate the extra switches.
+        auto driveArea = filterHdr;
 
         for (int i = 0; i < kNumTypeBtns; ++i)
             filterTypeBtns[i].setBounds(typeArea.removeFromLeft(typeCellW));
@@ -1498,10 +1518,14 @@ void SynthPanel::resized()
         filterSlopeSwitchBounds = filterSlopeBtns[0].getBounds()
             .getUnion(filterSlopeBtns[kNumSlopeBtns - 1].getBounds());
 
-        // Keep Drive aligned with the filter section's right-hand slider column.
-        auto osArea = filterHdrFull.removeFromRight(osCellW * kNumDriveOsBtns);
-        auto driveArea = driveColumnBounds;
-        driveArea.setRight(juce::jmax(driveArea.getX(), osArea.getX() - 4));
+        for (int i = 0; i < kNumAlgBtns; ++i)
+            filterAlgBtns[i].setBounds(algArea.removeFromLeft(algCellW));
+        filterAlgSwitchBounds = filterAlgBtns[0].getBounds()
+            .getUnion(filterAlgBtns[kNumAlgBtns - 1].getBounds());
+
+        filterWarpStyleBox.setBounds(styleArea);
+        filterWarpStyleLabel.setBounds(-1000, -1000, 10, 10); // hidden — combo carries its own label
+
         filterDriveRow->setBounds(driveArea);
 
         for (int i = 0; i < kNumDriveOsBtns; ++i)
@@ -1512,29 +1536,6 @@ void SynthPanel::resized()
     area.removeFromTop(gap);
 
     {
-        // ── Algorithm + Warp Style row ──
-        // ALG switchbox on the left column, Warp Style combo on the right column
-        // (aligned with the Resonance / KbdTrack right-column). Style dims when
-        // algorithm != Warp (see updateVisibility).
-        auto algRow = area.removeFromTop(rowH);
-        auto algPairBounds = layoutSliderRowPairBounds(algRow, *cutoffRow, *resoRow, 4);
-        {
-            auto algArea = algPairBounds[0];
-            const int algCellW = algArea.getWidth() / kNumAlgBtns;
-            for (int i = 0; i < kNumAlgBtns; ++i)
-                filterAlgBtns[i].setBounds(algArea.removeFromLeft(algCellW));
-            filterAlgSwitchBounds = filterAlgBtns[0].getBounds()
-                .getUnion(filterAlgBtns[kNumAlgBtns - 1].getBounds());
-        }
-        {
-            auto styleArea = algPairBounds[1];
-            const int labelW = juce::roundToInt(f * 3.0f);
-            filterWarpStyleLabel.setBounds(styleArea.removeFromLeft(labelW));
-            styleArea.removeFromLeft(4);
-            filterWarpStyleBox.setBounds(styleArea);
-        }
-        area.removeFromTop(gap);
-
         // Always allocate — dimmed when filter off
         auto row1 = area.removeFromTop(rowH);
         auto filterBounds1 = layoutSliderRowPairBounds(row1, *cutoffRow, *resoRow, 4);
