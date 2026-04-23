@@ -111,6 +111,8 @@ namespace PID {
     static constexpr const char* filterKbdTrack   = "filter_kbd_track";
     static constexpr const char* filterDrive      = "filter_drive";
     static constexpr const char* filterDriveOs    = "filter_drive_os";
+    static constexpr const char* filterAlgorithm  = "filter_algorithm";
+    static constexpr const char* filterWarpStyle  = "filter_warp_style";
     static constexpr const char* delayType        = "delay_type";
     static constexpr const char* delayTime        = "delay_time";
     static constexpr const char* delayFeedback    = "delay_feedback";
@@ -364,6 +366,41 @@ namespace FilterDriveOs {
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(X8 + 1 == kCount, "FilterDriveOs out of sync.");
+}
+
+// ── Filter algorithm ──
+// SVF: existing linear TPT SVF + one-pole cascade (low CPU, clean default).
+// Ladder: Huovilainen 4-pole Moog ladder with tanh saturation in each stage
+//         (warm analog growl, self-oscillating at high resonance).
+// Warp: Surge-XT-style ZDF ladder with per-pole nonlinearity, style-switchable
+//       (wide continuous character space, designed for embedding modulation).
+namespace FilterAlgorithm {
+    enum : int { SVF = 0, Ladder = 1, Warp = 2 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "svf",    "SVF"    },
+        { "ladder", "Ladder" },
+        { "warp",   "Warp"   }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Warp + 1 == kCount, "FilterAlgorithm out of sync.");
+}
+
+// ── Cutoff-Warp saturation style ──
+// Applied to the feedback path of the ZDF ladder in CutoffWarpFilter. Only
+// consumed when filterAlgorithm == Warp. Keys are stable forever — new styles
+// must be appended, never reordered.
+namespace FilterWarpStyle {
+    enum : int { Tanh = 0, SoftClip = 1, OJD = 2, Sin = 3, Digital = 4, Asym = 5 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "tanh",     "Tanh"     },
+        { "softclip", "SoftClip" },
+        { "ojd",      "OJD"      },
+        { "sin",      "Sin"      },
+        { "digital",  "Digital"  },
+        { "asym",     "Asym"     }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Asym + 1 == kCount, "FilterWarpStyle out of sync.");
 }
 
 // ── Delay type ──
@@ -782,6 +819,9 @@ struct BlockParams
     // Pre-filter drive: user-facing controls
     float filterDriveDb = 0.0f;        // 0…36 dB, 0 = bypass
     int   filterDriveOs = FilterDriveOs::Off;  // Oversampling around tanh
+    // Filter algorithm selection (SVF / Ladder / Warp) and Warp-specific style.
+    int   filterAlgorithm = FilterAlgorithm::SVF;
+    int   filterWarpStyle = FilterWarpStyle::Tanh;
     // Pre-computed derived value (filled in processBlock, not by user):
     float filterDriveGain = 1.0f;      // 10^(driveDb/20)
     float kbdTrack = 0.0f;

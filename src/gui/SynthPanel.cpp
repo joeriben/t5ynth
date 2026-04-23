@@ -644,6 +644,51 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         }
     }
 
+    // ── Filter algorithm switchbox: SVF Ladder Warp ──
+    {
+        juce::StringArray algLabels;
+        for (const auto& e : FilterAlgorithm::kEntries) algLabels.add(e.label);
+        filterAlgHidden.addItemList(algLabels, 1);
+        filterAlgHidden.onChange = [this] {
+            int id = filterAlgHidden.getSelectedId();
+            for (int i = 0; i < kNumAlgBtns; ++i)
+                filterAlgBtns[i].setToggleState(i + 1 == id, juce::dontSendNotification);
+            updateVisibility();
+        };
+        for (int i = 0; i < kNumAlgBtns; ++i)
+        {
+            filterAlgBtns[i].setButtonText(algLabels[i]);
+            filterAlgBtns[i].setColour(juce::TextButton::buttonColourId, kSurface);
+            filterAlgBtns[i].setColour(juce::TextButton::buttonOnColourId, kFilterCol);
+            filterAlgBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
+            filterAlgBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+            filterAlgBtns[i].setClickingTogglesState(true);
+            filterAlgBtns[i].setRadioGroupId(3005);
+            { int edges = 0;
+              if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+              if (i < kNumAlgBtns - 1) edges |= juce::Button::ConnectedOnRight;
+              filterAlgBtns[i].setConnectedEdges(edges); }
+            filterAlgBtns[i].onClick = [this, i] { filterAlgHidden.setSelectedId(i + 1); };
+            addAndMakeVisible(filterAlgBtns[i]);
+        }
+    }
+
+    // ── Warp style combo: tanh / softclip / ojd / sin / digital / asym ──
+    {
+        juce::StringArray styleLabels;
+        for (const auto& e : FilterWarpStyle::kEntries) styleLabels.add(e.label);
+        filterWarpStyleBox.addItemList(styleLabels, 1);
+        filterWarpStyleBox.setColour(juce::ComboBox::backgroundColourId, kSurface);
+        filterWarpStyleBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+        filterWarpStyleBox.setColour(juce::ComboBox::outlineColourId, kFilterCol);
+        addAndMakeVisible(filterWarpStyleBox);
+
+        filterWarpStyleLabel.setFont(juce::FontOptions(fs() * 0.9f));
+        filterWarpStyleLabel.setColour(juce::Label::textColourId, kDim);
+        filterWarpStyleLabel.setJustificationType(juce::Justification::centredRight);
+        addAndMakeVisible(filterWarpStyleLabel);
+    }
+
     // ── Filter drive oversampling switchbox: Off 2x 4x 8x ──
     {
         juce::StringArray osLabels;
@@ -687,9 +732,11 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     kbdTrackA      = std::make_unique<SA>(apvts, PID::filterKbdTrack,  kbdTrackRow->getSlider());
     filterDriveA   = std::make_unique<SA>(apvts, PID::filterDrive,     filterDriveRow->getSlider());
 
-    filterTypeA    = std::make_unique<CA>(apvts, PID::filterType,     filterTypeHidden);
-    filterSlopeA   = std::make_unique<CA>(apvts, PID::filterSlope,    filterSlopeHidden);
-    filterDriveOsA = std::make_unique<CA>(apvts, PID::filterDriveOs,  filterDriveOsHidden);
+    filterTypeA      = std::make_unique<CA>(apvts, PID::filterType,      filterTypeHidden);
+    filterSlopeA     = std::make_unique<CA>(apvts, PID::filterSlope,     filterSlopeHidden);
+    filterDriveOsA   = std::make_unique<CA>(apvts, PID::filterDriveOs,   filterDriveOsHidden);
+    filterAlgA       = std::make_unique<CA>(apvts, PID::filterAlgorithm, filterAlgHidden);
+    filterWarpStyleA = std::make_unique<CA>(apvts, PID::filterWarpStyle, filterWarpStyleBox);
 
     cutoffRow->updateValue();
     resoRow->updateValue();
@@ -890,6 +937,18 @@ void SynthPanel::updateVisibility()
         filterDriveOsBtns[i].setAlpha(filterAlpha);
         filterDriveOsBtns[i].setEnabled(filterOn);
     }
+    for (int i = 0; i < kNumAlgBtns; ++i)
+    {
+        filterAlgBtns[i].setAlpha(filterAlpha);
+        filterAlgBtns[i].setEnabled(filterOn);
+    }
+    // Warp Style dims further (to 0.3× of the already-filter-dim) when the
+    // selected algorithm isn't Warp — style only applies to the warp ladder.
+    const bool warpActive = filterAlgHidden.getSelectedId() == (FilterAlgorithm::Warp + 1);
+    const float styleAlpha = filterAlpha * (warpActive ? 1.0f : 0.35f);
+    filterWarpStyleBox.setAlpha(styleAlpha);
+    filterWarpStyleBox.setEnabled(filterOn && warpActive);
+    filterWarpStyleLabel.setAlpha(styleAlpha);
 
     bool isWavetable = engineModeHidden.getSelectedId() == 2;
     bool isSampler = !isWavetable;
@@ -1119,6 +1178,7 @@ void SynthPanel::paint(juce::Graphics& g)
         paintSwitchBoxBorder(g, filterTypeSwitchBounds);
         paintSwitchBoxBorder(g, filterSlopeSwitchBounds);
         paintSwitchBoxBorder(g, filterDriveOsSwitchBounds);
+        paintSwitchBoxBorder(g, filterAlgSwitchBounds);
     }
 
     // Card: Modulation (ENVs + LFOs + Drift)
@@ -1452,6 +1512,29 @@ void SynthPanel::resized()
     area.removeFromTop(gap);
 
     {
+        // ── Algorithm + Warp Style row ──
+        // ALG switchbox on the left column, Warp Style combo on the right column
+        // (aligned with the Resonance / KbdTrack right-column). Style dims when
+        // algorithm != Warp (see updateVisibility).
+        auto algRow = area.removeFromTop(rowH);
+        auto algPairBounds = layoutSliderRowPairBounds(algRow, *cutoffRow, *resoRow, 4);
+        {
+            auto algArea = algPairBounds[0];
+            const int algCellW = algArea.getWidth() / kNumAlgBtns;
+            for (int i = 0; i < kNumAlgBtns; ++i)
+                filterAlgBtns[i].setBounds(algArea.removeFromLeft(algCellW));
+            filterAlgSwitchBounds = filterAlgBtns[0].getBounds()
+                .getUnion(filterAlgBtns[kNumAlgBtns - 1].getBounds());
+        }
+        {
+            auto styleArea = algPairBounds[1];
+            const int labelW = juce::roundToInt(f * 3.0f);
+            filterWarpStyleLabel.setBounds(styleArea.removeFromLeft(labelW));
+            styleArea.removeFromLeft(4);
+            filterWarpStyleBox.setBounds(styleArea);
+        }
+        area.removeFromTop(gap);
+
         // Always allocate — dimmed when filter off
         auto row1 = area.removeFromTop(rowH);
         auto filterBounds1 = layoutSliderRowPairBounds(row1, *cutoffRow, *resoRow, 4);

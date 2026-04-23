@@ -51,6 +51,8 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
     perVoiceLfo1.prepare(sampleRate);
     perVoiceLfo2.prepare(sampleRate);
     filter.prepare(sampleRate, samplesPerBlock);
+    filterLadder.prepare(sampleRate, samplesPerBlock);
+    filterWarp.prepare(sampleRate, samplesPerBlock);
 
     // Build + init the three oversamplers around the pre-filter tanh drive.
     // Init size is SUB_BLOCK_SIZE because renderBlock drives the OS in sub-block
@@ -69,6 +71,8 @@ void SynthVoice::reset()
     osc.reset();
     sampler.reset();
     filter.reset();
+    filterLadder.reset();
+    filterWarp.reset();
     noise.reset();
     if (driveOs2x_) driveOs2x_->reset();
     if (driveOs4x_) driveOs4x_->reset();
@@ -632,11 +636,34 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             cutoffMod = juce::jlimit(20.0f, 20000.0f, cutoffMod);
             lastModulatedCutoff_ = cutoffMod;
 
-            filter.setCutoff(cutoffMod);
-            filter.setResonance(p.baseReso);
-            filter.setType(p.filterType);
-            filter.setSlope(p.filterSlope);
-            filter.setMix(p.filterMix);
+            // Configure only the active filter model — the inactive ones sit
+            // idle, so touching them would just waste cycles on coefficient
+            // updates that no one hears.
+            switch (p.filterAlgorithm)
+            {
+                case FilterAlgorithm::SVF:
+                    filter.setCutoff(cutoffMod);
+                    filter.setResonance(p.baseReso);
+                    filter.setType(p.filterType);
+                    filter.setSlope(p.filterSlope);
+                    filter.setMix(p.filterMix);
+                    break;
+                case FilterAlgorithm::Ladder:
+                    filterLadder.setCutoff(cutoffMod);
+                    filterLadder.setResonance(p.baseReso);
+                    filterLadder.setType(p.filterType);
+                    filterLadder.setSlope(p.filterSlope);
+                    filterLadder.setMix(p.filterMix);
+                    break;
+                case FilterAlgorithm::Warp:
+                    filterWarp.setCutoff(cutoffMod);
+                    filterWarp.setResonance(p.baseReso);
+                    filterWarp.setType(p.filterType);
+                    filterWarp.setSlope(p.filterSlope);
+                    filterWarp.setMix(p.filterMix);
+                    filterWarp.setStyle(p.filterWarpStyle);
+                    break;
+            }
         }
 
         // ── Phase A (per sample): generate raw osc/noise and cache VCA ──
@@ -762,11 +789,24 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             }
         }
 
-        // ── Phase C: per-sample filter (LTI, no OS needed) ──
+        // ── Phase C: per-sample filter (algorithm dispatch per sub-block) ──
         if (p.filterEnabled)
         {
-            for (int i = pos; i < lastI; ++i)
-                output[i] = filter.processSample(output[i]);
+            switch (p.filterAlgorithm)
+            {
+                case FilterAlgorithm::SVF:
+                    for (int i = pos; i < lastI; ++i)
+                        output[i] = filter.processSample(output[i]);
+                    break;
+                case FilterAlgorithm::Ladder:
+                    for (int i = pos; i < lastI; ++i)
+                        output[i] = filterLadder.processSample(output[i]);
+                    break;
+                case FilterAlgorithm::Warp:
+                    for (int i = pos; i < lastI; ++i)
+                        output[i] = filterWarp.processSample(output[i]);
+                    break;
+            }
         }
 
         // ── Phase D: per-sample VCA ──

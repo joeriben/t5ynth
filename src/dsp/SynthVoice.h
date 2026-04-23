@@ -4,6 +4,8 @@
 #include "ADSREnvelope.h"
 #include "LFO.h"
 #include "StateVariableFilter.h"
+#include "MoogLadderFilter.h"
+#include "CutoffWarpFilter.h"
 #include "NoiseGenerator.h"
 #include "BlockParams.h"
 #include <juce_dsp/juce_dsp.h>
@@ -93,7 +95,9 @@ private:
     ADSREnvelope modEnv2;
     LFO perVoiceLfo1; // used when LFO mode == Trigger
     LFO perVoiceLfo2;
-    T5ynthFilter filter;
+    T5ynthFilter       filter;       // linear TPT SVF (low-CPU default)
+    MoogLadderFilter   filterLadder; // Huovilainen nonlinear ladder
+    CutoffWarpFilter   filterWarp;   // Surge-XT-style ZDF ladder + style
     // Drive oversamplers (polyphase IIR half-band). Three instances, prepared in
     // prepare(); renderBlock() picks the one matching bp.filterDriveOs.
     std::unique_ptr<juce::dsp::Oversampling<float>> driveOs2x_;  // numStages=1, 2x

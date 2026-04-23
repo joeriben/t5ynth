@@ -86,7 +86,7 @@ private:
 
     // ── Layout rects for paint() ──
     juce::Rectangle<int> engineSwitchBounds, loopSwitchBounds, optSwitchBounds;
-    juce::Rectangle<int> filterTypeSwitchBounds, filterSlopeSwitchBounds, filterDriveOsSwitchBounds;
+    juce::Rectangle<int> filterTypeSwitchBounds, filterSlopeSwitchBounds, filterDriveOsSwitchBounds, filterAlgSwitchBounds;
     int engineCardBottom = 0;
 
     // ── Filter ──
@@ -103,6 +103,13 @@ private:
     static constexpr int kNumDriveOsBtns = 4;
     juce::TextButton filterDriveOsBtns[kNumDriveOsBtns];
     juce::ComboBox filterDriveOsHidden;
+    // Filter algorithm switchbox: SVF Ladder Warp
+    static constexpr int kNumAlgBtns = 3;
+    juce::TextButton filterAlgBtns[kNumAlgBtns];
+    juce::ComboBox filterAlgHidden;
+    // Warp style selector (only active when algorithm == Warp)
+    juce::ComboBox filterWarpStyleBox;
+    juce::Label    filterWarpStyleLabel { {}, "Style" };
 
     // ── Envelope sections ──
     struct EnvSection
@@ -164,7 +171,7 @@ private:
     std::unique_ptr<CA> wtFramesA;
     std::unique_ptr<BA> wtSmoothA;
     std::unique_ptr<BA> wtAutoScanA;
-    std::unique_ptr<CA> filterTypeA, filterSlopeA, filterDriveOsA;
+    std::unique_ptr<CA> filterTypeA, filterSlopeA, filterDriveOsA, filterAlgA, filterWarpStyleA;
     std::unique_ptr<SA> filterDriveA;
     std::unique_ptr<CA> driftRegenA;
     std::unique_ptr<SA> crossfadeRegenA;

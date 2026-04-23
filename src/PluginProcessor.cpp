@@ -218,6 +218,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::filterDriveOs, 1}, "Filter Drive OS",
         toChoices(FilterDriveOs::kEntries), FilterDriveOs::X4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::filterAlgorithm, 1}, "Filter Algorithm",
+        toChoices(FilterAlgorithm::kEntries), FilterAlgorithm::SVF));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::filterWarpStyle, 1}, "Filter Warp Style",
+        toChoices(FilterWarpStyle::kEntries), FilterWarpStyle::Tanh));
 
     // Delay
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -811,6 +817,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.kbdTrack = parameters.getRawParameterValue(PID::filterKbdTrack)->load();
     bp.filterDriveDb = parameters.getRawParameterValue(PID::filterDrive)->load();
     bp.filterDriveOs = static_cast<int>(parameters.getRawParameterValue(PID::filterDriveOs)->load());
+    bp.filterAlgorithm = static_cast<int>(parameters.getRawParameterValue(PID::filterAlgorithm)->load());
+    bp.filterWarpStyle = static_cast<int>(parameters.getRawParameterValue(PID::filterWarpStyle)->load());
     bp.filterDriveGain = std::pow(10.0f, bp.filterDriveDb * (1.0f / 20.0f));
 
     // Scan
@@ -2079,6 +2087,12 @@ static juce::String filterSlopeToString(int i)          { return choiceToKey(i, 
 static int filterDriveOsFromString(const juce::String& s) { return choiceFromKey(s, FilterDriveOs::kEntries); }
 static juce::String filterDriveOsToString(int i)          { return choiceToKey(i, FilterDriveOs::kEntries); }
 
+static int filterAlgorithmFromString(const juce::String& s) { return choiceFromKey(s, FilterAlgorithm::kEntries); }
+static juce::String filterAlgorithmToString(int i)          { return choiceToKey(i, FilterAlgorithm::kEntries); }
+
+static int filterWarpStyleFromString(const juce::String& s) { return choiceFromKey(s, FilterWarpStyle::kEntries); }
+static juce::String filterWarpStyleToString(int i)          { return choiceToKey(i, FilterWarpStyle::kEntries); }
+
 static int envTargetFromString(const juce::String& s)   { return choiceFromKey(s, EnvTarget::kEntries); }
 static juce::String envTargetToString(int i)            { return choiceToKey(i, EnvTarget::kEntries); }
 
@@ -2342,6 +2356,8 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     filt->setProperty("kbdTrack", get(PID::filterKbdTrack));
     filt->setProperty("drive", get(PID::filterDrive));
     filt->setProperty("driveOs", filterDriveOsToString(static_cast<int>(get(PID::filterDriveOs))));
+    filt->setProperty("algorithm", filterAlgorithmToString(static_cast<int>(get(PID::filterAlgorithm))));
+    filt->setProperty("warpStyle", filterWarpStyleToString(static_cast<int>(get(PID::filterWarpStyle))));
     root->setProperty("filter", filt.get());
 
     // Sequencer
@@ -2592,6 +2608,15 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
                  filt->hasProperty("driveOs")
                      ? static_cast<float>(filterDriveOsFromString(filt->getProperty("driveOs").toString()))
                      : static_cast<float>(FilterDriveOs::Off));
+        // Filter algorithm: absent in pre-Ladder/Warp presets -> SVF (bit-identical).
+        setParam(parameters, PID::filterAlgorithm,
+                 filt->hasProperty("algorithm")
+                     ? static_cast<float>(filterAlgorithmFromString(filt->getProperty("algorithm").toString()))
+                     : static_cast<float>(FilterAlgorithm::SVF));
+        setParam(parameters, PID::filterWarpStyle,
+                 filt->hasProperty("warpStyle")
+                     ? static_cast<float>(filterWarpStyleFromString(filt->getProperty("warpStyle").toString()))
+                     : static_cast<float>(FilterWarpStyle::Tanh));
     }
 
     // ── Sequencer ──
