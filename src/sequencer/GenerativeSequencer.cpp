@@ -19,6 +19,8 @@ void T5ynthGenerativeSequencer::prepare(double sr, int /*samplesPerBlock*/)
         s.samplesUntilNextStep = 0.0;
         s.samplesUntilGateOff  = -1.0;
     }
+    rebuildPcSetFromScale();
+    pitchField.cyclesUntilChange = pitchField.changeRate;
 }
 
 // ─── Parameter setters — route to strand 0 (legacy API) ───────────────────
@@ -72,6 +74,7 @@ void T5ynthGenerativeSequencer::setScale(int type, int root)
         scaleType = type;
         scaleRoot = root;
         for (auto& s : strands) s.patternDirty = true;
+        rebuildPcSetFromScale();
     }
 }
 
@@ -664,9 +667,14 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         // Step boundary
         int stepIdx = s.scheduledStep % s.numSteps;
 
-        // Cycle boundary → mutate
+        // Cycle boundary → mutate strand, advance shared pitch field
         if (stepIdx == 0 && s.scheduledStep > 0)
+        {
             mutatePattern(s);
+            // Phase 2: only strand 0 drives field evolution.
+            if (&s == &strands[0])
+                advancePitchField();
+        }
 
         // Note-off for previous
         if (s.lastPlayedNote >= 0)
@@ -729,4 +737,151 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         s.scheduledStep++;
         s.samplesUntilNextStep += stepDur;
     }
+}
+
+// ─── Pitch-field evolution ─────────────────────────────────────────────────
+//
+// Four modes drive the shared pc-set:
+//   Static    — no change (Satie-esque modal stasis)
+//   Drift     — swap one pc for another per tick (non-functional glide)
+//   Transform — Webern-style row operations: Tn / In / R / RI
+//   Pivot     — Coltrane-matrix shift by pivotInterval semitones
+//
+// advancePitchField() is called on strand 0's cycle boundary only.
+
+void T5ynthGenerativeSequencer::rebuildPcSetFromScale()
+{
+    auto scale = static_cast<ScaleQuantizer::Scale>(
+        juce::jlimit(1, static_cast<int>(ScaleQuantizer::COUNT) - 1, scaleType));
+    pitchField.pcSet = ScaleQuantizer::pcSetFromScale(scale, scaleRoot);
+    pitchField.centerPc = ((scaleRoot % 12) + 12) % 12;
+    // Seed row = ascending pcs of current scale, then fill with chromatic
+    pitchField.row = {0,1,2,3,4,5,6,7,8,9,10,11};
+    int written = 0;
+    for (int pc = 0; pc < 12 && written < 12; ++pc)
+        if ((pitchField.pcSet >> pc) & 1u)
+            pitchField.row[static_cast<size_t>(written++)] = pc;
+    pitchField.rowSize = juce::jmax(3, written);
+    pitchField.rowTn = 0;
+    pitchField.rowInverted = false;
+    pitchField.rowRetrograde = false;
+    pitchField.pivotAccum = 0;
+}
+
+void T5ynthGenerativeSequencer::advancePitchField()
+{
+    if (--pitchField.cyclesUntilChange > 0) return;
+    pitchField.cyclesUntilChange = juce::jmax(1, pitchField.changeRate);
+
+    switch (pitchField.mode)
+    {
+        case PitchField::Static:    break;
+        case PitchField::Drift:     driftPcSet();         break;
+        case PitchField::Transform: applyRowOp();         break;
+        case PitchField::Pivot:     applyPivot();         break;
+    }
+}
+
+void T5ynthGenerativeSequencer::driftPcSet()
+{
+    // Count current members and holes.
+    int inPcs[12], outPcs[12];
+    int nIn = 0, nOut = 0;
+    for (int pc = 0; pc < 12; ++pc)
+    {
+        if ((pitchField.pcSet >> pc) & 1u) inPcs[nIn++] = pc;
+        else                                outPcs[nOut++] = pc;
+    }
+    // Degenerate — can't drift if fully full or empty.
+    if (nIn == 0 || nOut == 0) return;
+
+    std::uniform_int_distribution<int> inPick(0, nIn - 1);
+    std::uniform_int_distribution<int> outPick(0, nOut - 1);
+
+    // Never remove the centerPc (keeps anchor stable).
+    int removeIdx = inPick(rng);
+    int attempts = 0;
+    while (inPcs[removeIdx] == pitchField.centerPc && nIn > 1 && attempts < 8)
+    {
+        removeIdx = inPick(rng);
+        ++attempts;
+    }
+    if (inPcs[removeIdx] == pitchField.centerPc) return;   // fallback: abort drift
+
+    int addPc = outPcs[outPick(rng)];
+    pitchField.pcSet &= static_cast<std::uint16_t>(~(1u << inPcs[removeIdx]));
+    pitchField.pcSet |= static_cast<std::uint16_t>(1u << addPc);
+}
+
+void T5ynthGenerativeSequencer::applyRowOp()
+{
+    // Random op from {Tn, In, R, RI}. Uses existing row state.
+    std::uniform_int_distribution<int> opDist(0, 3);
+    std::uniform_int_distribution<int> nDist(1, 11);
+    const int op = opDist(rng);
+    const int n  = nDist(rng);
+
+    const int sz = juce::jlimit(3, 12, pitchField.rowSize);
+
+    auto transpose = [&](int amount) {
+        for (int i = 0; i < sz; ++i)
+            pitchField.row[static_cast<size_t>(i)] =
+                (((pitchField.row[static_cast<size_t>(i)] + amount) % 12) + 12) % 12;
+    };
+    auto invert = [&]() {
+        for (int i = 0; i < sz; ++i)
+            pitchField.row[static_cast<size_t>(i)] =
+                ((12 - pitchField.row[static_cast<size_t>(i)]) % 12);
+    };
+    auto retrograde = [&]() {
+        for (int i = 0, j = sz - 1; i < j; ++i, --j)
+            std::swap(pitchField.row[static_cast<size_t>(i)],
+                      pitchField.row[static_cast<size_t>(j)]);
+    };
+
+    switch (op)
+    {
+        case 0: transpose(n); pitchField.rowTn = (pitchField.rowTn + n) % 12; break;
+        case 1: invert(); transpose(n);
+                pitchField.rowInverted = !pitchField.rowInverted;
+                pitchField.rowTn = (pitchField.rowTn + n) % 12; break;
+        case 2: retrograde();
+                pitchField.rowRetrograde = !pitchField.rowRetrograde; break;
+        case 3: retrograde(); invert(); transpose(n);
+                pitchField.rowRetrograde = !pitchField.rowRetrograde;
+                pitchField.rowInverted   = !pitchField.rowInverted;
+                pitchField.rowTn         = (pitchField.rowTn + n) % 12; break;
+    }
+    rebuildPcSetFromRow();
+}
+
+void T5ynthGenerativeSequencer::rebuildPcSetFromRow()
+{
+    const int sz = juce::jlimit(3, 12, pitchField.rowSize);
+    std::uint16_t newSet = 0;
+    for (int i = 0; i < sz; ++i)
+        newSet |= static_cast<std::uint16_t>(1u << (pitchField.row[static_cast<size_t>(i)] & 0xF));
+    // Guard against collapsed row (all identical pcs) — keep previous if new is too small.
+    if (__builtin_popcount(static_cast<unsigned>(newSet)) >= 3)
+        pitchField.pcSet = newSet;
+    // Keep centerPc consistent: if it dropped out, shift to row[0].
+    if (!((pitchField.pcSet >> pitchField.centerPc) & 1u))
+        pitchField.centerPc = pitchField.row[0] & 0xF;
+}
+
+void T5ynthGenerativeSequencer::applyPivot()
+{
+    const int iv = ((pitchField.pivotInterval % 12) + 12) % 12;
+    if (iv == 0) return;
+
+    std::uint16_t shifted = 0;
+    for (int i = 0; i < 12; ++i)
+    {
+        int src = ((i - iv) % 12 + 12) % 12;
+        if ((pitchField.pcSet >> src) & 1u)
+            shifted |= static_cast<std::uint16_t>(1u << i);
+    }
+    pitchField.pcSet    = shifted;
+    pitchField.centerPc = (pitchField.centerPc + iv) % 12;
+    pitchField.pivotAccum = (pitchField.pivotAccum + iv) % 12;
 }

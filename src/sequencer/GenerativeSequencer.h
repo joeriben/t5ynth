@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <random>
 
 /**
@@ -84,6 +85,40 @@ public:
     std::atomic<float> effectiveMutationForGui{ 0.0f };
 
 private:
+    /**
+     * Shared pitch material for all strands.
+     *
+     * Replaces classical chord/harmony context with a pc-set + optional
+     * ordered row. Evolves via one of four modes on strand 0's cycle
+     * boundary, giving the sequencer its post-tonal / Lewis/Coltrane/
+     * Satie/serial character.
+     */
+    struct PitchField
+    {
+        enum Mode : int { Static = 0, Drift = 1, Transform = 2, Pivot = 3 };
+
+        // Core: 12-bit pc-set bitmask (bit n = pc n in field)
+        std::uint16_t pcSet = 0;    // initialised by rebuildPcSetFromScale()
+        int centerPc = 0;           // downbeat anchor pc
+
+        // Ordered row (Transform mode); initial state = chromatic ascending
+        std::array<int, 12> row = {0,1,2,3,4,5,6,7,8,9,10,11};
+        int rowSize = 7;            // how many row members populate the field
+
+        Mode mode = Drift;
+        int  changeRate = 8;        // cycles between evolution ticks
+        int  cyclesUntilChange = 8;
+
+        // Transform-mode state
+        int  rowTn         = 0;     // current transposition
+        bool rowInverted   = false;
+        bool rowRetrograde = false;
+
+        // Pivot-mode state
+        int pivotInterval = 3;      // semitones — m3 default (Coltrane matrix)
+        int pivotAccum    = 0;      // cumulative shift since last reset
+    };
+
     /** Per-strand pattern + playback state. */
     struct Strand
     {
@@ -132,6 +167,7 @@ private:
     };
 
     std::array<Strand, MAX_STRANDS> strands{};
+    PitchField pitchField{};
 
     // Timing (shared across strands)
     double bpm_         = 120.0;
@@ -164,4 +200,12 @@ private:
     void   applyMutationDrift(Strand& s);
     void   addPulse(Strand& s);
     void   removePulse(Strand& s);
+
+    // Pitch-field helpers.
+    void rebuildPcSetFromScale();   // initialises/resets pcSet from (scaleType, scaleRoot)
+    void advancePitchField();       // called on strand-0 cycle boundary
+    void driftPcSet();              // swap one pc for another
+    void applyRowOp();              // random Tn / In / R / RI
+    void rebuildPcSetFromRow();     // Transform mode: derive pcSet from row[0..rowSize-1]
+    void applyPivot();              // rotate pcSet by pivotInterval semitones
 };
