@@ -99,7 +99,6 @@ private:
     juce::TextButton filterSlopeBtns[kNumSlopeBtns];
     juce::ComboBox filterSlopeHidden;
     std::unique_ptr<SliderRow> cutoffRow, resoRow, filterMixRow, kbdTrackRow, filterDriveRow;
-    juce::TextButton filterMakeupBtn { "Makeup" };
     // Drive oversampling switchbox: Off 2x 4x 8x
     static constexpr int kNumDriveOsBtns = 4;
     juce::TextButton filterDriveOsBtns[kNumDriveOsBtns];
@@ -167,7 +166,6 @@ private:
     std::unique_ptr<BA> wtAutoScanA;
     std::unique_ptr<CA> filterTypeA, filterSlopeA, filterDriveOsA;
     std::unique_ptr<SA> filterDriveA;
-    std::unique_ptr<BA> filterMakeupA;
     std::unique_ptr<CA> driftRegenA;
     std::unique_ptr<SA> crossfadeRegenA;
 

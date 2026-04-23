@@ -550,7 +550,7 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
         // Pre-filter drive (tanh). At 0 dB we skip the call entirely so
         // presets without drive stay bit-identical to pre-drive builds.
         if (p.filterDriveDb > 0.01f)
-            sample = std::tanh(sample * p.filterDriveGain) * p.filterDriveMakeupGain;
+            sample = std::tanh(sample * p.filterDriveGain);
 
         sample = filter.processSample(sample);
     }
@@ -736,13 +736,12 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
         // ── Phase B: pre-filter drive (tanh), with optional block-level oversampling ──
         if (p.filterEnabled && p.filterDriveDb > 0.01f && driveLen > 0)
         {
-            const float driveGain  = p.filterDriveGain;
-            const float makeupGain = p.filterDriveMakeupGain;
+            const float driveGain = p.filterDriveGain;
 
             if (p.filterDriveOs == FilterDriveOs::Off)
             {
                 for (int i = pos; i < lastI; ++i)
-                    output[i] = std::tanh(output[i] * driveGain) * makeupGain;
+                    output[i] = std::tanh(output[i] * driveGain);
             }
             else
             {
@@ -758,7 +757,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                 auto* upData = upBlock.getChannelPointer(0);
                 const size_t upN = upBlock.getNumSamples();
                 for (size_t i = 0; i < upN; ++i)
-                    upData[i] = std::tanh(upData[i] * driveGain) * makeupGain;
+                    upData[i] = std::tanh(upData[i] * driveGain);
                 os->processSamplesDown(block);
             }
         }

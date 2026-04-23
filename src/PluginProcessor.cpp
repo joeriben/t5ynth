@@ -67,26 +67,6 @@ float applyNormalizedOffset(float baseValue, float modulationOffset)
     return juce::jlimit(0.0f, 1.0f, baseValue + modulationOffset);
 }
 
-float computeTanhDriveMakeupGain(float driveGain)
-{
-    constexpr int kSteps = 1024;
-    constexpr float kRefRms = 0.70710678118f; // RMS of a full-scale sine
-
-    double sumSq = 0.0;
-    for (int i = 0; i < kSteps; ++i)
-    {
-        const float phase = juce::MathConstants<float>::twoPi
-                          * (static_cast<float>(i) + 0.5f)
-                          / static_cast<float>(kSteps);
-        const float x = std::sin(phase);
-        const float y = std::tanh(driveGain * x);
-        sumSq += static_cast<double>(y) * static_cast<double>(y);
-    }
-
-    const float drivenRms = std::sqrt(static_cast<float>(sumSq / static_cast<double>(kSteps)));
-    return kRefRms / std::max(0.0001f, drivenRms);
-}
-
 void samplerProcessorDebugLog(const juce::String& message)
 {
     if constexpr (kSamplerDebugLogging)
@@ -235,8 +215,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::filterDrive, 1}, "Filter Drive",
         juce::NormalisableRange<float>(0.0f, 36.0f, 0.1f), 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{PID::filterDriveMakeup, 1}, "Filter Drive Makeup", true));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::filterDriveOs, 1}, "Filter Drive OS",
         toChoices(FilterDriveOs::kEntries), FilterDriveOs::X4));
@@ -832,16 +810,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     bp.filterMix = parameters.getRawParameterValue(PID::filterMix)->load();
     bp.kbdTrack = parameters.getRawParameterValue(PID::filterKbdTrack)->load();
     bp.filterDriveDb = parameters.getRawParameterValue(PID::filterDrive)->load();
-    bp.filterDriveMakeup = parameters.getRawParameterValue(PID::filterDriveMakeup)->load() > 0.5f;
     bp.filterDriveOs = static_cast<int>(parameters.getRawParameterValue(PID::filterDriveOs)->load());
     bp.filterDriveGain = std::pow(10.0f, bp.filterDriveDb * (1.0f / 20.0f));
-    // Reference compensation for the tanh shaper using a full-scale sine.
-    // This is not exact loudness matching for arbitrary material, but it is
-    // stable, audible, and avoids both the extreme 1/gain drop and the near-
-    // no-op behaviour of 1/tanh(gain) at hot drive settings.
-    bp.filterDriveMakeupGain = bp.filterDriveMakeup
-        ? computeTanhDriveMakeupGain(bp.filterDriveGain)
-        : 1.0f;
 
     // Scan
     bp.baseScan = parameters.getRawParameterValue(PID::oscScan)->load();
@@ -2371,7 +2341,6 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     filt->setProperty("mix", get(PID::filterMix));
     filt->setProperty("kbdTrack", get(PID::filterKbdTrack));
     filt->setProperty("drive", get(PID::filterDrive));
-    filt->setProperty("driveMakeup", get(PID::filterDriveMakeup) > 0.5f);
     filt->setProperty("driveOs", filterDriveOsToString(static_cast<int>(get(PID::filterDriveOs))));
     root->setProperty("filter", filt.get());
 
@@ -2615,11 +2584,9 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         setParam(parameters, PID::filterResonance, static_cast<float>(filt->getProperty("resonance")));
         setParam(parameters, PID::filterMix, static_cast<float>(filt->getProperty("mix")));
         setParam(parameters, PID::filterKbdTrack, static_cast<float>(filt->getProperty("kbdTrack")));
-        // Drive: absent in older presets -> treat as 0 dB, makeup on.
+        // Drive: absent in older presets -> treat as 0 dB.
         setParam(parameters, PID::filterDrive,
                  filt->hasProperty("drive") ? static_cast<float>(filt->getProperty("drive")) : 0.0f);
-        setParam(parameters, PID::filterDriveMakeup,
-                 filt->hasProperty("driveMakeup") ? (static_cast<bool>(filt->getProperty("driveMakeup")) ? 1.0f : 0.0f) : 1.0f);
         // Drive OS: absent in older presets -> Off (bit-identical to pre-OS build).
         setParam(parameters, PID::filterDriveOs,
                  filt->hasProperty("driveOs")
