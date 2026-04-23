@@ -68,13 +68,12 @@ public:
     void setMix(float mix)    { currentMix   = juce::jlimit(0.0f, 1.0f, mix); }
 
     // Pre-filter input gain. The ladder's four tanh stages see the hot signal
-    // and saturate on it; the output tap is scaled back by `1/gain` so level
-    // stays roughly constant as drive is dialled up, with the saturation
-    // character as the audible change.
+    // and saturate on it; that's the audible drive character. No output comp
+    // is applied: on a real Moog, drive makes the filter louder + crunchier,
+    // not level-matched. Master volume handles overall level.
     void setInputDrive(float gain)
     {
-        inDrive  = juce::jmax(0.0001f, gain);
-        outComp  = 1.0f / inDrive;
+        inDrive = juce::jmax(0.0001f, gain);
     }
 
     float processSample(float input)
@@ -102,8 +101,12 @@ public:
         y3 += g * (t2  - t3);  t3 = std::tanh(y3);
         y4 += g * (t3  - t4);  t4 = std::tanh(y4);
 
-        // Output compensation brings drive-scaled amplitude back to user level.
-        const float wet = tapOutput(hot) * outComp;
+        // Tap gain compensates for the half-sample input averaging, which is
+        // a cos(ω/2) FIR lowpass (−3 dB at sr/4, 0 at Nyquist). Without it
+        // the ladder sits ~1.5 dB below the SVF on broadband material even at
+        // matched settings. 1.20 restores rough level parity.
+        constexpr float kTapComp = 1.20f;
+        const float wet = tapOutput(hot) * kTapComp;
 
         if (currentMix > 0.999f)
             return wet;
@@ -146,7 +149,6 @@ private:
     float g  = 0.0f;
     float k  = 0.0f;
     float inDrive = 1.0f;
-    float outComp = 1.0f;
     float lastCutoff = 20000.0f;
     float lastReso   = 0.0f;
     float currentMix = 1.0f;

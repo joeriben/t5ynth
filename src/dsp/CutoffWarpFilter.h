@@ -68,10 +68,12 @@ public:
     void setMix(float mix)    { currentMix   = juce::jlimit(0.0f, 1.0f, mix); }
     void setStyle(int style)  { currentStyle = juce::jlimit(0, 5, style); }
 
+    // Input gain feeds the ZDF loop's style-selected saturations. No output
+    // compensation: drive is intended to raise loudness + harmonic content,
+    // not self-cancel. Master volume handles overall level.
     void setInputDrive(float gain)
     {
         inDrive = juce::jmax(0.0001f, gain);
-        outComp = 1.0f / inDrive;
     }
 
     float processSample(float input)
@@ -105,7 +107,11 @@ public:
         s3 += antiDenormal;  s3 -= antiDenormal;
         s4 += antiDenormal;  s4 -= antiDenormal;
 
-        const float wet = tapOutput(hot) * outComp;
+        // Tap gain offsets the cos(ω/2) attenuation of the half-sample input
+        // averaging so the Warp sits at roughly the same level as the SVF on
+        // broadband material.
+        constexpr float kTapComp = 1.20f;
+        const float wet = tapOutput(hot) * kTapComp;
 
         if (currentMix > 0.999f)
             return wet;
@@ -200,7 +206,6 @@ private:
     float gFrac = 0.0f;
     float k     = 0.0f;
     float inDrive = 1.0f;
-    float outComp = 1.0f;
     float lastCutoff = 20000.0f;
     float lastReso   = 0.0f;
     float currentMix = 1.0f;
