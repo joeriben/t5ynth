@@ -809,7 +809,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
         regenBtns[i].setColour(juce::TextButton::textColourOffId, kDim);
         regenBtns[i].setColour(juce::TextButton::textColourOnId, juce::Colours::white);
         regenBtns[i].setClickingTogglesState(true);
-        regenBtns[i].setRadioGroupId(3005);
+        regenBtns[i].setRadioGroupId(3006);
         regenBtns[i].onClick = [this, i] { regenHidden.setSelectedId(i + 1); };
         addAndMakeVisible(regenBtns[i]);
     }
