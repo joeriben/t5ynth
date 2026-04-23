@@ -40,7 +40,7 @@ public:
     static constexpr int MAX_STEPS   = 32;
     static constexpr int MAX_STRANDS = 4;
 
-    T5ynthGenerativeSequencer() = default;
+    T5ynthGenerativeSequencer();
 
     void prepare(double sampleRate, int samplesPerBlock);
     void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi);
@@ -119,6 +119,18 @@ private:
         int pivotAccum    = 0;      // cumulative shift since last reset
     };
 
+    /**
+     * Strand role — textural function within the polyrhythmic weave.
+     * Deliberately post-tonal: no Bass/Lead hierarchy.
+     */
+    enum class Role : int
+    {
+        Anchor  = 0,   // centerPc-locked, octave −1, slow — Satie bourdon
+        Line    = 1,   // mid-register stepwise field walk
+        Density = 2,   // Sheets-of-Sound — chromatic, ignores metric weight
+        Gesture = 3,   // sparse punctuations, extreme register — Webern points
+    };
+
     /** Per-strand pattern + playback state. */
     struct Strand
     {
@@ -164,6 +176,13 @@ private:
         bool fixPulses   = false;
         bool fixRotation = false;
         bool fixMutation = true;
+
+        // Strand identity (activated in Phase 3)
+        bool  enabled            = false;   // strand 0 is enabled via ctor
+        Role  role               = Role::Line;
+        int   octaveShift        = 0;       // −2..+2
+        float divisionMultiplier = 1.0f;    // 0.25 / 0.5 / 1 / 2 / 4
+        float chordToneDominance = 0.0f;    // 0 = pure Turing, higher = snap to centerPc on strong beats
     };
 
     std::array<Strand, MAX_STRANDS> strands{};
@@ -208,4 +227,10 @@ private:
     void applyRowOp();              // random Tn / In / R / RI
     void rebuildPcSetFromRow();     // Transform mode: derive pcSet from row[0..rowSize-1]
     void applyPivot();              // rotate pcSet by pivotInterval semitones
+
+    // Per-strand rendering — Phase 3.
+    double strandStepDurationSamples(const Strand& s) const;
+    int    pickNote(Strand& s, int stepIdx, int rawDegree);
+    int    voiceLedFieldMember(int rawPc) const;
+    int    chromaticFieldWalk(int lastMidi);
 };

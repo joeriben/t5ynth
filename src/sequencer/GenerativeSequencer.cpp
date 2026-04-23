@@ -4,9 +4,19 @@
 
 // ─── Timing ────────────────────────────────────────────────────────────────
 
+T5ynthGenerativeSequencer::T5ynthGenerativeSequencer()
+{
+    strands[0].enabled = true;   // strand 0 always active; 1..3 are opt-in
+}
+
 double T5ynthGenerativeSequencer::stepDurationSamples() const
 {
     return sampleRate_ * 60.0 / bpm_ * static_cast<double>(DIVISION_FACTORS[division_]);
+}
+
+double T5ynthGenerativeSequencer::strandStepDurationSamples(const Strand& s) const
+{
+    return stepDurationSamples() / juce::jmax(0.01f, s.divisionMultiplier);
 }
 
 constexpr float T5ynthGenerativeSequencer::DIVISION_FACTORS[];
@@ -596,29 +606,110 @@ void T5ynthGenerativeSequencer::publishStrandToGui(const Strand& s)
             std::memory_order_relaxed);
 }
 
+// ─── Note selection (Phase 3) ──────────────────────────────────────────────
+//
+// pickNote() is the projection from the strand's abstract Turing state
+// (scale-degree walk) onto concrete MIDI output through the shared
+// PitchField. Metric weighting applies on strong positions; roles modulate
+// the selection behavior; Density bypasses metric weighting entirely.
+
+int T5ynthGenerativeSequencer::voiceLedFieldMember(int rawPc) const
+{
+    const auto set = pitchField.pcSet;
+    if (set == 0) return rawPc;
+    rawPc = ((rawPc % 12) + 12) % 12;
+    // Search outward in pc-space for the closest field member; tie goes lower.
+    for (int off = 0; off <= 6; ++off)
+    {
+        int below = ((rawPc - off) % 12 + 12) % 12;
+        int above = (rawPc + off) % 12;
+        const bool bBelow = (set >> below) & 1u;
+        const bool bAbove = (set >> above) & 1u;
+        if (off == 0 && bBelow) return rawPc;
+        if (bBelow) return below;
+        if (bAbove) return above;
+    }
+    return rawPc;
+}
+
+int T5ynthGenerativeSequencer::chromaticFieldWalk(int lastMidi)
+{
+    // Sheets-of-Sound: step ±1 semitone from last note, random direction.
+    // Fully chromatic (ignores pcSet) — the point is dense linear motion.
+    if (lastMidi < 0) return -1;   // caller falls back to raw pc
+    const int lastPc = ((lastMidi % 12) + 12) % 12;
+    std::uniform_int_distribution<int> dirDist(0, 1);
+    const int dir = (dirDist(rng) == 0) ? -1 : 1;
+    return ((lastPc + dir) % 12 + 12) % 12;
+}
+
+int T5ynthGenerativeSequencer::pickNote(Strand& s, int stepIdx, int rawDegree)
+{
+    // Project the strand's Turing-walked degree into MIDI using
+    // (scaleType, scaleRoot) as the *register* source, then re-snap the
+    // pitch class through the shared PitchField according to role + metric
+    // weight.
+    auto scale = static_cast<ScaleQuantizer::Scale>(
+        juce::jlimit(1, static_cast<int>(ScaleQuantizer::COUNT) - 1, scaleType));
+    const int baseNote = 48 + s.octaveShift * 12;
+    const int rawMidi   = ScaleQuantizer::degreeToMidi(rawDegree, scaleRoot, scale, baseNote);
+    const int rawPc     = ((rawMidi % 12) + 12) % 12;
+    const int octaveAnchor = rawMidi - rawPc;
+
+    const bool isStrong = (stepIdx == 0) || s.accentPattern[static_cast<size_t>(stepIdx)];
+
+    int targetPc = rawPc;
+
+    if (s.role == Role::Density)
+    {
+        int walked = chromaticFieldWalk(s.lastPlayedNote);
+        if (walked >= 0) targetPc = walked;
+    }
+    else
+    {
+        std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
+        if (isStrong && s.chordToneDominance > 0.0f
+            && probDist(rng) < s.chordToneDominance)
+        {
+            targetPc = ((pitchField.centerPc % 12) + 12) % 12;
+        }
+        else if (!((pitchField.pcSet >> rawPc) & 1u))
+        {
+            // Raw pc lies outside the current field → snap voice-led
+            targetPc = voiceLedFieldMember(rawPc);
+        }
+        // Else: raw pc is in field already — keep it (preserves Turing dynamics
+        // when field equals scale, for backward compatibility).
+    }
+
+    return juce::jlimit(0, 127, octaveAnchor + targetPc);
+}
+
 // ─── Process Block ─────────────────────────────────────────────────────────
 
 void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& midi)
 {
-    auto& s = strands[0];   // Phase 1: only strand 0 is active (Phase 3 adds multi-strand scheduling)
-
     if (!running)
     {
-        if (s.lastPlayedNote >= 0)
+        for (auto& st : strands)
         {
-            midi.addEvent(juce::MidiMessage::noteOff(1, s.lastPlayedNote), 0);
-            s.lastPlayedNote = -1;
+            if (st.lastPlayedNote >= 0)
+            {
+                midi.addEvent(juce::MidiMessage::noteOff(1, st.lastPlayedNote), 0);
+                st.lastPlayedNote = -1;
+            }
+            st.currentStep = 0;
         }
-        s.currentStep = 0;
         currentStepForGui.store(-1, std::memory_order_relaxed);
         return;
     }
 
-    if (s.patternDirty)
-        rebuildPattern(s);
+    // Rebuild any dirty patterns for enabled strands before processing.
+    for (auto& st : strands)
+        if (st.enabled && st.patternDirty)
+            rebuildPattern(st);
 
-    const double stepDur = stepDurationSamples();
     const int numSamples = buffer.getNumSamples();
     int samplePos = 0;
 
@@ -626,34 +717,53 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
 
     while (samplePos < numSamples)
     {
-        int remaining = numSamples - samplePos;
+        const int remaining = numSamples - samplePos;
 
-        double nextEvent = s.samplesUntilNextStep;
-        bool gateOffFirst = false;
-        if (s.samplesUntilGateOff >= 0.0 && s.samplesUntilGateOff <= s.samplesUntilNextStep)
+        // Find the earliest upcoming event (step boundary or gate-off) across
+        // all enabled strands. This is the core of the polyrhythmic scheduler:
+        // each strand runs its own clock at its own divisionMultiplier.
+        double minEvent = static_cast<double>(remaining) + 1.0;
+        Strand* who = nullptr;
+        bool isGateOff = false;
+
+        for (auto& st : strands)
         {
-            nextEvent = s.samplesUntilGateOff;
-            gateOffFirst = true;
+            if (!st.enabled) continue;
+            double e = st.samplesUntilNextStep;
+            bool g = false;
+            if (st.samplesUntilGateOff >= 0.0 && st.samplesUntilGateOff < e)
+            {
+                e = st.samplesUntilGateOff;
+                g = true;
+            }
+            if (e < minEvent) { minEvent = e; who = &st; isGateOff = g; }
         }
 
-        if (nextEvent > static_cast<double>(remaining))
+        if (!who || minEvent > static_cast<double>(remaining))
         {
-            s.samplesUntilNextStep -= remaining;
-            if (s.samplesUntilGateOff >= 0.0)
-                s.samplesUntilGateOff -= remaining;
-            samplePos = numSamples;
+            // No event lands inside this block — decrement all enabled strands.
+            for (auto& st : strands)
+            {
+                if (!st.enabled) continue;
+                st.samplesUntilNextStep -= remaining;
+                if (st.samplesUntilGateOff >= 0.0) st.samplesUntilGateOff -= remaining;
+            }
             break;
         }
 
-        int advance = std::max(0, static_cast<int>(nextEvent));
+        const int advance = std::max(0, static_cast<int>(minEvent));
         samplePos += advance;
-        s.samplesUntilNextStep -= advance;
-        if (s.samplesUntilGateOff >= 0.0)
-            s.samplesUntilGateOff -= advance;
+        for (auto& st : strands)
+        {
+            if (!st.enabled) continue;
+            st.samplesUntilNextStep -= advance;
+            if (st.samplesUntilGateOff >= 0.0) st.samplesUntilGateOff -= advance;
+        }
 
-        int eventPos = juce::jmin(samplePos, numSamples - 1);
+        const int eventPos = juce::jmin(samplePos, numSamples - 1);
+        Strand& s = *who;
 
-        if (gateOffFirst)
+        if (isGateOff)
         {
             if (s.lastPlayedNote >= 0)
             {
@@ -664,19 +774,18 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
             continue;
         }
 
-        // Step boundary
-        int stepIdx = s.scheduledStep % s.numSteps;
+        // Step boundary for this strand
+        const int stepIdx = s.scheduledStep % s.numSteps;
 
-        // Cycle boundary → mutate strand, advance shared pitch field
+        // Cycle boundary → mutate strand; field evolves on strand 0 only
         if (stepIdx == 0 && s.scheduledStep > 0)
         {
             mutatePattern(s);
-            // Phase 2: only strand 0 drives field evolution.
             if (&s == &strands[0])
                 advancePitchField();
         }
 
-        // Note-off for previous
+        // Note-off for this strand's previous note
         if (s.lastPlayedNote >= 0)
         {
             midi.addEvent(juce::MidiMessage::noteOff(1, s.lastPlayedNote), eventPos);
@@ -684,48 +793,50 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         }
 
         // Determine if this step should fire
-        bool isPulse = s.eucPattern[static_cast<size_t>(stepIdx)];
-        float fireProb = isPulse
+        const bool isPulse = s.eucPattern[static_cast<size_t>(stepIdx)];
+        const float fireProb = isPulse
             ? (0.90f + 0.10f * (1.0f - s.mutationRate))   // pulse: high probability
-            : (s.mutationRate * 0.15f);                     // rest: ghost note probability
+            : (s.mutationRate * 0.15f);                    // rest: ghost-note probability
 
-        // For ghost notes on rest positions, find the nearest pulse's note
-        int stepNote = s.notePattern[static_cast<size_t>(stepIdx)];
-        if (!isPulse && stepNote == 0)
+        // Resolve the degree for this step. Pulses use their own degree;
+        // ghost positions inherit the nearest pulse's degree (non-destructive
+        // — we don't overwrite the rest slot's degreePattern entry).
+        int rawDegree = s.degreePattern[static_cast<size_t>(stepIdx)];
+        if (!isPulse)
         {
             for (int off = 1; off <= s.numSteps; ++off)
             {
                 int prev = ((stepIdx - off) % s.numSteps + s.numSteps) % s.numSteps;
-                if (s.notePattern[static_cast<size_t>(prev)] > 0)
-                    { stepNote = s.notePattern[static_cast<size_t>(prev)]; break; }
+                if (s.eucPattern[static_cast<size_t>(prev)])
+                    { rawDegree = s.degreePattern[static_cast<size_t>(prev)]; break; }
                 int next = (stepIdx + off) % s.numSteps;
-                if (s.notePattern[static_cast<size_t>(next)] > 0)
-                    { stepNote = s.notePattern[static_cast<size_t>(next)]; break; }
+                if (s.eucPattern[static_cast<size_t>(next)])
+                    { rawDegree = s.degreePattern[static_cast<size_t>(next)]; break; }
             }
         }
 
-        bool shouldFire = (probDist(rng) < fireProb) && stepNote > 0;
+        const bool shouldFire = probDist(rng) < fireProb;
 
         if (shouldFire)
         {
-            int note = stepNote;
+            const int note = pickNote(s, stepIdx, rawDegree);
 
-            // Three fixed velocity levels: accent / normal / ghost
-            // Accented pulse=100, normal pulse=85, ghost=55, ±5 jitter
+            // Velocity: accent / normal / ghost, with ±5 jitter.
             int baseVel;
             if (!isPulse)
-                baseVel = 55;   // ghost note
+                baseVel = 55;
             else if (s.accentPattern[static_cast<size_t>(stepIdx)])
-                baseVel = 100;  // accented pulse
+                baseVel = 100;
             else
-                baseVel = 85;   // normal pulse
+                baseVel = 85;
 
             std::uniform_int_distribution<int> velJitter(-5, 5);
-            int velInt = juce::jlimit(1, 127, baseVel + velJitter(rng));
+            const int velInt = juce::jlimit(1, 127, baseVel + velJitter(rng));
             midi.addEvent(juce::MidiMessage::noteOn(1, note,
                           static_cast<juce::uint8>(velInt)), eventPos);
-            s.lastPlayedNote = note;
-            s.samplesUntilGateOff = static_cast<double>(gate_) * stepDur;
+
+            s.lastPlayedNote       = note;
+            s.samplesUntilGateOff  = static_cast<double>(gate_) * strandStepDurationSamples(s);
         }
         else
         {
@@ -733,9 +844,10 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         }
 
         s.currentStep = stepIdx;
-        currentStepForGui.store(s.currentStep, std::memory_order_relaxed);
+        if (&s == &strands[0])
+            currentStepForGui.store(s.currentStep, std::memory_order_relaxed);
         s.scheduledStep++;
-        s.samplesUntilNextStep += stepDur;
+        s.samplesUntilNextStep += strandStepDurationSamples(s);
     }
 }
 
