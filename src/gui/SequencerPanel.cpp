@@ -1190,20 +1190,45 @@ void SequencerPanel::resized()
         area.removeFromTop(g);
 
         // Polyphony row: [Mode▾] [Rate==] | [S2][Role▾] [S3][Role▾] [S4][Role▾]
+        // Proportional fill: Field Rate gets 2 units, each Role gets 1 unit
+        // of the remaining space after fixed elements + gaps are subtracted.
         {
             auto rowP = area.removeFromTop(genCtrlH);
-            genFieldModeBox.setBounds(rowP.removeFromLeft(60));
-            rowP.removeFromLeft(3);
-            genFieldRateSlider.setBounds(rowP.removeFromLeft(75));
-            rowP.removeFromLeft(6);
-            const int onW   = 24;
-            const int roleW = 52;
+            const int rowW  = rowP.getWidth();
+            const int modeW = 70;   // "Transform" is the longest mode label
+            const int onW   = 28;   // "S2"/"S3"/"S4" with margin
+            const int gapA  = 4;    // after Field Mode
+            const int gapB  = 8;    // between field group and strand group
+            const int gapC  = 2;    // between ON btn and role dropdown
+            const int gapD  = 4;    // between strand clusters
+
+            const int fixedTotal = modeW + onW * kNumExtraStrands
+                                 + gapA + gapB
+                                 + gapC * kNumExtraStrands
+                                 + gapD * (kNumExtraStrands - 1);
+            const int flexTotal  = juce::jmax(5 * 30, rowW - fixedTotal);
+            const int unit       = flexTotal / 5;
+            const int rateW      = 2 * unit;
+            const int roleW      = unit;
+
+            genFieldModeBox.setBounds(rowP.removeFromLeft(modeW));
+            rowP.removeFromLeft(gapA);
+            genFieldRateSlider.setBounds(rowP.removeFromLeft(rateW));
+            rowP.removeFromLeft(gapB);
             for (int i = 0; i < kNumExtraStrands; ++i)
             {
                 strandEnableBtns[i].setBounds(rowP.removeFromLeft(onW));
-                rowP.removeFromLeft(1);
-                strandRoleBoxes[i].setBounds(rowP.removeFromLeft(roleW));
-                if (i < kNumExtraStrands - 1) rowP.removeFromLeft(3);
+                rowP.removeFromLeft(gapC);
+                if (i == kNumExtraStrands - 1)
+                {
+                    // Last role absorbs any rounding leftover so the row fills rowW exactly.
+                    strandRoleBoxes[i].setBounds(rowP);
+                }
+                else
+                {
+                    strandRoleBoxes[i].setBounds(rowP.removeFromLeft(roleW));
+                    rowP.removeFromLeft(gapD);
+                }
             }
             area.removeFromTop(g);
         }
