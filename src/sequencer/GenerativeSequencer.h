@@ -116,10 +116,9 @@ private:
     /**
      * Shared pitch material for all strands.
      *
-     * Replaces classical chord/harmony context with a pc-set + optional
-     * ordered row. Evolves via one of four modes on strand 0's cycle
-     * boundary, giving the sequencer its post-tonal / Lewis/Coltrane/
-     * Satie/serial character.
+     * A 12-bit pc-set plus an optional ordered row. Evolves via one of
+     * four modes on strand 0's cycle boundary (Static/Drift/Transform/
+     * Pivot), decoupled from functional-harmony chord changes.
      */
     struct PitchField
     {
@@ -143,20 +142,21 @@ private:
         bool rowRetrograde = false;
 
         // Pivot-mode state
-        int pivotInterval = 3;      // semitones — m3 default (Coltrane matrix)
+        int pivotInterval = 3;      // semitones — m3 default
         int pivotAccum    = 0;      // cumulative shift since last reset
     };
 
     /**
      * Strand role — textural function within the polyrhythmic weave.
-     * Deliberately post-tonal: no Bass/Lead hierarchy.
+     * Not a Bass/Lead hierarchy; each role defines register, rhythmic
+     * behavior, and how strongly it tracks the field's center pc.
      */
     enum class Role : int
     {
-        Anchor  = 0,   // centerPc-locked, octave −1, slow — Satie bourdon
+        Anchor  = 0,   // centerPc-locked, octave −1, slow — low pedal/drone
         Line    = 1,   // mid-register stepwise field walk
-        Density = 2,   // Sheets-of-Sound — chromatic, ignores metric weight
-        Gesture = 3,   // sparse punctuations, extreme register — Webern points
+        Density = 2,   // chromatic, ignores metric weight — high note count
+        Gesture = 3,   // sparse punctuations, extreme register — pointillistic
     };
 
     /** Per-strand pattern + playback state. */

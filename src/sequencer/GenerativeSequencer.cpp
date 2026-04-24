@@ -769,7 +769,7 @@ int T5ynthGenerativeSequencer::voiceLedFieldMember(int rawPc) const
 
 int T5ynthGenerativeSequencer::chromaticFieldWalk(int lastMidi)
 {
-    // Sheets-of-Sound: step ±1 semitone from last note, random direction.
+    // Step ±1 semitone from last note, random direction.
     // Fully chromatic (ignores pcSet) — the point is dense linear motion.
     if (lastMidi < 0) return -1;   // caller falls back to raw pc
     const int lastPc = ((lastMidi % 12) + 12) % 12;
@@ -989,10 +989,10 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
 // ─── Pitch-field evolution ─────────────────────────────────────────────────
 //
 // Four modes drive the shared pc-set:
-//   Static    — no change (Satie-esque modal stasis)
-//   Drift     — swap one pc for another per tick (non-functional glide)
-//   Transform — Webern-style row operations: Tn / In / R / RI
-//   Pivot     — Coltrane-matrix shift by pivotInterval semitones
+//   Static    — no change
+//   Drift     — swap one pc for another per tick
+//   Transform — twelve-tone row operations: Tn / In / R / RI
+//   Pivot     — transpose the entire pc-set by pivotInterval semitones
 //
 // advancePitchField() is called on strand 0's cycle boundary only.
 

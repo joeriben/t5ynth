@@ -816,7 +816,7 @@ namespace FieldMode {
     static_assert(Pivot + 1 == kCount, "FieldMode out of sync.");
 }
 
-// ── Pitch-field pivot interval (semitones) — Coltrane-matrix shift amount ──
+// ── Pitch-field pivot interval (semitones) — pc-set transposition amount ──
 namespace FieldPivot {
     enum : int { m3 = 0, M3 = 1, TT = 2, P5 = 3 };
     static constexpr ChoiceEntry kEntries[] = {

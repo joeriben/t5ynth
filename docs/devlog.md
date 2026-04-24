@@ -54,21 +54,21 @@ Observed behavior matched intent:
 
 ## 2026-04-24 — Polyphonic Generative Sequencer (feature/polyphonic-gen-seq)
 
-Turned the previously mono `T5ynthGenerativeSequencer` into a four-strand polyrhythmic, post-tonal engine. Five atomic commits on a feature branch off main; every phase builds clean as an isolated step.
+Turned the previously mono `T5ynthGenerativeSequencer` into a four-strand polyrhythmic engine. Five atomic commits on a feature branch off main; every phase builds clean as an isolated step.
 
 ### Aesthetic framing
-User explicitly rejected functional harmony defaults ("keine 1625-Klischees") in favor of Lewis/Coltrane/Satie/serial-music idioms. No chord progressions, no I-IV-V Markov — the polyphony is coupled through a **shared Pitch-Field** (pc-set + center + optional row) that evolves under one of four modes:
-- **Static** — Satie-esque modal stasis
-- **Drift** (default) — one pc swaps per tick, non-functional glide
-- **Transform** — Webern-style row ops (Tn / In / R / RI)
-- **Pivot** — Coltrane-matrix shift by pivotInterval (m3 default)
+User explicitly rejected functional harmony defaults ("keine 1625-Klischees"). No chord progressions, no I-IV-V Markov — the polyphony is coupled through a **shared Pitch-Field** (pc-set + center + optional row) that evolves under one of four modes:
+- **Static** — fixed pc-set
+- **Drift** (default) — one pc swaps per tick
+- **Transform** — twelve-tone row ops (Tn / In / R / RI)
+- **Pivot** — pc-set transposition by pivotInterval (m3 default)
 
 ### Architecture (three layers)
 
 1. **Strand struct** holds per-pattern state (Euclidean params, playback clocks, drift counters, Turing degree-walk, fix flags). `strands[MAX_STRANDS=4]` at class level.
 2. **PitchField struct** holds shared pc-set + row + evolution-mode state. Advances on strand 0's cycle boundary.
 3. **pickNote()** projects a strand's raw Turing-walked scale degree into MIDI via role + metric weighting:
-   - **Density role** → `chromaticFieldWalk` (Sheets-of-Sound: ±1 semitone from last note, ignores metric weighting)
+   - **Density role** → `chromaticFieldWalk` (±1 semitone from last note, ignores metric weighting)
    - **Others** → strong beats snap to centerPc with probability = `chordToneDominance`; otherwise `voiceLedFieldMember` picks the field's nearest pc to the raw. Weak beats that fall inside the field keep their raw pc (preserves Turing dynamics).
 
 ### processBlock scheduler
@@ -96,8 +96,8 @@ All new code uses stack-local `std::uniform_*_distribution`s, fixed-size `std::a
 
 ### Open follow-ups (plan-documented)
 - Full 12-slot row editor for Transform mode (v1 only has the auto-seeded ascending row)
-- Sheets-of-Sound saturation parameter per Density strand (chromatic bridging density)
-- Live MIDI-input → Field-adaptation (Lewis/Voyager-style interactive listening)
+- Chromatic-density saturation parameter per Density strand (chromatic bridging density)
+- Live MIDI-input → Field-adaptation (interactive listening mode)
 - Per-strand pitch-field override (one strand contrasts against the shared field)
 - **Inline slider values**: evaluate an `SliderRow` variant (or new component) that renders the numeric value *inside* the bar instead of as a tiny label at the right edge. Tested briefly here with `juce::Slider::LinearBar + TextBoxLeft` on the Field Rate slider — ergonomically much better than the current right-aligned readout, especially at narrow widths, but inconsistent with the rest of the panel. Applies to every slider in the app, not just this one row. Worth a dedicated pass after the v1 feature set stabilises.
 

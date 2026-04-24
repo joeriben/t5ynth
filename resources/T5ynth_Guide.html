@@ -774,7 +774,7 @@ The result is closer to a small ensemble than to a chord arpeggiator: rhythms cr
 <table>
   <tr><th>Control</th><th>Range</th><th>What It Does</th></tr>
   <tr><td><strong>Enable</strong></td><td>on / off</td><td>Activates the strand. Strand 0 is always on; 2&ndash;4 are toggled.</td></tr>
-  <tr><td><strong>Role</strong></td><td>Anchor / Line / Density / Gesture</td><td>Textural function (see below). No bass/lead hierarchy &mdash; deliberately post-tonal.</td></tr>
+  <tr><td><strong>Role</strong></td><td>Anchor / Line / Density / Gesture</td><td>Textural function (see below). Not a bass/lead hierarchy &mdash; each role defines register and rhythmic behavior.</td></tr>
   <tr><td><strong>Octave</strong></td><td>&minus;2 &hellip; +2</td><td>Register offset. Use to separate strands vertically.</td></tr>
   <tr><td><strong>Div&times;</strong></td><td>1/4&times;, 1/2&times;, 1&times;, 2&times;, 4&times;</td><td>Tempo multiplier relative to global division. Creates polyrhythms (e.g.&nbsp;3 strands at 1&times; / 2&times; / 4&times; = nested triplet feel).</td></tr>
   <tr><td><strong>Dominance</strong></td><td>0.0 &ndash; 1.0</td><td>How strongly the strand snaps to the field's center pitch on strong beats. 0 = pure Turing-machine drift; higher = more tonal anchoring.</td></tr>
@@ -783,11 +783,11 @@ The result is closer to a small ensemble than to a chord arpeggiator: rhythms cr
 
 <h4>The Four Roles</h4>
 <table>
-  <tr><th>Role</th><th>Character</th><th>Reference</th></tr>
-  <tr><td><strong>Anchor</strong></td><td>Locked to the field's center pitch class, low register, slow &mdash; a held drone or pedal point.</td><td>Satie bourdon</td></tr>
-  <tr><td><strong>Line</strong></td><td>Mid-register stepwise walk through the field. Voice-leading favours the nearest pitch.</td><td>Counterpoint</td></tr>
-  <tr><td><strong>Density</strong></td><td>Chromatic, ignores metric weight &mdash; fills space with motion. High note count, no accent grouping.</td><td>Coltrane "Sheets of Sound"</td></tr>
-  <tr><td><strong>Gesture</strong></td><td>Sparse punctuations in extreme registers. Few notes, high contrast.</td><td>Webern points</td></tr>
+  <tr><th>Role</th><th>Character</th><th>Typical Use</th></tr>
+  <tr><td><strong>Anchor</strong></td><td>Locked to the field's center pitch class, low register, slow &mdash; a held drone or pedal point.</td><td>Low pedal, drone foundation</td></tr>
+  <tr><td><strong>Line</strong></td><td>Mid-register stepwise walk through the field. Voice-leading favours the nearest pitch.</td><td>Melodic contour</td></tr>
+  <tr><td><strong>Density</strong></td><td>Chromatic, ignores metric weight &mdash; fills space with motion. High note count, no accent grouping.</td><td>Dense texture, motion fill</td></tr>
+  <tr><td><strong>Gesture</strong></td><td>Sparse punctuations in extreme registers. Few notes, high contrast.</td><td>Pointillistic accents</td></tr>
 </table>
 
 <h4>Pitch Field Controls</h4>
@@ -800,7 +800,7 @@ The Pitch Field is the shared pitch-class set (pc-set) that all strands draw fro
   <tr><td><strong>Mode</strong></td><td>Static / Drift / Transform / Pivot</td><td>How the field evolves on Strand&nbsp;0's cycle boundary.</td></tr>
   <tr><td><strong>Rate</strong></td><td>1 &ndash; 32 cycles</td><td>How often the field changes (Static = never, regardless of rate).</td></tr>
   <tr><td><strong>Center PC</strong></td><td>C &ndash; B (0 &ndash; 11)</td><td>Anchor pitch class. Anchor strands lock to this; Dominance pulls other strands toward it on strong beats.</td></tr>
-  <tr><td><strong>Pivot</strong></td><td>m3, M3, Tri (TT), P5</td><td>Coltrane-matrix shift interval, used in Pivot mode.</td></tr>
+  <tr><td><strong>Pivot</strong></td><td>m3, M3, Tri (TT), P5</td><td>Transposition interval applied each tick in Pivot mode.</td></tr>
 </table>
 
 <h4>Field Modes</h4>
@@ -809,7 +809,7 @@ The Pitch Field is the shared pitch-class set (pc-set) that all strands draw fro
   <tr><td><strong>Static</strong></td><td>Fixed pc-set. Defined by the global Scale Root + Scale Type, never changes.</td></tr>
   <tr><td><strong>Drift</strong></td><td>Each cycle window swaps one pitch class out of the field for another. Slow, organic harmonic motion. The center pc is protected.</td></tr>
   <tr><td><strong>Transform</strong></td><td>Applies a serial row operation (Tn = transposition, In = inversion, R = retrograde, RI = retrograde inversion) to the ordered row. Twelve-tone style transformation.</td></tr>
-  <tr><td><strong>Pivot</strong></td><td>Rotates the entire pc-set by the Pivot interval each step (Coltrane matrix). Cycles through key centers in equal divisions of the octave.</td></tr>
+  <tr><td><strong>Pivot</strong></td><td>Transposes the entire pc-set by the Pivot interval each tick. The accumulated shift cycles through equal divisions of the octave (four m3 shifts = full octave, three M3 = octave, and so on).</td></tr>
 </table>
 
 <div class="tip">
@@ -1061,16 +1061,16 @@ The field evolves on Strand 0's cycle boundary at the chosen <em>Rate</em> (1–
 </p>
 <ul>
   <li><strong>Static</strong> — derived from Scale Root + Scale Type, never changes. Use when you want the harmonic field stable while only rhythm and mutation evolve.</li>
-  <li><strong>Drift</strong> — each tick, one pitch class is removed and one chromatic pitch class is added (the center pc is protected from removal). Slow harmonic motion that stays close to the starting set. <em>Reference: George Lewis's <code>Voyager</code>.</em></li>
-  <li><strong>Transform</strong> — applies a random twelve-tone row operation each tick: transposition (T<sub>n</sub>), inversion (I<sub>n</sub>), retrograde (R), or retrograde-inversion (RI). The new <code>pcSet</code> is then derived from the transformed row's first <code>rowSize</code> members. <em>Reference: post-Webern serialism.</em></li>
-  <li><strong>Pivot</strong> — rotates the entire pc-set by the configured Pivot interval (m3, M3, Tritone, P5) each tick, accumulating shift over time. After enough cycles the field returns to its origin (e.g.&nbsp;four cycles at m3 = full octave). <em>Reference: John Coltrane's "Giant Steps" cycle of major thirds.</em></li>
+  <li><strong>Drift</strong> — each tick, one pitch class is removed and one chromatic pitch class is added (the center pc is protected from removal). Slow harmonic motion that stays close to the starting set.</li>
+  <li><strong>Transform</strong> — applies a random twelve-tone row operation each tick: transposition (T<sub>n</sub>), inversion (I<sub>n</sub>), retrograde (R), or retrograde-inversion (RI). The new <code>pcSet</code> is then derived from the transformed row's first <code>rowSize</code> members.</li>
+  <li><strong>Pivot</strong> — transposes the entire pc-set by the configured Pivot interval (m3, M3, Tritone, P5) each tick, accumulating shift over time. After enough cycles the field returns to its origin (e.g.&nbsp;four cycles at m3 = full octave).</li>
 </ul>
 <p>
 Because all strands share the same field, harmonic coherence is automatic: a Drift swap or Transform tick changes what every strand can play simultaneously. The polyphonic texture stays unified even when the individual strand patterns are wildly different — the listener perceives one evolving harmony, not four conflicting voices.
 </p>
 
 <div class="note">
-  Roles, dominance, and field modes are deliberately post-tonal. There is no Bass/Lead/Pad hierarchy and no chord-root tracking. The intent is to produce textures in the lineage of Lewis, Coltrane, Satie, and Webern rather than to emulate functional harmony. For diatonic results, set Field Mode = Static, Dominance high, and one strand to Anchor.
+  Roles, dominance, and field modes operate without a Bass/Lead/Pad hierarchy or chord-root tracking. The intent is to produce evolving textures independent of functional harmony. For diatonic results, set Field Mode = Static, Dominance high, and one strand to Anchor.
 </div>
 
 <!-- ═══════════════════════════════════════════ -->
