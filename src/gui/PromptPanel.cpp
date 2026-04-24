@@ -11,7 +11,7 @@ namespace
 constexpr float kPromptPadFactor   = 0.04f;
 constexpr float kPromptRow         = 1.4f;
 constexpr float kPromptSlider      = 1.2f;
-constexpr float kPromptInput       = 1.8f;
+constexpr float kPromptMultiInput  = 3.0f;   // two-line prompt editor
 constexpr float kPromptCompactRow  = 1.15f;
 constexpr float kPromptCompactCtrl = 0.9f;
 constexpr float kPromptGap         = 0.28f;
@@ -71,7 +71,11 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     : processorRef(processor)
 {
     makeLabel(promptALabel, "Prompt A (Basis)", kDim, juce::Justification::centredLeft, this);
-    promptAEditor.setMultiLine(false);
+    // Two-line with word-wrap so longer prompts stay visible. With
+    // setReturnKeyStartsNewLine(false) Return still triggers generation; the
+    // wrap only kicks in when the text itself exceeds one line's width.
+    promptAEditor.setMultiLine(true, true);
+    promptAEditor.setReturnKeyStartsNewLine(false);
     promptAEditor.setText("a steady clean saw wave, c3");
     promptAEditor.onReturnKey = [this] { triggerGeneration(); };
     promptAEditor.onTextChange = [this] {
@@ -82,7 +86,8 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     addAndMakeVisible(promptAEditor);
 
     makeLabel(promptBLabel, "Prompt B (optional, for interpolation)", kDim, juce::Justification::centredLeft, this);
-    promptBEditor.setMultiLine(false);
+    promptBEditor.setMultiLine(true, true);
+    promptBEditor.setReturnKeyStartsNewLine(false);
     promptBEditor.setText("glass breaking");
     promptBEditor.onTextChange = [this] {
         // Prompt edits should force the next drift regen to use a fresh snapshot.
@@ -270,14 +275,14 @@ int PromptPanel::getPreferredHeightForWidth(int width) const
     const float f = preferredPromptFontForWidth(width);
     const int rowH = juce::roundToInt(f * kPromptRow);
     const int sliderH = juce::roundToInt(f * kPromptSlider);
-    const int inputH = juce::roundToInt(f * kPromptInput);
+    const int multiInputH = juce::roundToInt(f * kPromptMultiInput);
     const int gap = juce::roundToInt(f * kPromptGap);
     const int compactRowH = juce::roundToInt(f * kPromptCompactRow);
     const int compactCtrlH = juce::roundToInt(f * kPromptCompactCtrl);
 
     return (compactRowH + 2) + gap
-         + rowH + inputH + gap
-         + rowH + inputH + gap * 2
+         + rowH + multiInputH + gap
+         + rowH + multiInputH + gap * 2
          + rowH + sliderH + gap
          + (compactRowH + compactCtrlH + gap) * 3
          + gap + compactRowH;
@@ -343,7 +348,6 @@ void PromptPanel::resized()
         (static_cast<float>(area.getHeight()) - 2.0f) / kPromptContentUnits);
     int rowH = juce::roundToInt(f * kPromptRow);
     int sliderH = juce::roundToInt(f * kPromptSlider);
-    int inputH = juce::roundToInt(f * kPromptInput);
     int gap = juce::roundToInt(f * kPromptGap);
     int compactRowH = juce::roundToInt(f * kPromptCompactRow);
     int compactCtrlH = juce::roundToInt(f * kPromptCompactCtrl);
@@ -380,18 +384,20 @@ void PromptPanel::resized()
         area.removeFromTop(gap);
     };
 
+    const int multiInputH = juce::roundToInt(f * kPromptMultiInput);
+
     // Prompt A
     setFs(promptALabel, f);
     promptALabel.setBounds(area.removeFromTop(rowH));
     promptAEditor.setFont(juce::FontOptions(f));
-    promptAEditor.setBounds(area.removeFromTop(inputH));
+    promptAEditor.setBounds(area.removeFromTop(multiInputH));
     area.removeFromTop(gap);
 
     // Prompt B
     setFs(promptBLabel, f);
     promptBLabel.setBounds(area.removeFromTop(rowH));
     promptBEditor.setFont(juce::FontOptions(f));
-    promptBEditor.setBounds(area.removeFromTop(inputH));
+    promptBEditor.setBounds(area.removeFromTop(multiInputH));
     area.removeFromTop(gap * 2);
 
     // Alpha
