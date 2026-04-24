@@ -342,7 +342,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.01f, 30.0f, 0.01f, 0.3f), 2.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::lfo1Depth, 1}, "LFO1 Depth",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.0f, 0.3f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::lfo1Wave, 1}, "LFO1 Wave",
         toChoices(LfoWave::kEntries), 0));
@@ -353,7 +353,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.01f, 30.0f, 0.01f, 0.3f), 0.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::lfo2Depth, 1}, "LFO2 Depth",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.0f, 0.3f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::lfo2Wave, 1}, "LFO2 Wave",
         toChoices(LfoWave::kEntries), 1));
@@ -372,19 +372,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::NormalisableRange<float>(0.001f, 2.0f, 0.001f, 0.3f), 0.01f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::drift1Depth, 1}, "Drift1 Depth",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.0f, 0.3f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::drift2Rate, 1}, "Drift2 Rate",
         juce::NormalisableRange<float>(0.001f, 2.0f, 0.001f, 0.3f), 0.005f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::drift2Depth, 1}, "Drift2 Depth",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.0f, 0.3f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::drift3Rate, 1}, "Drift3 Rate",
         juce::NormalisableRange<float>(0.001f, 2.0f, 0.001f, 0.3f), 0.002f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::drift3Depth, 1}, "Drift3 Depth",
-        juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.0f, 0.3f), 0.0f));
 
     // Drift targets + waveform selection
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
