@@ -1595,13 +1595,19 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     auto crossfadeReverbInto = [&](juce::AudioBuffer<float>& dest, float mix)
     {
+        // Algo wet rises faster than the IR plate at mid-mix because the
+        // Schroeder reverb keeps wetLevel=1.0 across the whole sweep. Curve
+        // the algo's wet contribution so it stays restrained until the upper
+        // half of the knob; dry remains linear and mix=1 still hits pure wet.
+        // Plate keeps a linear curve (its IR is the natural taper).
+        const float wetAmt = reverbIsAlgo ? (mix * mix) : mix;
         const float dryAmt = 1.0f - mix;
         for (int ch = 0; ch < numChannels; ++ch)
         {
             const auto* rev = reverbSendBuffer.getReadPointer(ch);
             auto* out = dest.getWritePointer(ch);
             for (int i = 0; i < numSamples; ++i)
-                out[i] = out[i] * dryAmt + rev[i] * mix;
+                out[i] = out[i] * dryAmt + rev[i] * wetAmt;
         }
     };
 
