@@ -114,3 +114,16 @@ void T5ynthLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& 
                juce::Rectangle<float>(textX, b.getY(), b.getRight() - textX, h),
                juce::Justification::centredLeft);
 }
+
+juce::Font T5ynthLookAndFeel::getComboBoxFont(juce::ComboBox& box)
+{
+    return juce::Font(juce::FontOptions(juce::jmax(12.0f, static_cast<float>(box.getHeight()) * 0.58f)));
+}
+
+void T5ynthLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label)
+{
+    label.setBounds(8, 1, box.getWidth() - 26, box.getHeight() - 2);
+    label.setFont(getComboBoxFont(box));
+    label.setColour(juce::Label::textColourId, box.findColour(juce::ComboBox::textColourId));
+    label.setJustificationType(box.getJustificationType());
+}
