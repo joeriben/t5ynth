@@ -573,6 +573,9 @@ SequencerPanel::~SequencerPanel()
     stopTimer();
 }
 
+// .t5seq is a partial preset: sequencer + arpeggiator + generative seq only.
+// Schema is the snake_case-keyed subset of exportJsonPreset()/importJsonPreset()
+// — single source of truth, no schema drift.
 void SequencerPanel::savePatternAsync()
 {
     auto chooser = std::make_shared<juce::FileChooser>("Save Sequencer Pattern", juce::File(), "*.t5seq");
@@ -583,33 +586,22 @@ void SequencerPanel::savePatternAsync()
         auto f = fc.getResult();
         if (f == juce::File()) return;
 
-        auto file = f.withFileExtension("t5seq");
-        auto& seq = processor.getStepSequencer();
-        juce::var root(new juce::DynamicObject());
-        auto* obj = root.getDynamicObject();
-        obj->setProperty("numSteps", seq.getNumSteps());
-        obj->setProperty("division", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::seqDivision)->load()));
-        obj->setProperty("gate", static_cast<double>(processor.getValueTreeState().getRawParameterValue(PID::seqGate)->load()));
-        obj->setProperty("bpm", static_cast<double>(processor.getValueTreeState().getRawParameterValue(PID::seqBpm)->load()));
-        obj->setProperty("arpMode", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::arpMode)->load()));
-        obj->setProperty("arpRate", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::arpRate)->load()));
-        obj->setProperty("arpOctaves", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::arpOctaves)->load()));
-        obj->setProperty("octave", static_cast<int>(processor.getValueTreeState().getRawParameterValue(PID::seqOctave)->load()));
+        auto fullJson = processor.exportJsonPreset();
+        auto parsed = juce::JSON::parse(fullJson);
+        auto* full = parsed.getDynamicObject();
+        if (!full) return;
 
-        juce::Array<juce::var> steps;
-        for (int i = 0; i < seq.getNumSteps(); ++i)
-        {
-            auto step = seq.getStep(i);
-            auto* s = new juce::DynamicObject();
-            s->setProperty("note", step.note);
-            s->setProperty("velocity", static_cast<double>(step.velocity));
-            s->setProperty("gate", static_cast<double>(step.gate));
-            s->setProperty("enabled", step.enabled);
-            s->setProperty("bind", step.bind);
-            steps.add(juce::var(s));
-        }
-        obj->setProperty("steps", steps);
-        file.replaceWithText(juce::JSON::toString(root));
+        juce::DynamicObject::Ptr out = new juce::DynamicObject();
+        out->setProperty("version", 1);
+        out->setProperty("kind", "t5seq");
+        out->setProperty("timestamp", juce::Time::getCurrentTime().toISO8601(true));
+
+        for (const char* key : { "sequencer", "arpeggiator", "generativeSeq" })
+            if (full->hasProperty(key))
+                out->setProperty(key, full->getProperty(key));
+
+        auto file = f.withFileExtension("t5seq");
+        file.replaceWithText(juce::JSON::toString(out.get(), true));
     });
 }
 
@@ -622,48 +614,10 @@ void SequencerPanel::loadPatternAsync()
         auto file = fc.getResult();
         if (!file.existsAsFile()) return;
 
-        auto root = juce::JSON::parse(file.loadFileAsString());
-        if (!root.isObject()) return;
-
-        auto& apvts = safeThis->processorRef.getValueTreeState();
-        auto& seq = safeThis->processorRef.getStepSequencer();
-        if (root.hasProperty("numSteps"))
-            seq.setNumSteps(static_cast<int>(root["numSteps"]));
-        if (root.hasProperty("division"))
-            apvts.getParameter(PID::seqDivision)->setValueNotifyingHost(
-                apvts.getParameter(PID::seqDivision)->convertTo0to1(static_cast<float>(static_cast<int>(root["division"]))));
-        if (root.hasProperty("gate"))
-            apvts.getParameter(PID::seqGate)->setValueNotifyingHost(
-                apvts.getParameter(PID::seqGate)->convertTo0to1(static_cast<float>(root["gate"])));
-        if (root.hasProperty("bpm"))
-            apvts.getParameter(PID::seqBpm)->setValueNotifyingHost(
-                apvts.getParameter(PID::seqBpm)->convertTo0to1(static_cast<float>(root["bpm"])));
-        if (root.hasProperty("arpMode"))
-            apvts.getParameter(PID::arpMode)->setValueNotifyingHost(
-                apvts.getParameter(PID::arpMode)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpMode"]))));
-        if (root.hasProperty("arpRate"))
-            apvts.getParameter(PID::arpRate)->setValueNotifyingHost(
-                apvts.getParameter(PID::arpRate)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpRate"]))));
-        if (root.hasProperty("arpOctaves"))
-            apvts.getParameter(PID::arpOctaves)->setValueNotifyingHost(
-                apvts.getParameter(PID::arpOctaves)->convertTo0to1(static_cast<float>(static_cast<int>(root["arpOctaves"]))));
-        if (root.hasProperty("octave"))
-            apvts.getParameter(PID::seqOctave)->setValueNotifyingHost(
-                apvts.getParameter(PID::seqOctave)->convertTo0to1(static_cast<float>(static_cast<int>(root["octave"]))));
-
-        auto* stepsArr = root["steps"].getArray();
-        if (stepsArr)
-        {
-            for (int i = 0; i < stepsArr->size() && i < T5ynthStepSequencer::MAX_STEPS; ++i)
-            {
-                const auto& s = (*stepsArr)[i];
-                if (s.hasProperty("note")) seq.setStepNote(i, static_cast<int>(s["note"]));
-                if (s.hasProperty("velocity")) seq.setStepVelocity(i, static_cast<float>(s["velocity"]));
-                if (s.hasProperty("gate")) seq.setStepGate(i, static_cast<float>(s["gate"]));
-                if (s.hasProperty("enabled")) seq.setStepEnabled(i, static_cast<bool>(s["enabled"]));
-                if (s.hasProperty("bind")) seq.setStepBind(i, static_cast<bool>(s["bind"]));
-            }
-        }
+        // importJsonPreset is tolerant: missing sub-objects (synth, engine, …)
+        // are skipped, so a partial .t5seq only touches sequencer / arp / gen.
+        if (!safeThis->processorRef.importJsonPreset(file.loadFileAsString()))
+            return;
 
         safeThis->syncStepCount();
         safeThis->repaint();
