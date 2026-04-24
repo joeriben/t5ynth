@@ -625,11 +625,23 @@ void MainPanel::resized()
     int headerH = juce::jlimit(14, 20, juce::roundToInt(h * 0.022f));
     constexpr int kGenBtnH = 54;
     int kGap = juce::jlimit(3, 6, juce::roundToInt(h * 0.005f));
+    constexpr int kMinDimH = 72;
+    constexpr int kMinOscH = 220;
+    constexpr int kMinAxesH = 78;
 
-    int available = genCol.getHeight() - headerH * 3 - kGap * 2;
-    int oscH = juce::jmax(300, juce::roundToInt(available * 0.55f));
-    int axesH = juce::jmax(70, juce::roundToInt(available * 0.18f));
-    // dimH gets the rest
+    int oscH = juce::jmax(kMinOscH, promptPanel.getPreferredHeightForWidth(genCol.getWidth()));
+    int axesH = juce::jlimit(kMinAxesH, 128, juce::roundToInt(h * 0.12f));
+    int dimBudget = genCol.getHeight() - (headerH * 3 + kGap * 3 + kGenBtnH + oscH + axesH);
+    if (dimBudget < kMinDimH)
+    {
+        int shortage = kMinDimH - dimBudget;
+        int trimAxes = juce::jmin(shortage, juce::jmax(0, axesH - kMinAxesH));
+        axesH -= trimAxes;
+        shortage -= trimAxes;
+
+        if (shortage > 0)
+            oscH = juce::jmax(kMinOscH, oscH - shortage);
+    }
 
     // Card 1: OSCILLATOR
     oscHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
@@ -647,15 +659,23 @@ void MainPanel::resized()
     genCol.removeFromTop(kGap);
 
     // Card 3: DIM EXPLORER
+    // Cap the explorer's vertical footprint: at tall windows it would otherwise
+    // flex to fill the whole remaining column and squash the Generate button
+    // visually against the bottom, making it look incidental. Re-Generate is
+    // the central action — it must be framed with breathing room, not pinned.
+    // See memory/feedback_regenerate_button_layout.md.
+    constexpr int kMaxDimH = 260;
     dimHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
     dimHeader.setBounds(genCol.removeFromTop(headerH));
-    int dimH = genCol.getHeight() / 3;
+    int dimH = juce::jlimit(48, kMaxDimH, genCol.getHeight() - kGap - kGenBtnH);
     if (!dimExplorerVisible)
         dimensionExplorer.setBounds(genCol.removeFromTop(dimH));
+    genCol.removeFromTop(kGap);
 
-    // Generate button — vertically centered in remaining space
+    // Generate button gets all the slack freed by the explorer cap, centered
+    // in the remaining card area so it has vertical padding above and below.
     int remainH = genCol.getHeight();
-    int genBtnY = genCol.getY() + (remainH - kGenBtnH) / 2;
+    int genBtnY = genCol.getY() + juce::jmax(0, (remainH - kGenBtnH) / 2);
     auto genBtnArea = juce::Rectangle<int>(genCol.getX(), genBtnY, genCol.getWidth(), kGenBtnH);
     int genW = juce::roundToInt(genBtnArea.getWidth() * 0.6f);
     int genX = genBtnArea.getX() + (genBtnArea.getWidth() - genW) / 2;
