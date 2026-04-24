@@ -133,16 +133,20 @@ _model_formats = {}
 def find_models():
     """Discover all model directories (diffusers or native). Returns {name: Path}."""
     import sys, os
-    base_dirs = [
-        Path.home() / "Library" / "Application Support" / "T5ynth" / "models",  # per-user macOS (primary)
-        Path.home() / "Library" / "T5ynth" / "models",       # legacy macOS
-        Path.home() / ".local" / "share" / "T5ynth" / "models",  # Linux
-        Path.home() / "t5ynth" / "models",                    # legacy
-    ]
-    if sys.platform == "darwin":
-        base_dirs.insert(1, Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg, scan-only)
-    elif sys.platform == "win32":
-        base_dirs.insert(1, Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "T5ynth" / "models")  # system-wide (scan-only)
+    configured_dir = os.environ.get("T5YNTH_MODEL_DIR")
+    if configured_dir:
+        base_dirs = [Path(configured_dir)]
+    else:
+        base_dirs = [
+            Path.home() / "Library" / "Application Support" / "T5ynth" / "models",  # per-user macOS (primary)
+            Path.home() / "Library" / "T5ynth" / "models",       # legacy macOS
+            Path.home() / ".local" / "share" / "T5ynth" / "models",  # Linux
+            Path.home() / "t5ynth" / "models",                    # legacy
+        ]
+        if sys.platform == "darwin":
+            base_dirs.insert(1, Path("/Library/Application Support/T5ynth/models"))  # system-wide (.pkg, scan-only)
+        elif sys.platform == "win32":
+            base_dirs.insert(1, Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "T5ynth" / "models")  # system-wide (scan-only)
     models = {}
     for base in base_dirs:
         if not base.is_dir():
@@ -241,7 +245,9 @@ def _mock_optional_deps():
     """Mock non-essential stable-audio-tools dependencies for minimal import."""
     import types
     import importlib.machinery
-    mocks = ['skimage', 'skimage.transform', 'dac', 'encodec', 'laion_clap',
+    # Do not mock `dac`: the native stable-audio-open-small path imports
+    # dac.nn / dac.model during model construction.
+    mocks = ['skimage', 'skimage.transform', 'encodec', 'laion_clap',
              'pedalboard', 'pedalboard.io', 'pytorch_lightning', 'wandb',
              'v_diffusion_pytorch', 'gradio', 'jsonmerge', 'clean_fid', 'kornia']
     k_diff = types.ModuleType('k_diffusion')

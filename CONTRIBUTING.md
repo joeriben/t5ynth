@@ -179,7 +179,7 @@ for the full procedure.
 
 Versioning convention:
 
-- Current public prerelease line: `v1.0.0-beta.N`
+- Public prerelease sequence: `v1.0.0-beta.N`, then `v1.0.0-rc.N`
 - Do not cut stable `v1.0.x` until the installer path has been validated on end-user machines.
 - Stable releases, once justified: `v1.0.x`
 - Release candidates / pre-releases after 1.0: `v1.0.x-rc.N` (also `-alpha.N`,

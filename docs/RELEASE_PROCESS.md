@@ -12,10 +12,10 @@ Repository: `joeriben/t5ynth`. Default branch: `main`.
 
 T5ynth uses semantic version tags prefixed with `v`.
 
-- **Current public prerelease line:** `v1.0.0-beta.1`, `v1.0.0-beta.2`, ...
+- **Public prerelease sequence:** `v1.0.0-beta.N`, then `v1.0.0-rc.N`
 - **Do not cut stable `v1.x` until macOS end-user installation is proven reliable.**
 - **Stable releases, once justified:** `v1.0.0`, `v1.0.1`, ...
-- **Release candidates / pre-releases after 1.0:** `v1.0.0-rc.1`,
+- **Release candidates / pre-releases before stable 1.0:** `v1.0.0-rc.1`,
   `v1.0.0-beta.1`, etc.
 
 Implementation detail:
