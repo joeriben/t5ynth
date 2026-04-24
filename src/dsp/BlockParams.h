@@ -155,6 +155,7 @@ namespace PID {
     static constexpr const char* seqDivision      = "seq_division";
     static constexpr const char* seqGlideTime     = "seq_glide_time";
     static constexpr const char* seqGate          = "seq_gate";
+    static constexpr const char* seqShuffle       = "seq_shuffle";
     static constexpr const char* seqOctave        = "seq_octave";
     static constexpr const char* seqPreset        = "seq_preset";
     static constexpr const char* arpMode          = "arp_mode";

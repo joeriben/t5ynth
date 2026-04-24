@@ -322,6 +322,13 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
     gateRow->getSlider().onValueChange = [this] { gateRow->updateValue(); };
     gateRow->updateValue();
 
+    // ── Shuffle ──
+    shuffleRow = std::make_unique<SliderRow>("Shuffle", [](double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; }, kSeqCol);
+    addAndMakeVisible(*shuffleRow);
+    shuffleA = std::make_unique<SA>(apvts, PID::seqShuffle, shuffleRow->getSlider());
+    shuffleRow->getSlider().onValueChange = [this] { shuffleRow->updateValue(); };
+    shuffleRow->updateValue();
+
     // ── Octave shift [-2][-1][0][+1][+2] ──
     juce::StringArray seqOctItems;
     for (const auto& e : SeqOctave::kEntries) seqOctItems.add(e.label);
@@ -952,6 +959,7 @@ void SequencerPanel::resized()
         slotOctave,
         slotBpm,
         slotGate,
+        slotShuffle,
         slotMidi
     };
 
@@ -966,6 +974,8 @@ void SequencerPanel::resized()
     const int midiClusterW = midiTextW + midiLedW + midiGap;
     const int gateMinW = gateRow->getMinimumWidth();
     const int gatePrefW = gateMinW;
+    const int shuffleMinW = shuffleRow->getMinimumWidth();
+    const int shufflePrefW = shuffleMinW;
 
     std::vector<ResponsiveStripItem> items {
         { transportW, transportW, 0, false, ResponsiveStripFallback::none },
@@ -978,6 +988,7 @@ void SequencerPanel::resized()
         { octavePrefW, octaveMinW, 1, false, ResponsiveStripFallback::overflow },
         { bpmRow->getPreferredWidth(),  bpmRow->getMinimumWidth(),  0, true,  ResponsiveStripFallback::none },
         { gatePrefW, gateMinW, 0, false, ResponsiveStripFallback::none },
+        { shufflePrefW, shuffleMinW, 0, false, ResponsiveStripFallback::none },
         { midiClusterW, midiClusterW, 0, false, ResponsiveStripFallback::none }
     };
 
@@ -988,6 +999,7 @@ void SequencerPanel::resized()
     genTransportBtn.setBounds(headerLayout.bounds[slotGenTransport]);
     bpmRow->setBounds(headerLayout.bounds[slotBpm]);
     gateRow->setBounds(headerLayout.bounds[slotGate]);
+    shuffleRow->setBounds(headerLayout.bounds[slotShuffle]);
     layoutMidiCluster(headerLayout.bounds[slotMidi]);
 
     headerOverflowBtn.setVisible(headerLayout.overflowUsed);

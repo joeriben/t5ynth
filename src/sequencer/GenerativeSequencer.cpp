@@ -42,6 +42,19 @@ double T5ynthGenerativeSequencer::strandStepDurationSamples(const Strand& s) con
     return stepDurationSamples() / juce::jmax(0.01f, s.divisionMultiplier);
 }
 
+double T5ynthGenerativeSequencer::shuffledStrandStepDurationSamples(const Strand& s, int stepIdx) const
+{
+    const double base = strandStepDurationSamples(s);
+    if (shuffle_ <= 0.0f || s.numSteps <= 1)
+        return base;
+
+    if ((s.numSteps & 1) != 0 && stepIdx == s.numSteps - 1)
+        return base;
+
+    const double amount = static_cast<double>(shuffle_);
+    return base * ((stepIdx & 1) == 0 ? (1.0 + amount) : (1.0 - amount));
+}
+
 constexpr float T5ynthGenerativeSequencer::DIVISION_FACTORS[];
 
 void T5ynthGenerativeSequencer::prepare(double sr, int /*samplesPerBlock*/)
@@ -1163,16 +1176,64 @@ float T5ynthGenerativeSequencer::roleFireProbability(const Strand& s, bool isPul
 int T5ynthGenerativeSequencer::roleVelocityBase(const Strand& s, bool isPulse, bool isStrong) const
 {
     if (!isPulse)
-        return s.role == Role::Density ? 58 : 50;
+    {
+        switch (s.role)
+        {
+            case Role::Anchor:  return 44;
+            case Role::Line:    return 58;
+            case Role::Density: return 48;
+            case Role::Gesture: return 52;
+        }
+    }
 
     switch (s.role)
     {
-        case Role::Anchor:  return isStrong ? 94 : 76;
-        case Role::Line:    return isStrong ? 102 : 84;
-        case Role::Density: return isStrong ? 82 : 68;
-        case Role::Gesture: return isStrong ? 116 : 96;
+        case Role::Anchor:  return isStrong ? 78 : 66;
+        case Role::Line:    return isStrong ? 104 : 88;
+        case Role::Density: return isStrong ? 70 : 58;
+        case Role::Gesture: return isStrong ? 112 : 92;
     }
     return isStrong ? 100 : 85;
+}
+
+int T5ynthGenerativeSequencer::velocityForNote(const Strand& s, int stepIdx, int note,
+                                                bool isPulse, bool isStrong)
+{
+    int velocity = roleVelocityBase(s, isPulse, isStrong);
+
+    if (&s == &strands[0] && s.role == Role::Line)
+        velocity += 8; // Voice 1 is the foreground melody.
+    else if (&s != &strands[0] && s.role != Role::Gesture)
+        velocity -= 5; // accompaniment should not mask the line.
+
+    if (isPulse && s.accentPattern[static_cast<size_t>(stepIdx)])
+        velocity += s.role == Role::Line ? 6 : 4;
+
+    if (!isPulse)
+        velocity -= s.role == Role::Density ? 8 : 12;
+
+    if (s.previousOutputNote >= 0)
+    {
+        const int melodicDelta = note - s.previousOutputNote;
+        const int leap = std::abs(melodicDelta);
+
+        if (leap == 0)
+            velocity -= 6;
+        else if (leap >= 7)
+            velocity += s.role == Role::Gesture ? 6 : 3;
+
+        if (s.role == Role::Line)
+        {
+            if (melodicDelta > 0) velocity += 3;
+            else if (melodicDelta < 0) velocity -= 1;
+        }
+    }
+
+    const int jitterRange = s.role == Role::Density ? 3
+                         : s.role == Role::Gesture ? 5
+                         : 2;
+    std::uniform_int_distribution<int> velJitter(-jitterRange, jitterRange);
+    return juce::jlimit(1, 127, velocity + velJitter(rng));
 }
 
 float T5ynthGenerativeSequencer::roleGateFraction(const Strand& s) const
@@ -1217,9 +1278,13 @@ int T5ynthGenerativeSequencer::pickNote(Strand& s, int stepIdx, int rawDegree)
 
         case Role::Line:
         {
+            const int lineSourceMidi = juce::jlimit(0, 127,
+                s.notePattern[static_cast<size_t>(stepIdx)] > 0
+                    ? s.notePattern[static_cast<size_t>(stepIdx)] + s.octaveShift * 12
+                    : contourMidi);
             const int pc = pullToCenter ? voiceLedFieldMember(pitchField.centerPc)
-                                        : fieldPcForDegree(rawDegree);
-            const int preferred = closestMidiForPc(pc, contourMidi);
+                                        : voiceLedFieldMember(lineSourceMidi);
+            const int preferred = closestMidiForPc(pc, lineSourceMidi);
             note = nearestFieldMidi(preferred, s.previousOutputNote, pc);
             allowPassing = true;
             break;
@@ -1388,16 +1453,15 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         if (shouldFire)
         {
             const int note = pickNote(s, stepIdx, rawDegree);
+            const double stepDur = shuffledStrandStepDurationSamples(s, stepIdx);
 
-            std::uniform_int_distribution<int> velJitter(-5, 5);
-            const int velInt = juce::jlimit(1, 127,
-                roleVelocityBase(s, isPulse, isStrong) + velJitter(rng));
+            const int velInt = velocityForNote(s, stepIdx, note, isPulse, isStrong);
             midi.addEvent(juce::MidiMessage::noteOn(1, note,
                           static_cast<juce::uint8>(velInt)), eventPos);
 
             s.lastPlayedNote       = note;
             s.previousOutputNote   = note;
-            s.samplesUntilGateOff  = static_cast<double>(roleGateFraction(s)) * strandStepDurationSamples(s);
+            s.samplesUntilGateOff  = static_cast<double>(roleGateFraction(s)) * stepDur;
         }
         else
         {
@@ -1408,7 +1472,7 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         if (&s == &strands[0])
             currentStepForGui.store(s.currentStep, std::memory_order_relaxed);
         s.scheduledStep++;
-        s.samplesUntilNextStep += strandStepDurationSamples(s);
+        s.samplesUntilNextStep += shuffledStrandStepDurationSamples(s, stepIdx);
     }
 }
 

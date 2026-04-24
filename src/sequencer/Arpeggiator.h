@@ -35,6 +35,7 @@ public:
     void setOctaveRange(int octaves) { octaveRange = juce::jlimit(1, 4, octaves); rebuildIntervals(); }
     void setBpm(double b) { bpm = b; }
     void setGate(float g) { gate = juce::jlimit(0.1f, 1.0f, g); }
+    void setShuffle(float amount) { shuffle = juce::jlimit(0.0f, 0.75f, amount); }
 
     /** Set base note and start arpeggiating. */
     void setBaseNote(int midiNote, float velocity);
@@ -66,6 +67,7 @@ private:
     double sampleRateVal = 44100.0;
     double bpm = 120.0;
     float gate = 1.0f;
+    float shuffle = 0.0f;
     double samplesUntilNext = 0.0;
     double samplesUntilGateOff = -1.0;
     int lastPlayedNote = -1;
@@ -74,4 +76,5 @@ private:
 
     void rebuildIntervals();
     void fisherYatesShuffle();
+    double shuffledStepDurationSamples(double baseStepSamples, int stepIdx, int cycleLength) const;
 };

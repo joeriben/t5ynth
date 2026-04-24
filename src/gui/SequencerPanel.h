@@ -65,6 +65,7 @@ private:
     juce::TextButton seqSaveBtn { "S" };
     juce::TextButton seqLoadBtn { "L" };
     std::unique_ptr<SliderRow> gateRow;
+    std::unique_ptr<SliderRow> shuffleRow;
 
     // Row 3: Step grid
     struct StepColumn : public juce::Component
@@ -132,7 +133,7 @@ private:
     using SA = juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SA> bpmA, gateA, genStepsA, genPulsesA, genRotationA, genMutationA;
+    std::unique_ptr<SA> bpmA, gateA, shuffleA, genStepsA, genPulsesA, genRotationA, genMutationA;
     std::unique_ptr<CA> divA, presetA, arpModeA, arpRateA, arpOctA, octShiftA,
                         genScaleRootA, genScaleTypeA, genRangeA;
     std::unique_ptr<BA> genRunningA;

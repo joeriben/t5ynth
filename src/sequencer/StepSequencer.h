@@ -51,6 +51,7 @@ public:
 
     /** Set note division. */
     void setDivision(int div) { division = juce::jlimit(0, 4, div); }
+    void setShuffle(float amount) { shuffle = juce::jlimit(0.0f, 0.75f, amount); }
     void setOctaveShiftSemitones(int semitones) { octaveShiftSemitones = semitones; }
 
     /** Auto glide time: 50% of step duration (ms), clamped to 10-500. */
@@ -108,10 +109,12 @@ private:
     bool running = false;
     int lastPlayedNote = -1;
     int division = 3; // default 1/8 (index 3)
+    float shuffle = 0.0f;
     int octaveShiftSemitones = 0;
     // glideTimeMs removed — now computed automatically from BPM/division
 
     double stepDurationSamples() const;
+    double shuffledStepDurationSamples(int stepIdx) const;
 
     // Preset data
     struct PresetData { const char* name; const Step* steps; int count; };

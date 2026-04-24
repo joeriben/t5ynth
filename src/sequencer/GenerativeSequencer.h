@@ -88,6 +88,7 @@ public:
     void setGate(float gate);
     void setBpm(double bpm);
     void setDivision(int div);
+    void setShuffle(float amount) { shuffle_ = juce::jlimit(0.0f, 0.75f, amount); }
 
     void start();
     void stop();
@@ -224,6 +225,7 @@ private:
     double bpm_         = 120.0;
     double sampleRate_  = 44100.0;
     float  gate_        = 0.8f;
+    float  shuffle_     = 0.0f;
     int    division_    = 3;
     static constexpr float DIVISION_FACTORS[] = { 4.0f, 2.0f, 1.0f, 0.5f, 0.25f };
     static constexpr int   DRIFT_PERIOD       = 8;  // drift evaluated over 8-cycle windows
@@ -241,6 +243,7 @@ private:
 
     // Internal helpers — all operate on a passed Strand reference.
     double stepDurationSamples() const;
+    double shuffledStrandStepDurationSamples(const Strand& s, int stepIdx) const;
     void   rebuildPattern(Strand& s);
     void   mutatePattern(Strand& s);
     void   computeGaps(const Strand& s, int* gaps, int* gapCount) const;
@@ -280,5 +283,6 @@ private:
     bool   isJustifiedPassingTone(const Strand& s, int candidate, bool isStrong) const;
     float  roleFireProbability(const Strand& s, bool isPulse, bool isStrong) const;
     int    roleVelocityBase(const Strand& s, bool isPulse, bool isStrong) const;
+    int    velocityForNote(const Strand& s, int stepIdx, int note, bool isPulse, bool isStrong);
     float  roleGateFraction(const Strand& s) const;
 };

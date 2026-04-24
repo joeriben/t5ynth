@@ -592,6 +592,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::seqGate, 1}, "Seq Gate",
         juce::NormalisableRange<float>(0.1f, 1.0f, 0.01f), 0.8f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::seqShuffle, 1}, "Seq Shuffle",
+        juce::NormalisableRange<float>(0.0f, 0.75f, 0.01f), 0.0f));
     // Seq octave shift: -2..+2 octaves (choice index 0..4, default 2 = no shift)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::seqOctave, 1}, "Seq Octave",
@@ -1020,6 +1023,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     float seqBpm = parameters.getRawParameterValue(PID::seqBpm)->load();
     int seqSteps = static_cast<int>(parameters.getRawParameterValue(PID::seqSteps)->load());
     float seqGate = parameters.getRawParameterValue(PID::seqGate)->load();
+    float seqShuffle = parameters.getRawParameterValue(PID::seqShuffle)->load();
     int seqPreset = static_cast<int>(parameters.getRawParameterValue(PID::seqPreset)->load());
     int arpModeRaw = static_cast<int>(parameters.getRawParameterValue(PID::arpMode)->load());
     bool arpEnabled = arpModeRaw > 0;
@@ -1082,6 +1086,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 generativeSequencer.setBpm(static_cast<double>(seqBpm));
                 generativeSequencer.setDivision(seqDivision);
                 generativeSequencer.setGate(seqGate);
+                generativeSequencer.setShuffle(seqShuffle);
                 generativeSequencer.setScale(
                     static_cast<int>(parameters.getRawParameterValue(PID::scaleType)->load()),
                     static_cast<int>(parameters.getRawParameterValue(PID::scaleRoot)->load()));
@@ -1136,6 +1141,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         generativeSequencer.setBpm(static_cast<double>(seqBpm));
         generativeSequencer.setDivision(seqDivision);
         generativeSequencer.setGate(seqGate);
+        generativeSequencer.setShuffle(seqShuffle);
 
         // Fix flags
         bool fxS = parameters.getRawParameterValue(PID::genFixSteps)->load() > 0.5f;
@@ -1301,6 +1307,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         stepSequencer.setBpm(static_cast<double>(seqBpm));
         stepSequencer.setNumSteps(seqSteps);
         stepSequencer.setDivision(seqDivision);
+        stepSequencer.setShuffle(seqShuffle);
         stepSequencer.setAllGates(seqGate);
         int seqOctaveIdx = static_cast<int>(parameters.getRawParameterValue(PID::seqOctave)->load());
         stepSequencer.setOctaveShiftSemitones((seqOctaveIdx - 2) * 12);
@@ -1325,6 +1332,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         arpeggiator.setBpm(static_cast<double>(seqBpm));
         arpeggiator.setRate(arpRate);
         arpeggiator.setOctaveRange(arpOctaves);
+        arpeggiator.setShuffle(seqShuffle);
         arpeggiator.setMode(static_cast<T5ynthArpeggiator::Mode>(arpMode));
 
         juce::MidiBuffer filtered;
@@ -2750,6 +2758,7 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     seq->setProperty("division", choiceToKey(static_cast<int>(get(PID::seqDivision)), SeqDivision::kEntries));
     seq->setProperty("glideTime", get(PID::seqGlideTime));
     seq->setProperty("gate", get(PID::seqGate));
+    seq->setProperty("shuffle", get(PID::seqShuffle));
     seq->setProperty("scaleRoot", choiceToKey(static_cast<int>(get(PID::scaleRoot)), ScaleRoot::kEntries));
     seq->setProperty("scaleType", choiceToKey(static_cast<int>(get(PID::scaleType)), ScaleType::kEntries));
     root->setProperty("sequencer", seq.get());
@@ -3077,6 +3086,8 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
                  static_cast<float>(choiceFromKey(seq->getProperty("division").toString(), SeqDivision::kEntries)));
         setParam(parameters, PID::seqGlideTime, static_cast<float>(seq->getProperty("glideTime")));
         setParam(parameters, PID::seqGate, static_cast<float>(seq->getProperty("gate")));
+        if (seq->hasProperty("shuffle"))
+            setParam(parameters, PID::seqShuffle, static_cast<float>(seq->getProperty("shuffle")));
         setParam(parameters, PID::scaleRoot,
                  static_cast<float>(choiceFromKey(seq->getProperty("scaleRoot").toString(), ScaleRoot::kEntries)));
         setParam(parameters, PID::scaleType,
