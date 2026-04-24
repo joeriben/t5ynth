@@ -15,5 +15,5 @@
 
 ## Notes
 
-- `v1.3.0-beta.1` keeps the release on the beta line until VST3 and the remaining public platform releases are part of the validated distribution scope.
+- `v1.3.0-beta.1` keeps the release on the beta line while the broader rollout (VST3/AU and additional public platforms) is still unfinished; the current tagged release asset remains the macOS installer only.
 - The version number stays monotonic with the older internal `1.2.x` build line and avoids another downgrade in bundle / installer versioning.

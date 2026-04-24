@@ -172,10 +172,11 @@ A change that has only been compiled but never run is not ready for review.
 
 ## Releases and versioning
 
-Releases are tag-driven. Tagging `v*` on `main` triggers the release job in
-`.github/workflows/build.yml`, which builds, archives, and publishes binaries
-for all three platforms. See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)
-for the full procedure.
+Releases are tag-driven. Tagging `v*` on `main` triggers the tag pipeline in
+`.github/workflows/build.yml`. Pull requests and pushes to `main` still build
+the macOS / Linux / Windows matrix, but tagged GitHub Releases currently
+publish only the macOS installer. See
+[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the full procedure.
 
 Versioning convention:
 
