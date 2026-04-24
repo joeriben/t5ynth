@@ -37,6 +37,7 @@ hidden += ['transformers.utils.quantization_config']
 
 # stable_audio_tools: native pipeline (SA Small), imported lazily
 hidden += collect_submodules('stable_audio_tools')
+hidden += collect_submodules('dac')
 
 # safetensors: used by diffusers/transformers for .safetensors loading
 hidden += ['safetensors', 'safetensors.torch']
@@ -74,6 +75,8 @@ datas += copy_metadata('numpy')
 datas += copy_metadata('torchsde')
 datas += copy_metadata('accelerate')
 datas += copy_metadata('diffusers')
+datas += copy_metadata('descript-audio-codec')
+datas += copy_metadata('descript-audiotools')
 
 # ── Analysis ────────────────────────────────────────────────────────
 
