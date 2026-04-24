@@ -1544,15 +1544,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
     if (reverbEnabled)
     {
-        float baseRevMix = parameters.getRawParameterValue(PID::reverbMix)->load();
-        float revMix = juce::jlimit(0.0f, 1.0f, baseRevMix + modReverbMix);
-
         if (reverbIsAlgo)
         {
             algoReverb.setRoomSize(parameters.getRawParameterValue(PID::algoRoom)->load());
             algoReverb.setDamping(parameters.getRawParameterValue(PID::algoDamping)->load());
             algoReverb.setWidth(parameters.getRawParameterValue(PID::algoWidth)->load());
-            algoReverb.setMix(revMix);
         }
         else
         {
@@ -1577,19 +1573,19 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                     lastReverbIr = irIndex;
                 }
             }
-            reverb.setMix(revMix);
         }
+        // Reverbs always render pure wet; the outer crossfade handles dry/wet.
+        if (reverbIsAlgo) algoReverb.setMix(1.0f);
+        else              reverb.setMix(1.0f);
     }
 
-    // Parallel send-bus architecture (reference useEffects.ts):
-    //   source → dry(compensated) ──→ sum → limiter
-    //          → delaySend ─────────→ sum
-    //          → reverbSend ────────→ sum
-    // Combined peak: delay ~1.7x + reverb wet additive → up to ~2.7x before master.
-    //
-    // Delay already implements send-bus internally (dry*comp + wet*mix).
-    // When both FX are active, reverb needs the ORIGINAL source, not delay output.
-    // Helper lambda: process reverb (convolution or algo) on a buffer
+    // Reverb mix is a true crossfade: out = dry*(1-mix) + wet*mix.
+    // At mix=1.0 the dry path vanishes — industry-standard insert behaviour
+    // (FabFilter/Valhalla) and identical for both Algo and Plate. Plate IRs
+    // are normalised and read ~6 dB quieter than the JUCE algo reverb's
+    // wetLevel=1.0 output, so the convolution send is gain-compensated.
+    constexpr float kPlateWetGain = 2.0f;  // +6 dB IR-normalisation comp
+
     auto processReverb = [&](juce::AudioBuffer<float>& buf) {
         if (reverbIsAlgo)
             algoReverb.processBlock(buf);
@@ -1597,30 +1593,34 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             reverb.processBlock(buf);
     };
 
-    if (delayEnabled && reverbEnabled)
+    auto crossfadeReverbInto = [&](juce::AudioBuffer<float>& dest, float mix)
     {
-        // Save original source for reverb (pre-allocated buffer, no heap alloc)
-        for (int ch = 0; ch < numChannels; ++ch)
-            reverbSendBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
-
-        // Delay modifies buffer in-place: output = dry*comp + delayed*mix
-        delay.processBlock(buffer);
-
-        // Process reverb on original source (wet-only: set mix=1 temporarily)
-        float savedRevMix = juce::jlimit(0.0f, 1.0f,
-            parameters.getRawParameterValue(PID::reverbMix)->load() + modReverbMix);
-        if (reverbIsAlgo) { algoReverb.setMix(1.0f); } else { reverb.setMix(1.0f); }
-        processReverb(reverbSendBuffer);
-        if (reverbIsAlgo) { algoReverb.setMix(savedRevMix); } else { reverb.setMix(savedRevMix); }
-
-        // Add reverb send to output: buffer += convolved * reverbMix
+        const float dryAmt = 1.0f - mix;
         for (int ch = 0; ch < numChannels; ++ch)
         {
             const auto* rev = reverbSendBuffer.getReadPointer(ch);
-            auto* out = buffer.getWritePointer(ch);
+            auto* out = dest.getWritePointer(ch);
             for (int i = 0; i < numSamples; ++i)
-                out[i] += rev[i] * savedRevMix;
+                out[i] = out[i] * dryAmt + rev[i] * mix;
         }
+    };
+
+    if (delayEnabled && reverbEnabled)
+    {
+        // Reverb sends from the original source (pre-delay) so the reverb tail
+        // doesn't echo the delay repeats; crossfade sums against post-delay dry.
+        for (int ch = 0; ch < numChannels; ++ch)
+            reverbSendBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
+
+        delay.processBlock(buffer);
+
+        processReverb(reverbSendBuffer);
+        if (!reverbIsAlgo)
+            reverbSendBuffer.applyGain(kPlateWetGain);
+
+        float revMix = juce::jlimit(0.0f, 1.0f,
+            parameters.getRawParameterValue(PID::reverbMix)->load() + modReverbMix);
+        crossfadeReverbInto(buffer, revMix);
     }
     else if (delayEnabled)
     {
@@ -1628,23 +1628,16 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     }
     else if (reverbEnabled)
     {
-        // Reverb as send: dry signal stays, wet is added on top
         for (int ch = 0; ch < numChannels; ++ch)
             reverbSendBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
 
-        float revMixVal = juce::jlimit(0.0f, 1.0f,
-            parameters.getRawParameterValue(PID::reverbMix)->load() + modReverbMix);
-        if (reverbIsAlgo) { algoReverb.setMix(1.0f); } else { reverb.setMix(1.0f); }
         processReverb(reverbSendBuffer);
-        if (reverbIsAlgo) { algoReverb.setMix(revMixVal); } else { reverb.setMix(revMixVal); }
+        if (!reverbIsAlgo)
+            reverbSendBuffer.applyGain(kPlateWetGain);
 
-        for (int ch = 0; ch < numChannels; ++ch)
-        {
-            const auto* rev = reverbSendBuffer.getReadPointer(ch);
-            auto* out = buffer.getWritePointer(ch);
-            for (int i = 0; i < numSamples; ++i)
-                out[i] += rev[i] * revMixVal;
-        }
+        float revMix = juce::jlimit(0.0f, 1.0f,
+            parameters.getRawParameterValue(PID::reverbMix)->load() + modReverbMix);
+        crossfadeReverbInto(buffer, revMix);
     }
 
     // ── Update modulated values for GUI ghost indicators ────────────────────
