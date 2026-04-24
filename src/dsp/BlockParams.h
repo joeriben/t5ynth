@@ -87,6 +87,11 @@ namespace PID {
     static constexpr const char* lfo2Wave         = "lfo2_wave";
     static constexpr const char* lfo2Target       = "lfo2_target";
     static constexpr const char* lfo2Mode         = "lfo2_mode";
+    static constexpr const char* lfo3Rate         = "lfo3_rate";
+    static constexpr const char* lfo3Depth        = "lfo3_depth";
+    static constexpr const char* lfo3Wave         = "lfo3_wave";
+    static constexpr const char* lfo3Target       = "lfo3_target";
+    static constexpr const char* lfo3Mode         = "lfo3_mode";
     static constexpr const char* driftEnabled     = "drift_enabled";
     static constexpr const char* driftRegen       = "drift_regen";
     static constexpr const char* driftCrossfade   = "drift_crossfade";
@@ -245,7 +250,9 @@ namespace EnvTarget {
         LFO1Rate = 9,
         LFO1Depth = 10,
         LFO2Rate = 11,
-        LFO2Depth = 12
+        LFO2Depth = 12,
+        LFO3Rate = 13,
+        LFO3Depth = 14
     };
     static constexpr ChoiceEntry kEntries[] = {
         { "none",       "---"        },
@@ -260,10 +267,12 @@ namespace EnvTarget {
         { "lfo1_rate",  "LFO1 Rate"  },
         { "lfo1_depth", "LFO1 Depth" },
         { "lfo2_rate",  "LFO2 Rate"  },
-        { "lfo2_depth", "LFO2 Depth" }
+        { "lfo2_depth", "LFO2 Depth" },
+        { "lfo3_rate",  "LFO3 Rate"  },
+        { "lfo3_depth", "LFO3 Depth" }
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
-    static_assert(LFO2Depth + 1 == kCount,
+    static_assert(LFO3Depth + 1 == kCount,
                   "EnvTarget enum and kEntries are out of sync.");
 }
 
@@ -922,6 +931,8 @@ struct BlockParams
     int   lfo1Wave = 0, lfo1Target = 0; // LfoTarget::None
     float lfo2Rate = 1.0f, lfo2Depth = 1.0f;
     int   lfo2Wave = 0, lfo2Target = 0; // LfoTarget::None
+    float lfo3Rate = 1.0f, lfo3Depth = 1.0f;
+    int   lfo3Wave = 0, lfo3Target = 0; // LfoTarget::None
 
     // Filter
     bool  filterEnabled = false;

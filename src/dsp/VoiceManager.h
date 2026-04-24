@@ -24,7 +24,7 @@ public:
 
     // ── MIDI handling ──
     void noteOn(int note, float velocity, bool isBind, float glideMs,
-                bool lfo1TrigMode, bool lfo2TrigMode);
+                bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode);
     void noteOff(int note);
     void allNotesOff();
 
@@ -34,7 +34,7 @@ public:
     // over voice 0 and suppresses seq noteOns while held. In poly the drone's
     // voice is excluded from voice stealing and same-note matching by the seq
     // path, so seq triggers happen in parallel on other voices.
-    void setDroneNote(int note, float velocity, bool lfo1TrigMode, bool lfo2TrigMode);
+    void setDroneNote(int note, float velocity, bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode);
     void clearDroneNote();
     bool hasDrone() const { return droneVoiceIndex >= 0; }
     int  getDroneNote() const { return droneNote; }
@@ -54,7 +54,7 @@ public:
      *  Global LFOs are ticked externally; their per-sample values are passed in.
      *  startSample: offset into the output buffer (for sample-accurate rendering). */
     VoiceOutput renderBlock(juce::AudioBuffer<float>& buffer, const BlockParams& bp,
-                            const float* lfo1Buf, const float* lfo2Buf,
+                            const float* lfo1Buf, const float* lfo2Buf, const float* lfo3Buf,
                             int startSample, int numSamples);
 
     // ── Engine data distribution ──

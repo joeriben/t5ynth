@@ -44,12 +44,12 @@ public:
     /** Configure envelopes from block params. Call once per block before renderSample loop. */
     void configureForBlock(const BlockParams& p);
 
-    RenderResult renderSample(const BlockParams& p, float globalLfo1Val, float globalLfo2Val);
+    RenderResult renderSample(const BlockParams& p, float globalLfo1Val, float globalLfo2Val, float globalLfo3Val);
 
     /** Block-based rendering with sub-block filter coefficient updates.
      *  Writes numSamples mono samples into output. */
     void renderBlock(float* output, const BlockParams& p,
-                     const float* lfo1Buf, const float* lfo2Buf, int numSamples);
+                     const float* lfo1Buf, const float* lfo2Buf, const float* lfo3Buf, int numSamples);
 
     static constexpr int SUB_BLOCK_SIZE = 32;
 
@@ -83,6 +83,7 @@ public:
     T5ynthFilter& getFilter() { return filter; }
     LFO& getPerVoiceLfo1() { return perVoiceLfo1; }
     LFO& getPerVoiceLfo2() { return perVoiceLfo2; }
+    LFO& getPerVoiceLfo3() { return perVoiceLfo3; }
 
     // Voice age for stealing (monotonic counter set by VoiceManager)
     uint64_t noteOnTimestamp = 0;
@@ -95,6 +96,7 @@ private:
     ADSREnvelope modEnv2;
     LFO perVoiceLfo1; // used when LFO mode == Trigger
     LFO perVoiceLfo2;
+    LFO perVoiceLfo3;
     T5ynthFilter       filter;       // linear TPT SVF (low-CPU default)
     MoogLadderFilter   filterLadder; // Huovilainen nonlinear ladder
     CutoffWarpFilter   filterWarp;   // Surge-XT-style ZDF ladder + style

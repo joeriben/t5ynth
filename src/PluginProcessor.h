@@ -146,6 +146,7 @@ private:
     // DSP — global (shared across voices, post-sum)
     LFO lfo1;
     LFO lfo2;
+    LFO lfo3;
     DriftLFO driftLfo;
     T5ynthFilter postFilter;
     T5ynthDelayLine delay;
@@ -190,10 +191,10 @@ private:
     int lastTriggeredNote = -1;
 
     // Pre-allocated LFO buffers (avoid heap alloc in processBlock)
-    std::vector<float> lfo1Buffer, lfo2Buffer;
+    std::vector<float> lfo1Buffer, lfo2Buffer, lfo3Buffer;
 
     // Persisted LFO output for ghost display (updated every block, even during idle)
-    float lastLfo1Val_ = 0.0f, lastLfo2Val_ = 0.0f;
+    float lastLfo1Val_ = 0.0f, lastLfo2Val_ = 0.0f, lastLfo3Val_ = 0.0f;
 
     // Waveform display
     juce::AudioBuffer<float> waveformSnapshot;
@@ -236,6 +237,8 @@ public:
         std::atomic<float> lfo1Depth { NONE };
         std::atomic<float> lfo2Rate { NONE };
         std::atomic<float> lfo2Depth { NONE };
+        std::atomic<float> lfo3Rate { NONE };
+        std::atomic<float> lfo3Depth { NONE };
         std::atomic<float> delayTime { NONE };
         std::atomic<float> delayFeedback { NONE };
         std::atomic<float> delayMix { NONE };

@@ -68,7 +68,7 @@ void VoiceManager::setBlockParams(const BlockParams& bp)
 // ═══════════════════════════════════════════════════════════════════
 
 void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
-                           bool lfo1TrigMode, bool lfo2TrigMode)
+                           bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode)
 {
     // ── Mono mode: always voice 0, legato (no retrigger if held) ──
     if (voiceLimit == 1)
@@ -109,6 +109,7 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         v.noteOnTimestamp = ++noteOnCounter;
         if (lfo1TrigMode) v.getPerVoiceLfo1().reset();
         if (lfo2TrigMode) v.getPerVoiceLfo2().reset();
+        if (lfo3TrigMode) v.getPerVoiceLfo3().reset();
         if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
         {
             v.getSampler().retrigger();
@@ -183,6 +184,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         v.getPerVoiceLfo1().reset();
     if (lfo2TrigMode)
         v.getPerVoiceLfo2().reset();
+    if (lfo3TrigMode)
+        v.getPerVoiceLfo3().reset();
 
     // Retrigger sampler if in sampler mode
     if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
@@ -235,7 +238,7 @@ void VoiceManager::allNotesOff()
 
 VoiceManager::VoiceOutput VoiceManager::renderBlock(
     juce::AudioBuffer<float>& buffer, const BlockParams& bp,
-    const float* lfo1Buf, const float* lfo2Buf,
+    const float* lfo1Buf, const float* lfo2Buf, const float* lfo3Buf,
     int startSample, int numSamples)
 {
     VoiceOutput out;
@@ -283,7 +286,7 @@ VoiceManager::VoiceOutput VoiceManager::renderBlock(
 
         // Use sub-block renderBlock for active voices
         float* scratch = voiceScratch[static_cast<size_t>(vi)].data();
-        v.renderBlock(scratch, bp, lfo1Buf, lfo2Buf, numSamples);
+        v.renderBlock(scratch, bp, lfo1Buf, lfo2Buf, lfo3Buf, numSamples);
 
         if (!v.isActive())
             anyBecameInactive = true;
@@ -486,7 +489,7 @@ int VoiceManager::getHeldVoiceCount() const
 // Drone (step-hold) handling
 // ═══════════════════════════════════════════════════════════════════
 
-void VoiceManager::setDroneNote(int note, float velocity, bool lfo1TrigMode, bool lfo2TrigMode)
+void VoiceManager::setDroneNote(int note, float velocity, bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode)
 {
     note = juce::jlimit(0, 127, note);
     velocity = juce::jlimit(0.0f, 1.0f, velocity);
@@ -524,6 +527,7 @@ void VoiceManager::setDroneNote(int note, float velocity, bool lfo1TrigMode, boo
         v.noteOnTimestamp = ++noteOnCounter;
         if (lfo1TrigMode) v.getPerVoiceLfo1().reset();
         if (lfo2TrigMode) v.getPerVoiceLfo2().reset();
+        if (lfo3TrigMode) v.getPerVoiceLfo3().reset();
         if (v.getEngineMode() == SynthVoice::EngineMode::Sampler && v.getSampler().hasAudio())
             v.getSampler().retrigger();
         if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable)

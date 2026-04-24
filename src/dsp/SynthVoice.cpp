@@ -50,6 +50,7 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
     modEnv2.prepare(sampleRate);
     perVoiceLfo1.prepare(sampleRate);
     perVoiceLfo2.prepare(sampleRate);
+    perVoiceLfo3.prepare(sampleRate);
     filter.prepare(sampleRate, samplesPerBlock);
     filterLadder.prepare(sampleRate, samplesPerBlock);
     filterWarp.prepare(sampleRate, samplesPerBlock);
@@ -370,19 +371,18 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
     }
 
     float analysisPeak = 0.0f;
-    const float analysisRms = sampler.estimatePlaybackRms(
-        dcaCurve.data(), analysisSamples, &analysisPeak);
+    sampler.estimatePlaybackRms(dcaCurve.data(), analysisSamples, &analysisPeak);
 
-    static constexpr float kTargetPostDcaRms = 0.25f;
     static constexpr float kCeiling = 0.95f;
     samplerPreStretchNormGain_ = 1.0f;
 
-    if (analysisRms > 1.0e-6f)
+    if (analysisPeak > kCeiling + 1.0e-6f)
     {
-        float gain = kTargetPostDcaRms / analysisRms;
-        if (analysisPeak > 1.0e-6f)
-            gain = std::min(gain, kCeiling / analysisPeak);
-        samplerPreStretchNormGain_ = gain;
+        // Keep Normalize from quietly turning into a loudness target.
+        // The prepared buffer has already been peak-normalized, so the
+        // remaining job here is just to catch rare post-DCA overs, not to
+        // push sustained material down toward a fixed RMS.
+        samplerPreStretchNormGain_ = kCeiling / analysisPeak;
     }
 
     sampler.setSourceGain(samplerPreStretchNormGain_);
@@ -439,7 +439,7 @@ void SynthVoice::updateSamplerPreStretchNorm(const BlockParams& p)
     samplerPreStretchNormDirty_ = false;
 }
 
-SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float globalLfo1Val, float globalLfo2Val)
+SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float globalLfo1Val, float globalLfo2Val, float globalLfo3Val)
 {
     RenderResult result = { 0.0f, 0.0f, 0.0f };
 
@@ -459,8 +459,11 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
                                                      p.lfo1Depth, mod1EnvVal, mod2EnvVal);
     const float lfo2Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO2Depth,
                                                      p.lfo2Depth, mod1EnvVal, mod2EnvVal);
+    const float lfo3Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO3Depth,
+                                                     p.lfo3Depth, mod1EnvVal, mod2EnvVal);
     float lfo1Val = globalLfo1Val * lfo1Depth;
     float lfo2Val = globalLfo2Val * lfo2Depth;
+    float lfo3Val = globalLfo3Val * lfo3Depth;
 
     // Pitch modulation
     float pitchMod = p.driftPitchOffset;
@@ -468,6 +471,7 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     if (p.mod2Target == EnvTarget::Pitch) pitchMod += mod2EnvVal;
     if (p.lfo1Target == LfoTarget::Pitch) pitchMod += lfo1Val;
     if (p.lfo2Target == LfoTarget::Pitch) pitchMod += lfo2Val;
+    if (p.lfo3Target == LfoTarget::Pitch) pitchMod += lfo3Val;
 
     // Set frequency — but skip during glide to avoid overriding it
     if (p.engineIsWavetable && osc.hasFrames() && !osc.isGliding())
@@ -485,6 +489,7 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
         float scanMod = scanBase + p.driftScanOffset;
         if (p.lfo1Target == LfoTarget::Scan) scanMod += lfo1Val;
         if (p.lfo2Target == LfoTarget::Scan) scanMod += lfo2Val;
+        if (p.lfo3Target == LfoTarget::Scan) scanMod += lfo3Val;
         const float clampedScan = juce::jlimit(0.0f, 1.0f, scanMod);
         osc.setScanPosition(clampedScan);
 
@@ -502,6 +507,7 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
     if (p.mod2Target == EnvTarget::NoiseLevel) noiseLevel += mod2EnvVal;
     if (p.lfo1Target == LfoTarget::NoiseLevel) noiseLevel += lfo1Val;
     if (p.lfo2Target == LfoTarget::NoiseLevel) noiseLevel += lfo2Val;
+    if (p.lfo3Target == LfoTarget::NoiseLevel) noiseLevel += lfo3Val;
     noiseLevel = juce::jlimit(0.0f, 1.0f, noiseLevel);
     result.modulatedNoiseLevel = noiseLevel;
     lastModulatedNoiseLevel_ = noiseLevel;
@@ -534,6 +540,7 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
             // LFO → filter
             if (p.lfo1Target == LfoTarget::Filter) cutoffMod *= std::pow(2.0f, lfo1Val * FILTER_OCTAVES);
             if (p.lfo2Target == LfoTarget::Filter) cutoffMod *= std::pow(2.0f, lfo2Val * FILTER_OCTAVES);
+            if (p.lfo3Target == LfoTarget::Filter) cutoffMod *= std::pow(2.0f, lfo3Val * FILTER_OCTAVES);
 
             // Drift → filter
             if (p.driftFilterOffset != 0.0f)
@@ -568,7 +575,7 @@ SynthVoice::RenderResult SynthVoice::renderSample(const BlockParams& p, float gl
 }
 
 void SynthVoice::renderBlock(float* output, const BlockParams& p,
-                              const float* lfo1Buf, const float* lfo2Buf, int numSamples)
+                              const float* lfo1Buf, const float* lfo2Buf, const float* lfo3Buf, int numSamples)
 {
     if (!active)
     {
@@ -588,11 +595,14 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                                                          p.lfo1Depth, lastMod1Val_, lastMod2Val_);
         const float lfo2Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO2Depth,
                                                          p.lfo2Depth, lastMod1Val_, lastMod2Val_);
+        const float lfo3Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO3Depth,
+                                                         p.lfo3Depth, lastMod1Val_, lastMod2Val_);
         float pitchMod = p.driftPitchOffset;
         if (p.mod1Target == EnvTarget::Pitch) pitchMod += lastMod1Val_;
         if (p.mod2Target == EnvTarget::Pitch) pitchMod += lastMod2Val_;
         if (p.lfo1Target == LfoTarget::Pitch) pitchMod += lfo1Buf[mid] * lfo1Depth;
         if (p.lfo2Target == LfoTarget::Pitch) pitchMod += lfo2Buf[mid] * lfo2Depth;
+        if (p.lfo3Target == LfoTarget::Pitch) pitchMod += lfo3Buf[mid] * lfo3Depth;
         sampler.setPitchModulation(1.0f + pitchMod);
 
         sampler.renderPitchedBlock(samplerBlockBuf_.data(), numSamples);
@@ -612,8 +622,11 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                                                              p.lfo1Depth, lastMod1Val_, lastMod2Val_);
             const float lfo2Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO2Depth,
                                                              p.lfo2Depth, lastMod1Val_, lastMod2Val_);
+            const float lfo3Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO3Depth,
+                                                             p.lfo3Depth, lastMod1Val_, lastMod2Val_);
             float lfo1Mid = lfo1Buf[midIdx] * lfo1Depth;
             float lfo2Mid = lfo2Buf[midIdx] * lfo2Depth;
+            float lfo3Mid = lfo3Buf[midIdx] * lfo3Depth;
 
             float cutoffMod = p.baseCutoff;
 
@@ -628,6 +641,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             if (p.mod2Target == EnvTarget::Filter) cutoffMod *= std::pow(2.0f, rawEnv2 * p.mod2Amount * FILTER_OCTAVES);
             if (p.lfo1Target == LfoTarget::Filter) cutoffMod *= std::pow(2.0f, lfo1Mid * FILTER_OCTAVES);
             if (p.lfo2Target == LfoTarget::Filter) cutoffMod *= std::pow(2.0f, lfo2Mid * FILTER_OCTAVES);
+            if (p.lfo3Target == LfoTarget::Filter) cutoffMod *= std::pow(2.0f, lfo3Mid * FILTER_OCTAVES);
             if (p.driftFilterOffset != 0.0f)
                 cutoffMod *= std::pow(2.0f, p.driftFilterOffset * FILTER_OCTAVES);
 
@@ -689,8 +703,11 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                                                              p.lfo1Depth, mod1EnvVal, mod2EnvVal);
             const float lfo2Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO2Depth,
                                                              p.lfo2Depth, mod1EnvVal, mod2EnvVal);
+            const float lfo3Depth = computeEffectiveLfoDepth(p, EnvTarget::LFO3Depth,
+                                                             p.lfo3Depth, mod1EnvVal, mod2EnvVal);
             float lfo1Val = lfo1Buf[i] * lfo1Depth;
             float lfo2Val = lfo2Buf[i] * lfo2Depth;
+            float lfo3Val = lfo3Buf[i] * lfo3Depth;
 
             float sample = 0.0f;
 
@@ -707,6 +724,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                 if (p.mod2Target == EnvTarget::Pitch) pitchMod += mod2EnvVal;
                 if (p.lfo1Target == LfoTarget::Pitch) pitchMod += lfo1Val;
                 if (p.lfo2Target == LfoTarget::Pitch) pitchMod += lfo2Val;
+                if (p.lfo3Target == LfoTarget::Pitch) pitchMod += lfo3Val;
 
                 if (!osc.isGliding())
                 {
@@ -718,6 +736,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
                 float scanMod = scanBase + p.driftScanOffset;
                 if (p.lfo1Target == LfoTarget::Scan) scanMod += lfo1Val;
                 if (p.lfo2Target == LfoTarget::Scan) scanMod += lfo2Val;
+                if (p.lfo3Target == LfoTarget::Scan) scanMod += lfo3Val;
                 const float clampedScan = juce::jlimit(0.0f, 1.0f, scanMod);
                 osc.setScanPosition(clampedScan);
                 osc.setInterpolation(p.wtSmooth);
@@ -732,6 +751,7 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
             if (p.mod2Target == EnvTarget::NoiseLevel) noiseLevel += mod2EnvVal;
             if (p.lfo1Target == LfoTarget::NoiseLevel) noiseLevel += lfo1Val;
             if (p.lfo2Target == LfoTarget::NoiseLevel) noiseLevel += lfo2Val;
+            if (p.lfo3Target == LfoTarget::NoiseLevel) noiseLevel += lfo3Val;
             noiseLevel = juce::jlimit(0.0f, 1.0f, noiseLevel);
             lastModulatedNoiseLevel_ = noiseLevel;
             if (noiseLevel > 0.001f)

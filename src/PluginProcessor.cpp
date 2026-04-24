@@ -121,8 +121,9 @@ void T5ynthProcessor::beginStepHoldPreview(int midiNote, float velocity)
     const float vel = juce::jlimit(0.0f, 1.0f, velocity);
     const bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Mode)->load()) == 1;
     const bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Mode)->load()) == 1;
+    const bool lfo3TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Mode)->load()) == 1;
 
-    voiceManager.setDroneNote(note, vel, lfo1TrigMode, lfo2TrigMode);
+    voiceManager.setDroneNote(note, vel, lfo1TrigMode, lfo2TrigMode, lfo3TrigMode);
 
     stepHoldPreviewActive = true;
     stepHoldPreviewNote = note;
@@ -358,6 +359,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::lfo2Wave, 1}, "LFO2 Wave",
         toChoices(LfoWave::kEntries), 1));
 
+    // LFO 3 (defaults: rate=0.2, depth=0, sine)
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::lfo3Rate, 1}, "LFO3 Rate",
+        juce::NormalisableRange<float>(0.01f, 30.0f, 0.01f, 0.3f), 0.2f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::lfo3Depth, 1}, "LFO3 Depth",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.0f, 0.3f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo3Wave, 1}, "LFO3 Wave",
+        toChoices(LfoWave::kEntries), 0));
+
     // Drift LFO
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{PID::driftEnabled, 1}, "Drift Enabled", false));
@@ -495,6 +507,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::lfo1Target, 1}, "LFO1 Target", lfoTargetChoices, 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::lfo2Target, 1}, "LFO2 Target", lfoTargetChoices, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo3Target, 1}, "LFO3 Target", lfoTargetChoices, 0));
 
     // LFO Mode
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -502,6 +516,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         toChoices(LfoMode::kEntries), 0));
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::lfo2Mode, 1}, "LFO2 Mode",
+        toChoices(LfoMode::kEntries), 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo3Mode, 1}, "LFO3 Mode",
         toChoices(LfoMode::kEntries), 0));
 
     // Delay damp
@@ -780,6 +797,7 @@ void T5ynthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     voiceManager.prepare(sampleRate, samplesPerBlock);
     lfo1.prepare(sampleRate);
     lfo2.prepare(sampleRate);
+    lfo3.prepare(sampleRate);
     postFilter.prepare(sampleRate, samplesPerBlock);
     delay.prepare(sampleRate, samplesPerBlock);
     reverb.prepare(sampleRate, samplesPerBlock);
@@ -794,6 +812,7 @@ void T5ynthProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     arpeggiator.prepare(sampleRate, samplesPerBlock);
     lfo1Buffer.resize(static_cast<size_t>(samplesPerBlock));
     lfo2Buffer.resize(static_cast<size_t>(samplesPerBlock));
+    lfo3Buffer.resize(static_cast<size_t>(samplesPerBlock));
     reverbSendBuffer.setSize(2, samplesPerBlock);
 
     silentBlockCount = 0;
@@ -838,6 +857,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         // Keep free-running modulators phase-accurate.
         lfo1.advancePhase(numSamples);
         lfo2.advancePhase(numSamples);
+        lfo3.advancePhase(numSamples);
         return;
     }
     audioIdle.store(false, std::memory_order_relaxed);
@@ -924,6 +944,13 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     lfo2.setDepth(1.0f);
     lfo2.setWaveform(static_cast<int>(parameters.getRawParameterValue(PID::lfo2Wave)->load()));
     bp.lfo2Target = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Target)->load());
+
+    bp.lfo3Rate = parameters.getRawParameterValue(PID::lfo3Rate)->load();
+    bp.lfo3Depth = parameters.getRawParameterValue(PID::lfo3Depth)->load();
+    lfo3.setRate(bp.lfo3Rate);
+    lfo3.setDepth(1.0f);
+    lfo3.setWaveform(static_cast<int>(parameters.getRawParameterValue(PID::lfo3Wave)->load()));
+    bp.lfo3Target = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Target)->load());
 
     // Filter
     // filter_type: 0=Off, 1=LP, 2=HP, 3=BP → filterEnabled from type, DSP type is 0-based
@@ -1333,6 +1360,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // ── Sample-accurate MIDI + Voice rendering ──────────────────────────────
     bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Mode)->load()) == 1;
     bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Mode)->load()) == 1;
+    bool lfo3TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Mode)->load()) == 1;
 
     // Re-check: seq/arp may have generated notes
     if (voiceManager.hasActiveVoices() || !midiMessages.isEmpty())
@@ -1356,8 +1384,10 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         // ── Audio generation via VoiceManager + global LFOs ─────────────────────
         float baseLfo1Rate = bp.lfo1Rate;
         float baseLfo2Rate = bp.lfo2Rate;
+        float baseLfo3Rate = bp.lfo3Rate;
         float baseLfo1Depth = bp.lfo1Depth;
         float baseLfo2Depth = bp.lfo2Depth;
+        float baseLfo3Depth = bp.lfo3Depth;
         float baseDrift1Depth = parameters.getRawParameterValue(PID::drift1Depth)->load();
         float baseDrift2Depth = parameters.getRawParameterValue(PID::drift2Depth)->load();
         float baseDrift3Depth = parameters.getRawParameterValue(PID::drift3Depth)->load();
@@ -1382,19 +1412,23 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         // Pre-compute global LFO values for the block (needed by VoiceManager)
         float* lfo1Buf = lfo1Buffer.data();
         float* lfo2Buf = lfo2Buffer.data();
+        float* lfo3Buf = lfo3Buffer.data();
         for (int i = 0; i < numSamples; ++i)
         {
             float l1 = lfo1.processSample();
             float l2 = lfo2.processSample();
+            float l3 = lfo3.processSample();
 
             lfo1Buf[i] = l1;
             lfo2Buf[i] = l2;
+            lfo3Buf[i] = l3;
         }
 
         // LFO → normalized amount/depth targets (additive, clamped to 0–1)
         {
             float l1End = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
             float l2End = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
+            float l3End = numSamples > 0 ? lfo3Buf[numSamples - 1] : 0.0f;
             if (bp.lfo1Target == LfoTarget::Env1Amt) bp.ampAmount  = applyNormalizedOffset(bp.ampAmount,  l1End);
             if (bp.lfo1Target == LfoTarget::Env2Amt) bp.mod1Amount = applyNormalizedOffset(bp.mod1Amount, l1End);
             if (bp.lfo1Target == LfoTarget::Env3Amt) bp.mod2Amount = applyNormalizedOffset(bp.mod2Amount, l1End);
@@ -1407,6 +1441,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             if (bp.lfo2Target == LfoTarget::Drift1Depth) baseDrift1Depth = applyNormalizedOffset(baseDrift1Depth, l2End);
             if (bp.lfo2Target == LfoTarget::Drift2Depth) baseDrift2Depth = applyNormalizedOffset(baseDrift2Depth, l2End);
             if (bp.lfo2Target == LfoTarget::Drift3Depth) baseDrift3Depth = applyNormalizedOffset(baseDrift3Depth, l2End);
+            if (bp.lfo3Target == LfoTarget::Env1Amt) bp.ampAmount  = applyNormalizedOffset(bp.ampAmount,  l3End);
+            if (bp.lfo3Target == LfoTarget::Env2Amt) bp.mod1Amount = applyNormalizedOffset(bp.mod1Amount, l3End);
+            if (bp.lfo3Target == LfoTarget::Env3Amt) bp.mod2Amount = applyNormalizedOffset(bp.mod2Amount, l3End);
+            if (bp.lfo3Target == LfoTarget::Drift1Depth) baseDrift1Depth = applyNormalizedOffset(baseDrift1Depth, l3End);
+            if (bp.lfo3Target == LfoTarget::Drift2Depth) baseDrift2Depth = applyNormalizedOffset(baseDrift2Depth, l3End);
+            if (bp.lfo3Target == LfoTarget::Drift3Depth) baseDrift3Depth = applyNormalizedOffset(baseDrift3Depth, l3End);
 
             driftLfo.setLfoDepth(0, baseDrift1Depth);
             driftLfo.setLfoDepth(1, baseDrift2Depth);
@@ -1419,8 +1459,10 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             float p1Mod = bp.driftScanOffset;
             float l1 = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
             float l2 = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
+            float l3 = numSamples > 0 ? lfo3Buf[numSamples - 1] : 0.0f;
             if (bp.lfo1Target == LfoTarget::Scan) p1Mod += l1;
             if (bp.lfo2Target == LfoTarget::Scan) p1Mod += l2;
+            if (bp.lfo3Target == LfoTarget::Scan) p1Mod += l3;
             masterSampler.setStartPosOffset(p1Mod);
         }
         else
@@ -1444,7 +1486,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 int subLen = subEnd - renderPos;
                 if (subLen > 0)
                     voiceOut = voiceManager.renderBlock(buffer, bp,
-                        lfo1Buf + renderPos, lfo2Buf + renderPos, renderPos, subLen);
+                        lfo1Buf + renderPos, lfo2Buf + renderPos, lfo3Buf + renderPos,
+                        renderPos, subLen);
 
                 // Process all MIDI events at this sample position
                 while (midiIter != midiMessages.cend()
@@ -1464,7 +1507,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
                         voiceManager.noteOn(note, velocity, isBind,
                             isBind ? 0.0f : stepSequencer.getGlideTime(),
-                            lfo1TrigMode, lfo2TrigMode);
+                            lfo1TrigMode, lfo2TrigMode, lfo3TrigMode);
                     }
                     else if (msg.isNoteOff())
                     {
@@ -1485,16 +1528,22 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         float lastMod2Val = voiceOut.lastMod2Val;
         float effectiveLfo1Depth = baseLfo1Depth;
         float effectiveLfo2Depth = baseLfo2Depth;
+        float effectiveLfo3Depth = baseLfo3Depth;
         if (bp.mod1Target == EnvTarget::LFO1Depth) effectiveLfo1Depth = applyNormalizedOffset(effectiveLfo1Depth, lastMod1Val);
         if (bp.mod2Target == EnvTarget::LFO1Depth) effectiveLfo1Depth = applyNormalizedOffset(effectiveLfo1Depth, lastMod2Val);
         if (bp.mod1Target == EnvTarget::LFO2Depth) effectiveLfo2Depth = applyNormalizedOffset(effectiveLfo2Depth, lastMod1Val);
         if (bp.mod2Target == EnvTarget::LFO2Depth) effectiveLfo2Depth = applyNormalizedOffset(effectiveLfo2Depth, lastMod2Val);
+        if (bp.mod1Target == EnvTarget::LFO3Depth) effectiveLfo3Depth = applyNormalizedOffset(effectiveLfo3Depth, lastMod1Val);
+        if (bp.mod2Target == EnvTarget::LFO3Depth) effectiveLfo3Depth = applyNormalizedOffset(effectiveLfo3Depth, lastMod2Val);
         float rawLastLfo1Val = numSamples > 0 ? lfo1Buf[numSamples - 1] : 0.0f;
         float rawLastLfo2Val = numSamples > 0 ? lfo2Buf[numSamples - 1] : 0.0f;
+        float rawLastLfo3Val = numSamples > 0 ? lfo3Buf[numSamples - 1] : 0.0f;
         float lastLfo1Val = rawLastLfo1Val * effectiveLfo1Depth;
         float lastLfo2Val = rawLastLfo2Val * effectiveLfo2Depth;
+        float lastLfo3Val = rawLastLfo3Val * effectiveLfo3Depth;
         lastLfo1Val_ = lastLfo1Val;
         lastLfo2Val_ = lastLfo2Val;
+        lastLfo3Val_ = lastLfo3Val;
 
         // Filter is now per-voice (in SynthVoice::renderSample)
 
@@ -1514,10 +1563,14 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (bp.mod1Target == EnvTarget::LFO1Depth)  effectiveLfo1Depth = applyNormalizedOffset(effectiveLfo1Depth, lastMod1Val);
         if (bp.mod1Target == EnvTarget::LFO2Rate)   lfo2.setRate(baseLfo2Rate * (1.0f + lastMod1Val));
         if (bp.mod1Target == EnvTarget::LFO2Depth)  effectiveLfo2Depth = applyNormalizedOffset(effectiveLfo2Depth, lastMod1Val);
+        if (bp.mod1Target == EnvTarget::LFO3Rate)   lfo3.setRate(baseLfo3Rate * (1.0f + lastMod1Val));
+        if (bp.mod1Target == EnvTarget::LFO3Depth)  effectiveLfo3Depth = applyNormalizedOffset(effectiveLfo3Depth, lastMod1Val);
         if (bp.mod2Target == EnvTarget::LFO1Rate)   lfo1.setRate(baseLfo1Rate * (1.0f + lastMod2Val));
         if (bp.mod2Target == EnvTarget::LFO1Depth)  effectiveLfo1Depth = applyNormalizedOffset(effectiveLfo1Depth, lastMod2Val);
         if (bp.mod2Target == EnvTarget::LFO2Rate)   lfo2.setRate(baseLfo2Rate * (1.0f + lastMod2Val));
         if (bp.mod2Target == EnvTarget::LFO2Depth)  effectiveLfo2Depth = applyNormalizedOffset(effectiveLfo2Depth, lastMod2Val);
+        if (bp.mod2Target == EnvTarget::LFO3Rate)   lfo3.setRate(baseLfo3Rate * (1.0f + lastMod2Val));
+        if (bp.mod2Target == EnvTarget::LFO3Depth)  effectiveLfo3Depth = applyNormalizedOffset(effectiveLfo3Depth, lastMod2Val);
         if (bp.lfo1Target == LfoTarget::DelayTime)  modDelayTime += lastLfo1Val;
         if (bp.lfo1Target == LfoTarget::DelayFB)    modDelayFb += lastLfo1Val;
         if (bp.lfo1Target == LfoTarget::DelayMix)   modDelayMix += lastLfo1Val;
@@ -1526,6 +1579,10 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         if (bp.lfo2Target == LfoTarget::DelayFB)    modDelayFb += lastLfo2Val;
         if (bp.lfo2Target == LfoTarget::DelayMix)   modDelayMix += lastLfo2Val;
         if (bp.lfo2Target == LfoTarget::ReverbMix)  modReverbMix += lastLfo2Val;
+        if (bp.lfo3Target == LfoTarget::DelayTime)  modDelayTime += lastLfo3Val;
+        if (bp.lfo3Target == LfoTarget::DelayFB)    modDelayFb += lastLfo3Val;
+        if (bp.lfo3Target == LfoTarget::DelayMix)   modDelayMix += lastLfo3Val;
+        if (bp.lfo3Target == LfoTarget::ReverbMix)  modReverbMix += lastLfo3Val;
     }
     else
     {
@@ -1534,10 +1591,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         {
             lastLfo1Val_ = lfo1.processSample() * bp.lfo1Depth;
             lastLfo2Val_ = lfo2.processSample() * bp.lfo2Depth;
+            lastLfo3Val_ = lfo3.processSample() * bp.lfo3Depth;
             if (numSamples > 1)
             {
                 lfo1.advancePhase(numSamples - 1);
                 lfo2.advancePhase(numSamples - 1);
+                lfo3.advancePhase(numSamples - 1);
             }
         }
     }
@@ -1677,7 +1736,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
         // Filter cutoff ghost
         {
-            bool lfoModFilter = bp.lfo1Target == LfoTarget::Filter || bp.lfo2Target == LfoTarget::Filter;
+            bool lfoModFilter = bp.lfo1Target == LfoTarget::Filter || bp.lfo2Target == LfoTarget::Filter
+                                || bp.lfo3Target == LfoTarget::Filter;
             bool envModFilter = (bp.mod1Target == EnvTarget::Filter || bp.mod2Target == EnvTarget::Filter
                                  || bp.kbdTrack > 0.0f) && hasVoices;
 
@@ -1692,6 +1752,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 float hypo = bp.baseCutoff;
                 if (bp.lfo1Target == LfoTarget::Filter) hypo *= std::pow(2.0f, lastLfo1Val_ * FILTER_OCTAVES);
                 if (bp.lfo2Target == LfoTarget::Filter) hypo *= std::pow(2.0f, lastLfo2Val_ * FILTER_OCTAVES);
+                if (bp.lfo3Target == LfoTarget::Filter) hypo *= std::pow(2.0f, lastLfo3Val_ * FILTER_OCTAVES);
                 modulatedValues.filterCutoff.store(juce::jlimit(20.0f, 20000.0f, hypo), std::memory_order_relaxed);
             }
             else
@@ -1702,7 +1763,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
         // Scan ghost
         {
-            bool lfoModScan = bp.lfo1Target == LfoTarget::Scan || bp.lfo2Target == LfoTarget::Scan;
+            bool lfoModScan = bp.lfo1Target == LfoTarget::Scan || bp.lfo2Target == LfoTarget::Scan
+                              || bp.lfo3Target == LfoTarget::Scan;
             bool driftModScan = std::abs(bp.driftScanOffset) > 0.001f && hasVoices;
             bool wtTraversalActive = bp.engineIsWavetable && hasVoices;
 
@@ -1719,6 +1781,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 float hypo = bp.baseScan;
                 if (bp.lfo1Target == LfoTarget::Scan) hypo += lastLfo1Val_;
                 if (bp.lfo2Target == LfoTarget::Scan) hypo += lastLfo2Val_;
+                if (bp.lfo3Target == LfoTarget::Scan) hypo += lastLfo3Val_;
                 modulatedValues.scanPosition.store(juce::jlimit(0.0f, 1.0f, hypo), std::memory_order_relaxed);
             }
             else
@@ -1729,7 +1792,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
         // Noise level ghost
         {
-            bool lfoModNoise = bp.lfo1Target == LfoTarget::NoiseLevel || bp.lfo2Target == LfoTarget::NoiseLevel;
+            bool lfoModNoise = bp.lfo1Target == LfoTarget::NoiseLevel || bp.lfo2Target == LfoTarget::NoiseLevel
+                               || bp.lfo3Target == LfoTarget::NoiseLevel;
             bool envModNoise = bp.mod1Target == EnvTarget::NoiseLevel || bp.mod2Target == EnvTarget::NoiseLevel;
 
             if (hasVoices && (lfoModNoise || envModNoise))
@@ -1742,6 +1806,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 float hypo = bp.noiseLevel;
                 if (bp.lfo1Target == LfoTarget::NoiseLevel) hypo += lastLfo1Val_;
                 if (bp.lfo2Target == LfoTarget::NoiseLevel) hypo += lastLfo2Val_;
+                if (bp.lfo3Target == LfoTarget::NoiseLevel) hypo += lastLfo3Val_;
                 modulatedValues.noiseLevel.store(
                     juce::jlimit(0.0f, 1.0f, hypo), std::memory_order_relaxed);
             }
@@ -1769,6 +1834,14 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             if (bp.mod1Target == EnvTarget::LFO2Depth) ghostLfo2Depth = applyNormalizedOffset(ghostLfo2Depth, voiceOut.lastMod1Val);
             if (bp.mod2Target == EnvTarget::LFO2Depth) ghostLfo2Depth = applyNormalizedOffset(ghostLfo2Depth, voiceOut.lastMod2Val);
             modulatedValues.lfo2Depth.store(lfo2DepthMod ? ghostLfo2Depth : NO_GHOST, std::memory_order_relaxed);
+
+            bool lfo3RateMod  = bp.mod1Target == EnvTarget::LFO3Rate  || bp.mod2Target == EnvTarget::LFO3Rate;
+            bool lfo3DepthMod = bp.mod1Target == EnvTarget::LFO3Depth || bp.mod2Target == EnvTarget::LFO3Depth;
+            modulatedValues.lfo3Rate.store(lfo3RateMod ? lfo3.getRate() : NO_GHOST, std::memory_order_relaxed);
+            float ghostLfo3Depth = bp.lfo3Depth;
+            if (bp.mod1Target == EnvTarget::LFO3Depth) ghostLfo3Depth = applyNormalizedOffset(ghostLfo3Depth, voiceOut.lastMod1Val);
+            if (bp.mod2Target == EnvTarget::LFO3Depth) ghostLfo3Depth = applyNormalizedOffset(ghostLfo3Depth, voiceOut.lastMod2Val);
+            modulatedValues.lfo3Depth.store(lfo3DepthMod ? ghostLfo3Depth : NO_GHOST, std::memory_order_relaxed);
         }
         else
         {
@@ -1776,6 +1849,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             modulatedValues.lfo1Depth.store(NO_GHOST, std::memory_order_relaxed);
             modulatedValues.lfo2Rate.store(NO_GHOST, std::memory_order_relaxed);
             modulatedValues.lfo2Depth.store(NO_GHOST, std::memory_order_relaxed);
+            modulatedValues.lfo3Rate.store(NO_GHOST, std::memory_order_relaxed);
+            modulatedValues.lfo3Depth.store(NO_GHOST, std::memory_order_relaxed);
         }
 
         // LFO → Drift depth ghosts
@@ -1785,7 +1860,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             {
                 bool lfo1Mod = bp.lfo1Target == target;
                 bool lfo2Mod = bp.lfo2Target == target;
-                if (!lfo1Mod && !lfo2Mod)
+                bool lfo3Mod = bp.lfo3Target == target;
+                if (!lfo1Mod && !lfo2Mod && !lfo3Mod)
                     return NO_GHOST;
 
                 float depth = parameters.getRawParameterValue(paramId)->load();
@@ -1793,6 +1869,8 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                     depth = applyNormalizedOffset(depth, lastLfo1Val_);
                 if (lfo2Mod)
                     depth = applyNormalizedOffset(depth, lastLfo2Val_);
+                if (lfo3Mod)
+                    depth = applyNormalizedOffset(depth, lastLfo3Val_);
                 return depth;
             };
 
@@ -2433,6 +2511,7 @@ struct LfoPIDs {
 static constexpr LfoPIDs kLfoPIDs[] = {
     { PID::lfo1Rate, PID::lfo1Depth, PID::lfo1Wave, PID::lfo1Target, PID::lfo1Mode },
     { PID::lfo2Rate, PID::lfo2Depth, PID::lfo2Wave, PID::lfo2Target, PID::lfo2Mode },
+    { PID::lfo3Rate, PID::lfo3Depth, PID::lfo3Wave, PID::lfo3Target, PID::lfo3Mode },
 };
 
 struct DriftPIDs {
@@ -2571,9 +2650,9 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     }
     modObj->setProperty("envs", envArr);
 
-    // Modulation: 2 LFOs
+    // Modulation: 3 LFOs
     juce::Array<juce::var> lfoArr;
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < 3; ++i)
     {
         const auto& lp = kLfoPIDs[i];
         juce::DynamicObject::Ptr lfo = new juce::DynamicObject();
@@ -2858,7 +2937,7 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
         auto* lfosArr = mod->getProperty("lfos").getArray();
         if (lfosArr)
         {
-            for (int i = 0; i < std::min(2, lfosArr->size()); ++i)
+            for (int i = 0; i < std::min(3, lfosArr->size()); ++i)
             {
                 auto* lfo = (*lfosArr)[i].getDynamicObject();
                 if (!lfo) continue;

@@ -789,6 +789,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     // ── LFOs ──
     initLfo(lfo1, "LFO 1", PID::lfo1Rate, PID::lfo1Depth, PID::lfo1Wave, PID::lfo1Mode, apvts);
     initLfo(lfo2, "LFO 2", PID::lfo2Rate, PID::lfo2Depth, PID::lfo2Wave, PID::lfo2Mode, apvts);
+    initLfo(lfo3, "LFO 3", PID::lfo3Rate, PID::lfo3Depth, PID::lfo3Wave, PID::lfo3Mode, apvts);
 
     // ── Drift ──
     initDrift(drift1, "D1", PID::drift1Rate, PID::drift1Depth, PID::drift1Target, PID::drift1Wave, apvts);
@@ -842,6 +843,7 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
     mod2TargetA = std::make_unique<CA>(apvts, PID::mod2Target, mod2Env.targetBox);
     lfo1TargetA = std::make_unique<CA>(apvts, PID::lfo1Target, lfo1.targetBox);
     lfo2TargetA = std::make_unique<CA>(apvts, PID::lfo2Target, lfo2.targetBox);
+    lfo3TargetA = std::make_unique<CA>(apvts, PID::lfo3Target, lfo3.targetBox);
 
     updateVisibility();
     startTimerHz(30);
@@ -920,6 +922,8 @@ void SynthPanel::timerCallback()
         if (lfo1.depthRow) lfo1.depthRow->setGhostValue(mv.lfo1Depth.load(std::memory_order_relaxed));
         if (lfo2.rateRow)  lfo2.rateRow->setGhostValue(mv.lfo2Rate.load(std::memory_order_relaxed));
         if (lfo2.depthRow) lfo2.depthRow->setGhostValue(mv.lfo2Depth.load(std::memory_order_relaxed));
+        if (lfo3.rateRow)  lfo3.rateRow->setGhostValue(mv.lfo3Rate.load(std::memory_order_relaxed));
+        if (lfo3.depthRow) lfo3.depthRow->setGhostValue(mv.lfo3Depth.load(std::memory_order_relaxed));
         if (drift1.depthRow) drift1.depthRow->setGhostValue(mv.drift1Depth.load(std::memory_order_relaxed));
         if (drift2.depthRow) drift2.depthRow->setGhostValue(mv.drift2Depth.load(std::memory_order_relaxed));
         if (drift3.depthRow) drift3.depthRow->setGhostValue(mv.drift3Depth.load(std::memory_order_relaxed));
@@ -934,6 +938,8 @@ void SynthPanel::timerCallback()
     if (lfo1.depthRow) lfo1.depthRow->tickGhost();
     if (lfo2.rateRow)  lfo2.rateRow->tickGhost();
     if (lfo2.depthRow) lfo2.depthRow->tickGhost();
+    if (lfo3.rateRow)  lfo3.rateRow->tickGhost();
+    if (lfo3.depthRow) lfo3.depthRow->tickGhost();
     if (drift1.depthRow) drift1.depthRow->tickGhost();
     if (drift2.depthRow) drift2.depthRow->tickGhost();
     if (drift3.depthRow) drift3.depthRow->tickGhost();
@@ -1040,6 +1046,7 @@ void SynthPanel::updateVisibility()
     };
     setLfoDimmed(lfo1);
     setLfoDimmed(lfo2);
+    setLfoDimmed(lfo3);
 
     auto setDriftDimmed = [dimAlpha](DriftSection& drift) {
         bool active = drift.targetBox.getSelectedId() != 1; // 1 = "---"
@@ -1221,7 +1228,8 @@ void SynthPanel::paint(juce::Graphics& g)
         int top = modHeader.getY() - inset;
         int bot = juce::jmax(ampEnv.amtRow->getBottom(), mod1Env.amtRow->getBottom(),
                              mod2Env.amtRow->getBottom());
-        bot = juce::jmax(bot, lfo1.depthRow->getBottom(), lfo2.depthRow->getBottom());
+        bot = juce::jmax(bot, lfo1.depthRow->getBottom(), lfo2.depthRow->getBottom(),
+                         lfo3.depthRow->getBottom());
         bot = juce::jmax(bot, drift1.depthRow->getBottom(), drift2.depthRow->getBottom(),
                          drift3.depthRow->getBottom());
         paintCard(g, juce::Rectangle<int>(padX, top, getWidth() - padX * 2, bot - top + inset));
@@ -1230,7 +1238,7 @@ void SynthPanel::paint(juce::Graphics& g)
         g.setColour(kModCol.withAlpha(0.15f));
         int lineL = padX + 8;
         int lineR = getWidth() - padX - 8;
-        for (auto* hdr : { &mod1Env.header, &mod2Env.header, &lfoHeader, &lfo2.header })
+        for (auto* hdr : { &mod1Env.header, &mod2Env.header, &lfoHeader, &lfo2.header, &lfo3.header })
         {
             int y = hdr->getY() - 2;
             g.drawHorizontalLine(y, static_cast<float>(lineL), static_cast<float>(lineR));
@@ -1384,7 +1392,7 @@ void SynthPanel::resized()
     int filterH = headerH + headerGap + rowH + gap + rowH * 2 + gap; // header + type/slope/topology + cutoff/reso + mix/kbd
     int modH = gap * 3 + headerH + headerGap; // section gap + header
     int envH = (rowH * 4 + gap) * 3; // 3 envelopes × (header + 3 slider rows + gap)
-    int lfoH = gap + headerH + headerGap + (rowH + gap) * 2;              // lfo header + 2 single-row LFOs
+    int lfoH = gap + headerH + headerGap + (rowH + gap) * 3;              // lfo header + 3 single-row LFOs
     int driftH = gap + headerH + headerGap + (rowH + gap) * 3;            // drift header + 3 single-row drifts
     int regenH = gap + headerH + headerGap + rowH;                        // regen header + row — last in the natural flow, must stay in the budget
     int belowWave = samplerCtrlH + filterH + modH + envH + lfoH + driftH + regenH + gap * 5;
@@ -1616,7 +1624,7 @@ void SynthPanel::resized()
                  ampEnv.aRow.get(), ampEnv.sRow.get(), ampEnv.amtRow.get(),
                  mod1Env.aRow.get(), mod1Env.sRow.get(), mod1Env.amtRow.get(),
                  mod2Env.aRow.get(), mod2Env.sRow.get(), mod2Env.amtRow.get(),
-                 lfo1.rateRow.get(), lfo2.rateRow.get(),
+                 lfo1.rateRow.get(), lfo2.rateRow.get(), lfo3.rateRow.get(),
                  drift1.rateRow.get(), drift2.rateRow.get(), drift3.rateRow.get() })
             row->setForcedLabelWidth(leftLabelWidth);
 
@@ -1624,7 +1632,7 @@ void SynthPanel::resized()
                  ampEnv.dRow.get(), ampEnv.rRow.get(), ampEnv.velRow.get(),
                  mod1Env.dRow.get(), mod1Env.rRow.get(), mod1Env.velRow.get(),
                  mod2Env.dRow.get(), mod2Env.rRow.get(), mod2Env.velRow.get(),
-                 lfo1.depthRow.get(), lfo2.depthRow.get(),
+                 lfo1.depthRow.get(), lfo2.depthRow.get(), lfo3.depthRow.get(),
                  drift1.depthRow.get(), drift2.depthRow.get(), drift3.depthRow.get() })
             row->setForcedLabelWidth(rightLabelWidth);
     }
@@ -1640,6 +1648,7 @@ void SynthPanel::resized()
     area.removeFromTop(headerGap);
     layoutLfo(lfo1, area, f, rowH, gap);
     layoutLfo(lfo2, area, f, rowH, gap);
+    layoutLfo(lfo3, area, f, rowH, gap);
 
     // ── Drift (part of modulation section) ──
     area.removeFromTop(gap);

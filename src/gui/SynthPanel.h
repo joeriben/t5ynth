@@ -139,7 +139,7 @@ private:
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> rateA, depthA;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveA, modeA;
     };
-    LfoSection lfo1, lfo2;
+    LfoSection lfo1, lfo2, lfo3;
 
     // ── Drift ──
     struct DriftSection
@@ -177,7 +177,7 @@ private:
     std::unique_ptr<SA> crossfadeRegenA;
 
     // ENV/LFO target attachments (routed in processBlock)
-    std::unique_ptr<CA> mod1TargetA, mod2TargetA, lfo1TargetA, lfo2TargetA;
+    std::unique_ptr<CA> mod1TargetA, mod2TargetA, lfo1TargetA, lfo2TargetA, lfo3TargetA;
 
     void initEnv(EnvSection& env, const juce::String& name, int defaultTarget,
                  const juce::String& aId, const juce::String& dId,
