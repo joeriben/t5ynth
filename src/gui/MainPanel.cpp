@@ -892,14 +892,18 @@ void MainPanel::exportWav()
                 file = file.withFileExtension("wav");
 
             const auto& buf = self->processorRef.getGeneratedAudio();
+            // Source SR comes from the inference backend; hard-coding 44.1 kHz
+            // pitch-shifts the export whenever the model emits a different rate.
+            double sr = self->processorRef.getGeneratedSampleRate();
+            if (sr <= 0.0) sr = 44100.0;
             auto outStream = file.createOutputStream();
             if (!outStream) { self->statusBar.setStatusText("Export failed"); return; }
 
             juce::WavAudioFormat wav;
             std::unique_ptr<juce::AudioFormatWriter> writer(
-                wav.createWriterFor(outStream.release(), 44100.0,
+                wav.createWriterFor(outStream.release(), sr,
                                     static_cast<unsigned int>(buf.getNumChannels()),
-                                    16, {}, 0));
+                                    24, {}, 0));
             if (writer)
             {
                 writer->writeFromAudioSampleBuffer(buf, 0, buf.getNumSamples());
