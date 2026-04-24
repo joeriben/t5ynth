@@ -13,6 +13,15 @@ static juce::String fmtMs(double v)
 }
 static juce::String fmtF2(double v)  { return juce::String(v, 2); }
 static juce::String fmtPct(double v) { return juce::String(juce::roundToInt(v * 100.0)) + "%"; }
+// Percent with one decimal below 10% — keeps the sub-1% range readable
+// for skewed depth knobs (where pitch LFO is musically usable) without
+// noise-precision at higher values.
+static juce::String fmtPctFine(double v)
+{
+    double p = v * 100.0;
+    return std::abs(p) < 10.0 ? juce::String(p, 1) + "%"
+                              : juce::String(juce::roundToInt(p)) + "%";
+}
 static juce::String fmtHz(double v)  { return juce::String(juce::roundToInt(v)) + " Hz"; }
 static juce::String fmtDb(double v)  { return juce::String(v, 1) + " dB"; }
 static juce::String fmtHzF1(double v){ return juce::String(v, 1) + " Hz"; }
@@ -165,7 +174,7 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     addAndMakeVisible(lfo.modeBox);
 
     lfo.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF1, kLfoCol);
-    lfo.depthRow = std::make_unique<SliderRow>("Depth", fmtF2,   kLfoCol);
+    lfo.depthRow = std::make_unique<SliderRow>("Depth", fmtPctFine, kLfoCol);
     addAndMakeVisible(*lfo.rateRow);
     addAndMakeVisible(*lfo.depthRow);
 
@@ -202,7 +211,7 @@ void SynthPanel::initDrift(DriftSection& drift, const juce::String& name,
     addAndMakeVisible(drift.waveBox);
 
     drift.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF3, kDriftCol);
-    drift.depthRow = std::make_unique<SliderRow>("Depth", fmtF2,   kDriftCol);
+    drift.depthRow = std::make_unique<SliderRow>("Depth", fmtPctFine, kDriftCol);
     addAndMakeVisible(*drift.rateRow);
     addAndMakeVisible(*drift.depthRow);
 
