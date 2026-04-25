@@ -640,6 +640,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::genFieldPivot, 1}, "Field Pivot",
         toChoices(FieldPivot::kEntries), FieldPivot::m3));
 
+    // ── Inter-strand coordination ──
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::genCoordinationMode, 1}, "Coordination Mode",
+        toChoices(CoordinationMode::kEntries), CoordinationMode::DensityBudget));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::genCoordinationCap, 1}, "Coordination Cap", 1, 4, 3));
+
     // ── Strand 0 — role/octave/divMult/dominance (Euclidean params share legacy gen_* IDs) ──
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{PID::genRole, 1}, "S1 Role",
@@ -1192,6 +1199,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 parameters.getRawParameterValue(PID::genFieldPivot)->load()));
             generativeSequencer.setFieldPivotInterval(FieldPivot::kSemitones[pivotIdx]);
         }
+
+        // ── Inter-strand coordination ──
+        generativeSequencer.setCoordinationMode(static_cast<int>(
+            parameters.getRawParameterValue(PID::genCoordinationMode)->load()));
+        generativeSequencer.setCoordinationCap(static_cast<int>(
+            parameters.getRawParameterValue(PID::genCoordinationCap)->load()));
 
         // ── Per-strand setters (0..3) ──
         {

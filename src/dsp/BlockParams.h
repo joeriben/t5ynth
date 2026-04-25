@@ -180,6 +180,10 @@ namespace PID {
     static constexpr const char* genFieldCenterPc = "gen_field_center_pc";
     static constexpr const char* genFieldPivot    = "gen_field_pivot";
 
+    // ── Inter-strand coordination ──
+    static constexpr const char* genCoordinationMode = "gen_coordination_mode";
+    static constexpr const char* genCoordinationCap  = "gen_coordination_cap";
+
     // Strand 0 (shares existing gen_* Euclidean/fix params — this block adds role/texture)
     static constexpr const char* genRole          = "gen_role";
     static constexpr const char* genOctave        = "gen_octave";
@@ -842,6 +846,24 @@ namespace StrandRole {
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(Gesture + 1 == kCount, "StrandRole out of sync.");
+}
+
+// ── Inter-strand coordination strategy ──
+//
+// Voice-1 principles operate within a strand; this enum chooses how the
+// strands relate to each other. Phase 1 implements DensityBudget (default);
+// Independent is a no-op fallback; AlgebraicCoupling and ContrapuntalChecks
+// are reserved IDs that currently fall through to Independent semantics.
+namespace CoordinationMode {
+    enum : int { Independent = 0, DensityBudget = 1, AlgebraicCoupling = 2, ContrapuntalChecks = 3 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "independent",        "Independent"   },
+        { "density_budget",     "Density Budget" },
+        { "algebraic",          "Algebraic"      },
+        { "counterpoint",       "Counterpoint"   }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(ContrapuntalChecks + 1 == kCount, "CoordinationMode out of sync.");
 }
 
 // ── Strand division multiplier (speed factor relative to global division) ──
