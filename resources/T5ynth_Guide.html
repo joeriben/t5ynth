@@ -284,26 +284,49 @@ Model: <a href="https://huggingface.co/cvssp/audioldm2">cvssp/audioldm2</a>. Lic
 
 <h4>Stable Audio Open 1.0</h4>
 <p>
-Licensed under the Stability AI Community License. Gated on HuggingFace. The model consists of many files in nested subfolders, so the install path is the terminal:
+Licensed under the <a href="https://stability.ai/community-license-agreement">Stability AI Community License</a>. Gated on HuggingFace &mdash; a free HuggingFace account is required once to accept the license. T5ynth uses only two files from this repository (<code>model.safetensors</code> ~4.9&nbsp;GB and <code>model_config.json</code>); the other files in the repo are alternative formats and metadata that T5ynth does not load.
+</p>
+<p>
+<strong>Terminal install (recommended &mdash; one command):</strong>
 </p>
 <ol>
   <li>In Settings, click <strong>Open Model Page</strong>, sign in on HuggingFace, and accept the license.</li>
   <li>In a terminal, log in once:
     <pre><code>huggingface-cli login    # paste your HF access token</code></pre>
-    Then download into the model directory T5ynth scans on your platform.
+    Then download just the two needed files into the model directory T5ynth scans on your platform.
     <p><em>macOS / Linux (bash, zsh):</em></p>
     <pre><code># macOS
 huggingface-cli download stabilityai/stable-audio-open-1.0 \
+  --include "model.safetensors" \
+  --include "model_config.json" \
   --local-dir ~/Library/T5ynth/models/stable-audio-open-1.0
 
 # Linux
 huggingface-cli download stabilityai/stable-audio-open-1.0 \
+  --include "model.safetensors" \
+  --include "model_config.json" \
   --local-dir ~/.local/share/T5ynth/models/stable-audio-open-1.0</code></pre>
     <p><em>Windows 11 (PowerShell):</em></p>
     <pre><code>huggingface-cli download stabilityai/stable-audio-open-1.0 `
+  --include "model.safetensors" `
+  --include "model_config.json" `
   --local-dir "$env:APPDATA\T5ynth\models\stable-audio-open-1.0"</code></pre>
   </li>
-  <li>Click <strong>Auto-Scan</strong> in Settings, or use <strong>Browse…</strong> and select that folder.</li>
+  <li>Click <strong>Auto-Scan</strong> in Settings.</li>
+</ol>
+<p>
+<strong>Browser install (no terminal):</strong>
+</p>
+<ol>
+  <li>In Settings, click <strong>Open Model Page</strong>. Sign up or log in on HuggingFace, and click <strong>Agree and access repository</strong> to accept the license.</li>
+  <li>Open the <strong>Files and versions</strong> tab and download exactly these two files into a new empty folder:
+    <ul>
+      <li><code>model.safetensors</code> (~4.9&nbsp;GB)</li>
+      <li><code>model_config.json</code></li>
+    </ul>
+    Do <strong>not</strong> download <code>model.ckpt</code>, <code>vae_model.ckpt</code>, or anything inside <code>transformer/</code>, <code>vae/</code>, <code>text_encoder/</code>, <code>tokenizer/</code>, <code>scheduler/</code>, or <code>projection_model/</code> &mdash; T5ynth ignores them.
+  </li>
+  <li>Back in T5ynth, click <strong>Browse…</strong> and select the folder you just created.</li>
 </ol>
 
 <h4>Manual install locations</h4>

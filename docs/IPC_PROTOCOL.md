@@ -389,7 +389,7 @@ All Python `logging` output is configured at
 `"%(asctime)s [%(name)s] %(message)s"`. Stderr is inherited by the parent
 process. Typical lines:
 
-- `"... [pipe_inference] Loading diffusers pipeline from /.../stable-audio-open-1.0 on mps..."`
+- `"... [pipe_inference] Loading native pipeline from /.../stable-audio-open-1.0 on mps..."`
 - `"... [pipe_inference] Generating on mps: '<prompt>' (3.0s, 20 steps, CFG=7.0, seed=12345)"`
 - `"... [pipe_inference] Generated in 4.7s"`
 - `"... [pipe_inference] Request failed (model=..., mode=generate): <exception>"`

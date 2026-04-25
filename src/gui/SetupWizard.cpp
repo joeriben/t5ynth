@@ -1376,15 +1376,33 @@ void SettingsPage::updateStatus()
                 instructionsLabel,
                 "STABLE AUDIO OPEN 1.0\n"
                 "Licensed under the Stability AI Community License. Gated on "
-                "HuggingFace. The model consists of many files in nested "
-                "subfolders, so the install path is the terminal:\n\n"
+                "HuggingFace -- a free HuggingFace account is required once to "
+                "accept the license. T5ynth uses only two files from this repo "
+                "(model.safetensors ~4.9 GB and model_config.json), so you don't "
+                "need to download the rest.\n\n"
+                "  Source: https://huggingface.co/" + hfRepo + "\n"
+                "  Target: " + targetPath + "\n\n"
+                "INSTALL (terminal, recommended -- one command):\n"
                 "  1. Click 'Open Model Page' above, sign in, and accept the\n"
                 "     license on the HuggingFace page.\n"
                 "  2. In a terminal:\n"
                 "       huggingface-cli login    # paste your HF access token\n"
                 "       huggingface-cli download " + hfRepo + " \\\n"
+                "         --include \"model.safetensors\" \\\n"
+                "         --include \"model_config.json\" \\\n"
                 "         --local-dir \"" + targetPath + "\"\n"
-                "  3. Click 'Auto-Scan' above, or 'Browse...' and select that folder.");
+                "  3. Click 'Auto-Scan' above.\n\n"
+                "INSTALL (browser, no terminal):\n"
+                "  1. Click 'Open Model Page' above, sign up or log in, and click\n"
+                "     'Agree and access repository' to accept the license.\n"
+                "  2. Open the 'Files and versions' tab.\n"
+                "  3. Download exactly these two files into a new empty folder:\n"
+                "        model.safetensors  (~4.9 GB)\n"
+                "        model_config.json\n"
+                "     Do not download model.ckpt, vae_model.ckpt, or anything\n"
+                "     inside transformer/, vae/, text_encoder/, tokenizer/,\n"
+                "     scheduler/, or projection_model/ -- T5ynth ignores them.\n"
+                "  4. Click 'Browse...' above and select the folder you created.");
         }
     }
 }

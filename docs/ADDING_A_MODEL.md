@@ -3,7 +3,11 @@
 Practical HOWTO for adding a new diffusion audio engine to T5ynth. Based on
 the concrete pattern used for the three currently supported engines:
 
-- **Stable Audio Open 1.0** (`stable-audio-open-1.0`, diffusers format, gated)
+- **Stable Audio Open 1.0** (`stable-audio-open-1.0`, native
+  stable-audio-tools format, gated). The HuggingFace repo also ships the
+  diffusers variant alongside, but T5ynth's detector picks the native
+  branch as soon as `model_config.json` is present next to the weights —
+  see §2.1.
 - **Stable Audio Open Small** (`stable-audio-open-small`, native
   stable-audio-tools format, gated)
 - **AudioLDM2** (`audioldm2`, diffusers format, ungated, experimental)
@@ -47,13 +51,16 @@ must be wrapped to hit those contracts (AudioLDM2 is the precedent, see §2.4).
 
 ### 2.1 Model format detection
 
-Format detection happens in `backend/pipe_inference.py:57-71` in
-`_model_format(model_dir)`. Current logic:
+Format detection happens in `backend/pipe_inference.py:255-275` in
+`_model_format(model_dir)`. Current logic, in order:
 
 - If `model_index.json` exists and its `_class_name` contains `"AudioLDM2"`
   → `"audioldm2"`
+- Else if `model.safetensors`/`model.ckpt` **and** `model_config.json` both
+  exist → `"native"` (this branch wins even when `model_index.json` is also
+  present — important for SA 1.0, whose HF repo ships both formats side by
+  side)
 - Else if `model_index.json` exists → `"diffusers"`
-- Else if `model_config.json` exists → `"native"`
 - Else `None` (not a model directory)
 
 `find_models()` at `backend/pipe_inference.py:76-92` walks the known
