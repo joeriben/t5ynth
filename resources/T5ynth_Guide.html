@@ -288,10 +288,20 @@ Licensed under the Stability AI Community License. Gated on HuggingFace. The mod
 </p>
 <ol>
   <li>In Settings, click <strong>Open Model Page</strong>, sign in on HuggingFace, and accept the license.</li>
-  <li>In a terminal, run:
-    <pre><code>huggingface-cli login    # paste your HF access token
+  <li>In a terminal, log in once:
+    <pre><code>huggingface-cli login    # paste your HF access token</code></pre>
+    Then download into the model directory T5ynth scans on your platform.
+    <p><em>macOS / Linux (bash, zsh):</em></p>
+    <pre><code># macOS
 huggingface-cli download stabilityai/stable-audio-open-1.0 \
-  --local-dir "&lt;target directory shown in Settings&gt;"</code></pre>
+  --local-dir ~/Library/T5ynth/models/stable-audio-open-1.0
+
+# Linux
+huggingface-cli download stabilityai/stable-audio-open-1.0 \
+  --local-dir ~/.local/share/T5ynth/models/stable-audio-open-1.0</code></pre>
+    <p><em>Windows 11 (PowerShell):</em></p>
+    <pre><code>huggingface-cli download stabilityai/stable-audio-open-1.0 `
+  --local-dir "$env:APPDATA\T5ynth\models\stable-audio-open-1.0"</code></pre>
   </li>
   <li>Click <strong>Auto-Scan</strong> in Settings, or use <strong>Browse…</strong> and select that folder.</li>
 </ol>
