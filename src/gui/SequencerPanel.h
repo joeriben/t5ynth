@@ -112,6 +112,11 @@ private:
     static constexpr int kNumExtraStrands = 4;
     juce::TextButton strandEnableBtns[kNumExtraStrands];
     juce::ComboBox   strandRoleBoxes[kNumExtraStrands];
+    // Per-strand differentiators on the second GEN row, vertically aligned
+    // beneath the [Sx][Role] cluster they belong to.
+    juce::ComboBox   strandDivBoxes[kNumExtraStrands];
+    juce::Slider     strandOctaveSliders[kNumExtraStrands];
+    juce::Slider     strandDomSliders[kNumExtraStrands];
 
 
     // Gen visualisation (painted in paint(), positioned in resized())
@@ -144,6 +149,9 @@ private:
     std::unique_ptr<SA> genFieldRateA;
     std::unique_ptr<BA> strandEnableA[kNumExtraStrands];
     std::unique_ptr<CA> strandRoleA[kNumExtraStrands];
+    std::unique_ptr<CA> strandDivA[kNumExtraStrands];
+    std::unique_ptr<SA> strandOctaveA[kNumExtraStrands];
+    std::unique_ptr<SA> strandDomA[kNumExtraStrands];
 
     int currentStep = -1;
 

@@ -35,7 +35,9 @@ public:
     {
         juce::File   file;
         juce::String name;
-        juce::String model;
+        juce::String model;        // shortened display name (SA Open 1.0, …)
+        juce::String engineMode;   // "Sampler" / "Wavetable"
+        juce::String seqMode;      // "Off" / "Step" / "Gen" / "Step + Gen"
         juce::String promptA;
         juce::String promptB;
         juce::StringArray tags;
@@ -50,6 +52,7 @@ public:
         double sampleRate = 0.0;
         int    numChannels = 0;
         int    numSamples  = 0;
+        float  inferenceMs = 0.0f;   // 0 → unknown / legacy preset
     };
 
     /** Display label for the user-presets-root pseudo-bank. */
@@ -319,7 +322,31 @@ private:
             e.promptB = synth->getProperty("promptB").toString();
             const auto rawModel = synth->getProperty("model").toString().trim();
             e.model = shortenModelName(rawModel);
+            // synth.inferenceMs is optional — added to format after the
+            // initial v3 release; older presets simply have 0.
+            e.inferenceMs = (float) (double) synth->getProperty("inferenceMs");
         }
+
+        if (auto* eng = root->getProperty("engine").getDynamicObject())
+        {
+            const auto m = eng->getProperty("mode").toString();
+            if (m == "wavetable")    e.engineMode = "Wavetable";
+            else if (m == "sampler") e.engineMode = "Sampler";
+            else if (m.isNotEmpty()) e.engineMode = m;
+        }
+
+        // Sequencer mode = combination of step seq + generative seq enables.
+        // The fields land in two different JSON blocks, so we derive a
+        // single human-readable string here.
+        bool stepEnabled = false, genEnabled = false;
+        if (auto* seq = root->getProperty("sequencer").getDynamicObject())
+            stepEnabled = (bool) seq->getProperty("enabled");
+        if (auto* gseq = root->getProperty("generativeSeq").getDynamicObject())
+            genEnabled  = (bool) gseq->getProperty("enabled");
+        if (stepEnabled && genEnabled) e.seqMode = "Step + Gen";
+        else if (stepEnabled)          e.seqMode = "Step";
+        else if (genEnabled)           e.seqMode = "Gen";
+        else                           e.seqMode = "Off";
 
         if (auto* arr = root->getProperty("tags").getArray())
             for (auto& v : *arr)
@@ -378,9 +405,8 @@ private:
             if (! sidebar.activeBank.isEmpty() && e.bank != sidebar.activeBank)
                 continue;
 
-            // Model filter (empty selection → all)
-            if (! sidebar.selectedModels.empty()
-                && sidebar.selectedModels.find(e.model) == sidebar.selectedModels.end())
+            // Model filter (XOR — empty active = show all)
+            if (! sidebar.activeModel.isEmpty() && e.model != sidebar.activeModel)
                 continue;
 
             // Tag filter (empty → all; otherwise need any-of-match)
@@ -439,7 +465,9 @@ private:
     public:
         /** Bank filter — empty string means "all banks". */
         juce::String activeBank;
-        std::set<juce::String> selectedModels;
+        /** Model filter — empty string means "all models" (XOR with the
+         *  rows in the MODEL section; clicking the active row deselects). */
+        juce::String activeModel;
         std::set<juce::String> selectedTags;
         std::function<void()> onChanged;
 
@@ -455,9 +483,9 @@ private:
             if (! activeBank.isEmpty()
                 && std::find(bankEntries.begin(), bankEntries.end(), activeBank) == bankEntries.end())
                 activeBank.clear();
-            for (auto it = selectedModels.begin(); it != selectedModels.end(); )
-                it = std::find(modelEntries.begin(), modelEntries.end(), *it) == modelEntries.end()
-                       ? selectedModels.erase(it) : std::next(it);
+            if (! activeModel.isEmpty()
+                && std::find(modelEntries.begin(), modelEntries.end(), activeModel) == modelEntries.end())
+                activeModel.clear();
             for (auto it = selectedTags.begin(); it != selectedTags.end(); )
                 it = std::find(tagEntries.begin(), tagEntries.end(), *it) == tagEntries.end()
                        ? selectedTags.erase(it) : std::next(it);
@@ -494,11 +522,11 @@ private:
                     g.setColour(juce::Colours::white);
                     g.setFont(juce::FontOptions(12.0f));
                     auto txt = it.rect.withTrimmedLeft(8);
-                    // Bank entries with an empty label are the "show all" marker.
-                    const auto display = (it.kind == Item::Kind::Bank && it.label.isEmpty())
-                                            ? juce::String("All")
-                                            : it.label;
-                    g.drawText(display, txt, juce::Justification::centredLeft, true);
+                    // Bank/Model entries with an empty label are the "show all" marker.
+                    const bool isAllRow = it.label.isEmpty()
+                        && (it.kind == Item::Kind::Bank || it.kind == Item::Kind::Model);
+                    g.drawText(isAllRow ? juce::String("All") : it.label,
+                               txt, juce::Justification::centredLeft, true);
                 }
             }
         }
@@ -568,6 +596,9 @@ private:
             {
                 area.removeFromTop(gap);
                 pushHeader("MODEL");
+                // "All" sentinel for the Model section too — empty label
+                // means "no model filter". Same XOR semantics as Bank.
+                pushRow(Item::Kind::Model, "");
                 for (auto& m : modelEntries) pushRow(Item::Kind::Model, m);
             }
 
@@ -584,8 +615,8 @@ private:
             switch (it.kind)
             {
                 case Item::Kind::Header: return false;
-                case Item::Kind::Bank:   return activeBank == it.label;
-                case Item::Kind::Model:  return selectedModels.count(it.label) > 0;
+                case Item::Kind::Bank:   return activeBank  == it.label;
+                case Item::Kind::Model:  return activeModel == it.label;
                 case Item::Kind::Tag:    return selectedTags.count(it.label) > 0;
             }
             return false;
@@ -596,9 +627,12 @@ private:
             switch (it.kind)
             {
                 case Item::Kind::Header: break;
-                case Item::Kind::Bank:   activeBank = it.label; break;
+                case Item::Kind::Bank:
+                    // XOR with toggle-off: clicking the active row deselects.
+                    activeBank  = (activeBank  == it.label) ? juce::String() : it.label;
+                    break;
                 case Item::Kind::Model:
-                    if (selectedModels.erase(it.label) == 0) selectedModels.insert(it.label);
+                    activeModel = (activeModel == it.label) ? juce::String() : it.label;
                     break;
                 case Item::Kind::Tag:
                     if (selectedTags.erase(it.label) == 0) selectedTags.insert(it.label);
@@ -676,8 +710,13 @@ private:
             sampleRate  = e.sampleRate;
             numChannels = e.numChannels;
             numSamples  = e.numSamples;
+            inferenceMs = e.inferenceMs;
+            model       = e.model;
+            engineMode  = e.engineMode;
+            seqMode     = e.seqMode;
             tags = e.tags;
             locked = e.isFactory;  // factory tags are read-only
+            cachedPromptW = -1;    // force recompute on next paint
             updateButtonsEnabled();
             resized();
             repaint();
@@ -708,72 +747,81 @@ private:
                                  ? juce::String::fromUTF8(" \xc2\xb7 ") + modified.formatted("%Y-%m-%d %H:%M")
                                  : juce::String()),
                        area.removeFromTop(16), juce::Justification::centredLeft, false);
+            area.removeFromTop(10);
+
+            // ── META block — compact label/value rows. Always rendered so the
+            //    detail card has a stable shape regardless of which fields a
+            //    given preset happens to expose. ──
+            const std::pair<const char*, juce::String> metaRows[] = {
+                { "MODEL",  model.isNotEmpty() ? model : juce::String() },
+                { "ENGINE", engineMode },
+                { "SEQ",    seqMode },
+                { "AUDIO",  audioInfoString() },
+                { "INFER",  inferenceString() },
+            };
+            for (auto& row : metaRows)
+                paintMetaRow(g, area.removeFromTop(16), row.first, row.second);
+
             area.removeFromTop(8);
 
-            // Reserve bottom: action strip + tag chip area + audio row + gaps
-            const int actionStripH = 28;
-            const int audioRowH    = 16;
-            const int tagBlockH    = 72;
+            // Reserve bottom: action strip + tag-input row + chip area
+            const int actionStripH = 32;
+            const int tagInputH    = 24;
             area.removeFromBottom(actionStripH);
             area.removeFromBottom(8);
-            const auto tagsRect = area.removeFromBottom(tagBlockH);
-            area.removeFromBottom(6);
-            const auto audioRow = area.removeFromBottom(audioRowH);
+            const auto tagInputRow = area.removeFromBottom(tagInputH);
             area.removeFromBottom(6);
 
-            // If the panel is too short to host the section grid, bail
-            // gracefully instead of issuing negative-height removeFromTop()s.
-            if (area.getHeight() < 60)
+            // Compute prompt-section heights from the actual wrapped text so
+            // there is no leftover gap between PROMPT A's body and PROMPT B's
+            // header. Caps prevent extreme prompts from squeezing the tags.
+            // Heights are cached and only recomputed when the available width
+            // changes (TextLayout::createLayout is the most expensive call in
+            // this paint and it dominates the click-to-redraw latency for
+            // libraries with even a handful of presets).
+            const int promptW = area.getWidth() - 6;
+            const int headerH = 14;
+            if (promptW != cachedPromptW)
             {
-                paintTagChips(g, tagsRect);
-                g.setColour(kDim);
-                g.setFont(juce::FontOptions(11.0f));
-                g.drawText("Resize panel for full details", audioRow,
-                           juce::Justification::centredLeft, false);
-                return;
+                cachedPromptHeightA = juce::jlimit(14, 80, wrappedTextHeight(promptA, promptW, 12.0f));
+                cachedPromptHeightB = juce::jlimit(14, 80, wrappedTextHeight(promptB, promptW, 12.0f));
+                cachedPromptW = promptW;
             }
+            const int promptBodyA = cachedPromptHeightA;
+            const int promptBodyB = cachedPromptHeightB;
 
-            // Sections are top-aligned with capped natural heights so prompt
-            // sections don't bloat into a wall of whitespace when the body text
-            // is short. Excess vertical space drops to the bottom (above the
-            // audio/tag area).
-            const int promptH = juce::jlimit(50, 90, area.getHeight() / (hasAxes ? 3 : 2) - 4);
-            paintSection(g, area.removeFromTop(promptH), "PROMPT A", promptA);
+            const int axesBlockH  = hasAxes ? (headerH + 3 * 16) : 0;
+            const int promptABlock = headerH + promptBodyA + 4;
+            const int promptBBlock = headerH + promptBodyB + 4;
+
+            // Tag chip area gets whatever space is left. Reserve a sane
+            // minimum so chips have somewhere to go even if a preset has
+            // long prompts.
+            const int needed = promptABlock + 6 + promptBBlock + (hasAxes ? 6 + axesBlockH : 0) + 8 + headerH;
+            const int tagsBlockH = juce::jmax(60, area.getHeight() - needed);
+
+            paintSection(g, area.removeFromTop(promptABlock), "PROMPT A", promptA);
             area.removeFromTop(6);
-            paintSection(g, area.removeFromTop(promptH), "PROMPT B", promptB);
+            paintSection(g, area.removeFromTop(promptBBlock), "PROMPT B", promptB);
             if (hasAxes)
             {
                 area.removeFromTop(6);
-                const int axesH = juce::jlimit(40, 70, area.getHeight());
-                paintAxes(g, area.removeFromTop(axesH));
+                paintAxes(g, area.removeFromTop(axesBlockH));
             }
+            area.removeFromTop(8);
 
-            // Audio info
-            g.setColour(kDim);
-            g.setFont(juce::FontOptions(11.0f));
-            juce::String audioStr;
-            if (numSamples > 0 && sampleRate > 0.0)
-            {
-                const auto sep = juce::String::fromUTF8(" \xc2\xb7 ");
-                const double secs = (double) numSamples / sampleRate;
-                audioStr << juce::String(secs, secs < 10.0 ? 2 : 1) << " s" << sep
-                         << juce::String((int) std::round(sampleRate / 1000.0)) << " kHz" << sep
-                         << (numChannels == 1 ? "mono" : (numChannels == 2 ? "stereo" : juce::String(numChannels) + " ch"));
-            }
-            else
-            {
-                audioStr = "no audio";
-            }
-            g.drawText(audioStr, audioRow, juce::Justification::centredLeft, false);
-
+            // TAGS section — header + chips fill remainder.
+            auto tagsRect = area.removeFromTop(juce::jmax(headerH + 4, area.getHeight()));
             paintTagChips(g, tagsRect);
+
+            juce::ignoreUnused(tagInputRow, tagsBlockH);
         }
 
         void resized() override
         {
             const int actionStripH = 32;
-            const int tagInputW    = 80;
-            const int tagBlockH    = 72;
+            const int tagInputW    = juce::jmin(120, getLocalBounds().getWidth() / 3);
+            const int tagInputH    = 24;
             auto bounds = getLocalBounds().reduced(12);
 
             // Action strip at bottom — Load is the only primary action.
@@ -785,9 +833,9 @@ private:
 
             bounds.removeFromBottom(8);
             // The tag chips are painted by paint(); only the input editor
-            // (bottom-right of the block) needs Component bounds.
-            auto tagsRect = bounds.removeFromBottom(tagBlockH);
-            tagInput.setBounds(tagsRect.removeFromBottom(24).removeFromRight(tagInputW));
+            // (its own row, full-width) needs Component bounds.
+            auto tagInputRow = bounds.removeFromBottom(tagInputH);
+            tagInput.setBounds(tagInputRow.removeFromRight(tagInputW));
         }
 
     private:
@@ -803,15 +851,71 @@ private:
             tagInput.setEnabled(entryValid && ! locked);
         }
 
+        /** Compact label/value row used by the META block. */
+        static void paintMetaRow(juce::Graphics& g, juce::Rectangle<int> r,
+                                 const juce::String& label, const juce::String& value)
+        {
+            g.setColour(kDim);
+            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.drawText(label, r.removeFromLeft(56), juce::Justification::centredLeft, false);
+            g.setColour(juce::Colours::white);
+            g.setFont(juce::FontOptions(11.5f));
+            const auto display = value.isEmpty()
+                                    ? juce::String::fromUTF8("\xe2\x80\x94")
+                                    : value;
+            g.drawText(display, r, juce::Justification::centredLeft, true);
+        }
+
+        juce::String audioInfoString() const
+        {
+            if (numSamples <= 0 || sampleRate <= 0.0) return {};
+            const auto sep = juce::String::fromUTF8(" \xc2\xb7 ");
+            const double secs = (double) numSamples / sampleRate;
+            juce::String s;
+            s << juce::String(secs, secs < 10.0 ? 2 : 1) << " s" << sep
+              << juce::String((int) std::round(sampleRate / 1000.0)) << " kHz" << sep
+              << (numChannels == 1 ? "mono" : (numChannels == 2 ? "stereo" : juce::String(numChannels) + " ch"));
+            return s;
+        }
+
+        juce::String inferenceString() const
+        {
+            if (inferenceMs <= 0.0f) return {};
+            const float secs = inferenceMs / 1000.0f;
+            return juce::String(secs, secs < 10.0f ? 1 : 0) + " s";
+        }
+
+        /** Width-aware wrapped-text height in px, computed via JUCE TextLayout.
+         *  Used to size PROMPT A/B sections to their actual content so there
+         *  is no stretched whitespace between them. */
+        static int wrappedTextHeight(const juce::String& text, int width, float fontSize)
+        {
+            if (text.isEmpty()) return juce::roundToInt(fontSize * 1.3f);
+            juce::AttributedString s;
+            s.append(text, juce::Font(juce::FontOptions(fontSize)), juce::Colours::white);
+            s.setWordWrap(juce::AttributedString::byWord);
+            s.setJustification(juce::Justification::topLeft);
+            juce::TextLayout layout;
+            layout.createLayout(s, (float) juce::jmax(20, width));
+            return juce::jmax(juce::roundToInt(fontSize * 1.3f),
+                              juce::roundToInt(std::ceil(layout.getHeight())));
+        }
+
         void paintSection(juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, const juce::String& body)
         {
             g.setColour(kDim);
             g.setFont(juce::FontOptions(kUiLabelFontMin, juce::Font::bold));
             g.drawText(title, r.removeFromTop(14), juce::Justification::centredLeft, false);
-            g.setColour(juce::Colours::white);
-            g.setFont(juce::FontOptions(12.0f));
-            g.drawFittedText(body.isEmpty() ? juce::String::fromUTF8("\xe2\x80\x94") : body,
-                             r, juce::Justification::topLeft, 6, 0.9f);
+            const auto displayBody = body.isEmpty()
+                                        ? juce::String::fromUTF8("\xe2\x80\x94")
+                                        : body;
+            // AttributedString matches the metrics used by wrappedTextHeight,
+            // so the section bounds we compute fit the actual rendered glyphs.
+            juce::AttributedString s;
+            s.append(displayBody, juce::Font(juce::FontOptions(12.0f)), juce::Colours::white);
+            s.setWordWrap(juce::AttributedString::byWord);
+            s.setJustification(juce::Justification::topLeft);
+            s.draw(g, r.toFloat());
         }
 
         void paintAxes(juce::Graphics& g, juce::Rectangle<int> r)
@@ -909,12 +1013,21 @@ private:
         bool hasAxes = false;
         bool locked = false;
         juce::String name, bank, promptA, promptB;
+        juce::String model, engineMode, seqMode;
         juce::Time modified;
         std::array<std::pair<juce::String, float>, 3> axes;
         double sampleRate = 0.0;
         int numChannels = 0;
         int numSamples = 0;
+        float inferenceMs = 0.0f;
         juce::StringArray tags;
+
+        // Cached prompt heights — invalidated on setEntry or when the
+        // available paint width changes. Avoids running TextLayout twice
+        // per paint frame.
+        int cachedPromptW = -1;
+        int cachedPromptHeightA = 14;
+        int cachedPromptHeightB = 14;
 
         struct ChipRect { juce::Rectangle<int> bounds; int index; };
         std::vector<ChipRect> chipRects;

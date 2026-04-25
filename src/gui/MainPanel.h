@@ -98,6 +98,12 @@ private:
      *  metadata stored inside the file stays consistent with the new
      *  filename. Returns true on success. */
     static bool patchPresetNameField(const juce::File& file, const juce::String& newName);
+
+    /** Re-write a .t5p file's embedded JSON `tags` array in place — audio,
+     *  prompts, axes etc. are untouched. This lets the user edit tags on
+     *  ANY preset in the library without first loading it (a full re-save
+     *  would otherwise overwrite the file with the engine's current state). */
+    static bool patchPresetTagsField(const juce::File& file, const juce::StringArray& newTags);
     // Shared implementation used by loadDefaultPreset / loadInitPreset:
     // writes the embedded binary to a temp file and routes it through the
     // standard PresetFormat loader. Returns false on failure.

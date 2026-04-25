@@ -74,6 +74,11 @@ bool PresetFormat::saveToFile(const juce::File& file, T5ynthProcessor& processor
         auto genSeed = static_cast<int>(processor.getValueTreeState()
                            .getRawParameterValue(PID::genSeed)->load());
         synth->setProperty("randomSeed", genSeed == -1);
+        // Persist the most recent inference duration (ms). Older presets
+        // miss this field; readers default to 0 → display "—".
+        if (processor.getLastGenerationTimeMs() > 0.0f)
+            synth->setProperty("inferenceMs",
+                               static_cast<double>(processor.getLastGenerationTimeMs()));
     }
 
     // Semantic axes (GUI-only state, 3 slots)

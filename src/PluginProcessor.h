@@ -74,6 +74,8 @@ public:
     const juce::String& getLastPresetName() const { return lastPresetName; }
     void setLastTags(const juce::StringArray& tags) { lastTags = tags; }
     const juce::StringArray& getLastTags() const { return lastTags; }
+    void setLastGenerationTimeMs(float ms) { lastGenerationTimeMs = ms; }
+    float getLastGenerationTimeMs() const { return lastGenerationTimeMs; }
 
     void setLastSeed(int s) { lastSeed = s; }
     int getLastSeed() const { return lastSeed; }
@@ -181,6 +183,7 @@ private:
     juce::String lastPresetName;
     juce::StringArray lastTags;
     juce::String lastPromptA, lastPromptB;
+    float lastGenerationTimeMs = 0.0f;
     int lastSeed = 123456789;
     std::array<AxisSlotState, 3> lastAxes;
     std::vector<float> lastEmbeddingA, lastEmbeddingB;

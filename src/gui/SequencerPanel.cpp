@@ -485,6 +485,57 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             addAndMakeVisible(strandRoleBoxes[i]);
             strandRoleA[i] = std::make_unique<CA>(apvts, kRolePIDs[i], strandRoleBoxes[i]);
         }
+
+        // Second GEN row: per-strand Div× / Octave / Dominance, one cluster
+        // per strand, aligned with the [Sx][Role] cluster above.
+        static const char* kDivPIDs[kNumExtraStrands] = {
+            PID::gen2DivMult, PID::gen3DivMult, PID::gen4DivMult, PID::gen5DivMult
+        };
+        static const char* kOctPIDs[kNumExtraStrands] = {
+            PID::gen2Octave, PID::gen3Octave, PID::gen4Octave, PID::gen5Octave
+        };
+        static const char* kDomPIDs[kNumExtraStrands] = {
+            PID::gen2Dominance, PID::gen3Dominance, PID::gen4Dominance, PID::gen5Dominance
+        };
+
+        juce::StringArray divItems;
+        for (const auto& e : StrandDivMult::kEntries) divItems.add(e.label);
+
+        for (int i = 0; i < kNumExtraStrands; ++i)
+        {
+            strandDivBoxes[i].addItemList(divItems, 1);
+            strandDivBoxes[i].setColour(juce::ComboBox::backgroundColourId, kSurface);
+            strandDivBoxes[i].setColour(juce::ComboBox::textColourId, kSeqCol);
+            strandDivBoxes[i].setColour(juce::ComboBox::outlineColourId, kBorder);
+            strandDivBoxes[i].setTooltip("Strand " + juce::String(i + 2) + " tempo multiplier");
+            addAndMakeVisible(strandDivBoxes[i]);
+            strandDivA[i] = std::make_unique<CA>(apvts, kDivPIDs[i], strandDivBoxes[i]);
+
+            strandOctaveSliders[i].setSliderStyle(juce::Slider::LinearBar);
+            strandOctaveSliders[i].setTextBoxStyle(juce::Slider::TextBoxLeft, false, 0, 0);
+            strandOctaveSliders[i].setRange(-2.0, 2.0, 1.0);
+            strandOctaveSliders[i].setColour(juce::Slider::backgroundColourId, kSurface);
+            strandOctaveSliders[i].setColour(juce::Slider::trackColourId, kSeqCol);
+            strandOctaveSliders[i].setColour(juce::Slider::textBoxTextColourId, kSeqCol);
+            strandOctaveSliders[i].setColour(juce::Slider::textBoxOutlineColourId, kBorder);
+            strandOctaveSliders[i].setTextValueSuffix(" Oct");
+            strandOctaveSliders[i].setTooltip("Strand " + juce::String(i + 2) + " octave shift");
+            addAndMakeVisible(strandOctaveSliders[i]);
+            strandOctaveA[i] = std::make_unique<SA>(apvts, kOctPIDs[i], strandOctaveSliders[i]);
+
+            strandDomSliders[i].setSliderStyle(juce::Slider::LinearBar);
+            strandDomSliders[i].setTextBoxStyle(juce::Slider::TextBoxLeft, false, 0, 0);
+            strandDomSliders[i].setColour(juce::Slider::backgroundColourId, kSurface);
+            strandDomSliders[i].setColour(juce::Slider::trackColourId, kSeqCol);
+            strandDomSliders[i].setColour(juce::Slider::textBoxTextColourId, kSeqCol);
+            strandDomSliders[i].setColour(juce::Slider::textBoxOutlineColourId, kBorder);
+            strandDomSliders[i].setNumDecimalPlacesToDisplay(2);
+            strandDomSliders[i].setTextValueSuffix(" Dom");
+            strandDomSliders[i].setTooltip("Strand " + juce::String(i + 2)
+                + " dominance — probability of snapping to field center on the cycle downbeat");
+            addAndMakeVisible(strandDomSliders[i]);
+            strandDomA[i] = std::make_unique<SA>(apvts, kDomPIDs[i], strandDomSliders[i]);
+        }
     }
 
     juce::StringArray scaleRootItems;
@@ -1105,6 +1156,9 @@ void SequencerPanel::resized()
     {
         strandEnableBtns[i].setVisible(genModeActive);
         strandRoleBoxes[i].setVisible(genModeActive);
+        strandDivBoxes[i].setVisible(genModeActive);
+        strandOctaveSliders[i].setVisible(genModeActive);
+        strandDomSliders[i].setVisible(genModeActive);
     }
 
     if (genModeActive)
@@ -1190,20 +1244,43 @@ void SequencerPanel::resized()
             if (genFieldRateRow) genFieldRateRow->setBounds(rowM.removeFromLeft(rateW));
             rowM.removeFromLeft(gapMid);
 
-            // Strand clusters
+            // Strand clusters — remember each cluster's x-extent so the
+            // per-strand-detail row beneath this one can align its columns.
+            int clusterX[kNumExtraStrands];
+            int clusterW[kNumExtraStrands];
             for (int i = 0; i < kNumExtraStrands; ++i)
             {
+                clusterX[i] = rowM.getX();
                 strandEnableBtns[i].setBounds(rowM.removeFromLeft(onW));
                 rowM.removeFromLeft(gapTiny);
                 if (i == kNumExtraStrands - 1)
                 {
-                    // Last role absorbs any rounding leftover so the row fills rowW exactly.
                     strandRoleBoxes[i].setBounds(rowM);
+                    clusterW[i] = (rowM.getRight()) - clusterX[i];
                 }
                 else
                 {
                     strandRoleBoxes[i].setBounds(rowM.removeFromLeft(roleW));
+                    clusterW[i] = (onW + gapTiny + roleW);
                     rowM.removeFromLeft(gapSm);
+                }
+            }
+            area.removeFromTop(2);
+
+            // ── Per-strand detail row: [Div×▾] [Octave==] [Dominance===]
+            // Each cluster spans the same x-extent as its parent [Sx][Role]
+            // cluster above, so the columns line up visually.
+            {
+                auto rowD = area.removeFromTop(genCtrlH);
+                const int cellGap = 2;
+                for (int i = 0; i < kNumExtraStrands; ++i)
+                {
+                    auto cell = juce::Rectangle<int>(clusterX[i], rowD.getY(), clusterW[i], rowD.getHeight());
+                    // Three sub-cells of equal width within the cluster.
+                    const int subW = (cell.getWidth() - 2 * cellGap) / 3;
+                    strandDivBoxes[i].setBounds(cell.removeFromLeft(subW));    cell.removeFromLeft(cellGap);
+                    strandOctaveSliders[i].setBounds(cell.removeFromLeft(subW)); cell.removeFromLeft(cellGap);
+                    strandDomSliders[i].setBounds(cell);
                 }
             }
             area.removeFromTop(g);

@@ -123,28 +123,19 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     presetManager.onTagsChanged = [this](const juce::File& file,
                                          const juce::StringArray& newTags)
     {
-        // Tag editing is only allowed on the currently loaded preset, since
-        // a full re-save captures the live processor state (prompts, audio,
-        // axes etc.). Editing tags on a *different* preset would silently
-        // overwrite that preset with whatever is currently in the engine.
+        // Surgical JSON-only patch — audio PCM and other fields are
+        // preserved byte-for-byte. Works for ANY preset in the library, not
+        // just the loaded one. If this IS the loaded preset, also keep the
+        // processor's lastTags in sync so a subsequent Save Preset doesn't
+        // resurrect the old tag list.
+        if (! patchPresetTagsField(file, newTags))
+        {
+            presetManager.setStatusText("Tag save failed", true);
+            return;
+        }
         if (file == currentPresetFile)
-        {
             processorRef.setLastTags(newTags);
-            if (PresetFormat::saveToFile(file, processorRef))
-            {
-                presetManager.refreshLibrary();
-                presetManager.setCurrentPreset(file, file.getFileNameWithoutExtension());
-                presetManager.setStatusText("Tags updated (preset re-saved with current state)");
-            }
-            else
-            {
-                presetManager.setStatusText("Tag save failed", true);
-            }
-        }
-        else
-        {
-            presetManager.setStatusText("Load preset first to edit its tags", true);
-        }
+        presetManager.setStatusText("Tags saved");
     };
     presetManager.onRenameRequested = [this](const juce::File& file)
     {
@@ -514,7 +505,12 @@ void MainPanel::hideSaveDialog()
     repaint();
 }
 
-bool MainPanel::patchPresetNameField(const juce::File& file, const juce::String& newName)
+namespace
+{
+/** Generic in-place patcher for the JSON header of a .t5p — caller mutates
+ *  the parsed DynamicObject; PCM tail is preserved byte-for-byte. */
+template <typename Mutator>
+bool patchPresetJson(const juce::File& file, Mutator mutate)
 {
     juce::MemoryBlock data;
     if (! file.loadFileAsData(data)) return false;
@@ -531,7 +527,8 @@ bool MainPanel::patchPresetNameField(const juce::File& file, const juce::String&
     auto parsed = juce::JSON::parse(oldJson);
     auto* root = parsed.getDynamicObject();
     if (root == nullptr) return false;
-    root->setProperty("name", newName);
+
+    mutate(*root);
 
     const juce::String newJson = juce::JSON::toString(parsed, true);
     const uint32_t newJsonLen = static_cast<uint32_t>(newJson.getNumBytesAsUTF8());
@@ -552,6 +549,30 @@ bool MainPanel::patchPresetNameField(const juce::File& file, const juce::String&
     out.flush();
     if (! out.getStatus().wasOk()) return false;
     return tmp.overwriteTargetFileWithTemporary();
+}
+}  // namespace
+
+bool MainPanel::patchPresetNameField(const juce::File& file, const juce::String& newName)
+{
+    return patchPresetJson(file, [&](juce::DynamicObject& root)
+    {
+        root.setProperty("name", newName);
+    });
+}
+
+bool MainPanel::patchPresetTagsField(const juce::File& file, const juce::StringArray& newTags)
+{
+    return patchPresetJson(file, [&](juce::DynamicObject& root)
+    {
+        if (newTags.isEmpty())
+        {
+            root.removeProperty("tags");
+            return;
+        }
+        juce::Array<juce::var> arr;
+        for (auto& t : newTags) arr.add(t);
+        root.setProperty("tags", arr);
+    });
 }
 
 juce::StringArray MainPanel::suggestTagsForCurrent()

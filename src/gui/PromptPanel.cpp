@@ -751,6 +751,7 @@ void PromptPanel::triggerGeneration()
                     self->lastGenPromptA_ = promptA;
                     self->lastGenPromptB_ = promptB;
                     self->syncSeedEditorDisplay(result.seed);
+                    processor.setLastGenerationTimeMs(result.generationTimeMs);
                     auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | seed "
                                 + juce::String(result.seed) + " | " + modelForLabel
                                 + " | " + deviceForLabel;
@@ -839,6 +840,7 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
                     self->lastGenPromptA_ = promptA;
                     self->lastGenPromptB_ = promptB;
                     self->syncSeedEditorDisplay(result.seed);
+                    processor.setLastGenerationTimeMs(result.generationTimeMs);
                     auto info = juce::String(result.generationTimeMs / 1000.0f, 1) + "s | auto regen";
                     if (self->onStatusChanged) self->onStatusChanged(info, false);
 
