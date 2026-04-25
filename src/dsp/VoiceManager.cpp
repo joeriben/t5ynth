@@ -27,6 +27,14 @@ const char* engineModeName(SynthVoice::EngineMode mode)
     }
     return "?";
 }
+
+void equalPowerPan(float pan, float& left, float& right)
+{
+    pan = juce::jlimit(-1.0f, 1.0f, pan);
+    const float angle = (pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+    left  = std::cos(angle);
+    right = std::sin(angle);
+}
 }
 
 void VoiceManager::prepare(double sampleRate, int samplesPerBlock)
@@ -37,6 +45,8 @@ void VoiceManager::prepare(double sampleRate, int samplesPerBlock)
         v.prepare(sampleRate, samplesPerBlock);
     for (auto& scratch : voiceScratch)
         scratch.resize(static_cast<size_t>(samplesPerBlock));
+    voicePan.fill(0.0f);
+    voiceSourceId.fill(-1);
     currentGain = 1.0f;
     targetGain = 1.0f;
     gainRampSamplesLeft = 0;
@@ -55,6 +65,8 @@ void VoiceManager::reset()
     hasCurrentBlockParams_ = false;
     droneVoiceIndex = -1;
     droneNote = -1;
+    voicePan.fill(0.0f);
+    voiceSourceId.fill(-1);
 }
 
 void VoiceManager::setBlockParams(const BlockParams& bp)
@@ -68,8 +80,12 @@ void VoiceManager::setBlockParams(const BlockParams& bp)
 // ═══════════════════════════════════════════════════════════════════
 
 void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
-                           bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode)
+                           bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode,
+                           int sourceId, float pan)
 {
+    sourceId = sourceId >= 0 ? juce::jlimit(0, 15, sourceId) : -1;
+    pan = juce::jlimit(-1.0f, 1.0f, pan);
+
     // ── Mono mode: always voice 0, legato (no retrigger if held) ──
     if (voiceLimit == 1)
     {
@@ -83,6 +99,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         bool legato = v.isActive() && !v.isReleasing();
         if (legato || (isBind && v.isActive()))
         {
+            voiceSourceId[0] = sourceId;
+            voicePan[0] = pan;
             // Glide pitch without retriggering envelopes
             // (If voice is releasing, re-hold it so it stays alive during glide)
             if (v.isReleasing())
@@ -103,6 +121,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
         if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable && currentWavetableMaster_ != nullptr)
             v.getOsc().shareFramesFrom(*currentWavetableMaster_);
         v.noteOn(note, velocity, false);
+        voiceSourceId[0] = sourceId;
+        voicePan[0] = pan;
         samplerVoiceDebugLog("noteOn mono trigger voice=0 note=" + juce::String(note)
                              + " velocity=" + juce::String(velocity, 3)
                              + " engine=" + juce::String(engineModeName(v.getEngineMode())));
@@ -150,7 +170,7 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
     }
 
     // Find a voice: re-trigger same note > free > steal oldest
-    int idx = findVoiceForNote(note);
+    int idx = findVoiceForNote(note, sourceId);
     if (idx < 0) idx = findFreeVoice();
     if (idx < 0) idx = stealVoice();
 
@@ -173,6 +193,8 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
     if (v.getEngineMode() == SynthVoice::EngineMode::Wavetable && currentWavetableMaster_ != nullptr)
         v.getOsc().shareFramesFrom(*currentWavetableMaster_);
     v.noteOn(note, velocity, false);
+    voiceSourceId[static_cast<size_t>(idx)] = sourceId;
+    voicePan[static_cast<size_t>(idx)] = pan;
     samplerVoiceDebugLog("noteOn poly trigger voice=" + juce::String(idx)
                          + " note=" + juce::String(note)
                          + " velocity=" + juce::String(velocity, 3)
@@ -203,13 +225,16 @@ void VoiceManager::noteOn(int note, float velocity, bool isBind, float glideMs,
     updateGainTarget();
 }
 
-void VoiceManager::noteOff(int note)
+void VoiceManager::noteOff(int note, int sourceId)
 {
+    sourceId = sourceId >= 0 ? juce::jlimit(0, 15, sourceId) : -1;
     for (int i = 0; i < MAX_VOICES; ++i)
     {
         if (i == droneVoiceIndex) continue; // drone holds independent of MIDI noteOff
         auto& v = voices[static_cast<size_t>(i)];
-        if (v.isActive() && !v.isReleasing() && v.getCurrentNote() == note)
+        const bool sourceMatches = sourceId < 0
+                                || voiceSourceId[static_cast<size_t>(i)] == sourceId;
+        if (v.isActive() && !v.isReleasing() && v.getCurrentNote() == note && sourceMatches)
         {
             if (hasCurrentBlockParams_)
                 v.configureForBlock(currentBlockParams_);
@@ -289,7 +314,11 @@ VoiceManager::VoiceOutput VoiceManager::renderBlock(
         v.renderBlock(scratch, bp, lfo1Buf, lfo2Buf, lfo3Buf, numSamples);
 
         if (!v.isActive())
+        {
+            voiceSourceId[static_cast<size_t>(vi)] = -1;
+            voicePan[static_cast<size_t>(vi)] = 0.0f;
             anyBecameInactive = true;
+        }
 
         activeIndices[activeCount++] = vi;
     }
@@ -304,14 +333,45 @@ VoiceManager::VoiceOutput VoiceManager::renderBlock(
                 currentGain = targetGain;
         }
 
-        float sum = 0.0f;
+        float monoSum = 0.0f;
+        float leftSum = 0.0f;
+        float rightSum = 0.0f;
         for (int a = 0; a < activeCount; ++a)
-            sum += voiceScratch[static_cast<size_t>(activeIndices[a])][static_cast<size_t>(i)];
+        {
+            const int vi = activeIndices[a];
+            const float sample = voiceScratch[static_cast<size_t>(vi)][static_cast<size_t>(i)];
+            monoSum += sample;
 
-        sum *= currentGain;
+            if (voiceSourceId[static_cast<size_t>(vi)] < 0)
+            {
+                leftSum += sample;
+                rightSum += sample;
+            }
+            else
+            {
+                float leftGain = 1.0f;
+                float rightGain = 1.0f;
+                equalPowerPan(voicePan[static_cast<size_t>(vi)], leftGain, rightGain);
+                leftSum  += sample * leftGain;
+                rightSum += sample * rightGain;
+            }
+        }
 
-        for (int ch = 0; ch < numChannels; ++ch)
-            buffer.setSample(ch, startSample + i, sum);
+        monoSum *= currentGain;
+        leftSum *= currentGain;
+        rightSum *= currentGain;
+
+        if (numChannels <= 1)
+        {
+            buffer.setSample(0, startSample + i, monoSum);
+        }
+        else
+        {
+            buffer.setSample(0, startSample + i, leftSum);
+            buffer.setSample(1, startSample + i, rightSum);
+            for (int ch = 2; ch < numChannels; ++ch)
+                buffer.setSample(ch, startSample + i, 0.5f * (leftSum + rightSum));
+        }
     }
 
     // Update gain target if voices became inactive during this block
@@ -392,12 +452,16 @@ void VoiceManager::distributeWavetableFrames(const WavetableOscillator& masterOs
 // Voice allocation helpers
 // ═══════════════════════════════════════════════════════════════════
 
-int VoiceManager::findVoiceForNote(int note) const
+int VoiceManager::findVoiceForNote(int note, int sourceId) const
 {
     for (int i = 0; i < voiceLimit; ++i)
     {
         if (i == droneVoiceIndex) continue;
+        const bool sourceMatches = sourceId >= 0
+                                ? voiceSourceId[static_cast<size_t>(i)] == sourceId
+                                : voiceSourceId[static_cast<size_t>(i)] < 0;
         if (voices[static_cast<size_t>(i)].isActive()
+            && sourceMatches
             && voices[static_cast<size_t>(i)].getCurrentNote() == note)
             return i;
     }
@@ -524,6 +588,8 @@ void VoiceManager::setDroneNote(int note, float velocity, bool lfo1TrigMode, boo
             v.getOsc().shareFramesFrom(*currentWavetableMaster_);
 
         v.noteOn(note, velocity, false);
+        voiceSourceId[static_cast<size_t>(idx)] = -1;
+        voicePan[static_cast<size_t>(idx)] = 0.0f;
         v.noteOnTimestamp = ++noteOnCounter;
         if (lfo1TrigMode) v.getPerVoiceLfo1().reset();
         if (lfo2TrigMode) v.getPerVoiceLfo2().reset();

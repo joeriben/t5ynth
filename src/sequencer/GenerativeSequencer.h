@@ -203,6 +203,8 @@ private:
         int    lastPlayedNote        = -1;
         int    previousOutputNote    = -1;     // survives note-offs for role voice-leading
         int    cycleCount            = 0;
+        float  spatialPan            = 0.0f;   // -1..+1, carried by this strand's MIDI channel
+        float  spatialTargetPan      = 0.0f;
 
         // Pattern data
         std::array<bool, MAX_STEPS> eucPattern{};
@@ -305,6 +307,10 @@ private:
     int    activeOtherStrandCount(const Strand& s) const;
     float  contextualFireProbability(const Strand& s, int stepIdx, bool isPulse, bool isStrong) const;
     float  metricGateScale(const Strand& s, int stepIdx, bool isPulse, bool isStrong) const;
+    int    midiChannelForStrand(const Strand& s) const;
+    float  spatialTargetForStrand(const Strand& s, int stepIdx, bool isPulse, bool isStrong) const;
+    float  updateSpatialPan(Strand& s, int stepIdx, bool isPulse, bool isStrong);
+    int    panControllerValue(float pan) const;
     int    pickNote(Strand& s, int stepIdx, int rawDegree);
     int    voiceLedFieldMember(int rawPc) const;
     bool   fieldContains(int pc) const;

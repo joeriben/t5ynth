@@ -70,6 +70,10 @@ public:
     void setLastPrompts(const juce::String& a, const juce::String& b) { lastPromptA = a; lastPromptB = b; }
     const juce::String& getLastPromptA() const { return lastPromptA; }
     const juce::String& getLastPromptB() const { return lastPromptB; }
+    void setLastPresetName(const juce::String& name) { lastPresetName = name; }
+    const juce::String& getLastPresetName() const { return lastPresetName; }
+    void setLastTags(const juce::StringArray& tags) { lastTags = tags; }
+    const juce::StringArray& getLastTags() const { return lastTags; }
 
     void setLastSeed(int s) { lastSeed = s; }
     int getLastSeed() const { return lastSeed; }
@@ -161,6 +165,7 @@ private:
     bool genModeActiveInAudio = false;  // tracks which engine is currently running
     int lastGenSteps = -1, lastGenPulses = -1, lastGenRotation = -1;
     float lastGenMutation = -1.0f;
+    std::array<float, 4> genStrandPan {};
 
     // Edge-detection for arp-toggle note-off cleanup. When arp transitions
     // false→true while a sequencer is running, the seq's currently-sounding
@@ -173,6 +178,8 @@ private:
     juce::String lastModel;
 
     // Preset metadata (stored here so preset save can access them)
+    juce::String lastPresetName;
+    juce::StringArray lastTags;
     juce::String lastPromptA, lastPromptB;
     int lastSeed = 123456789;
     std::array<AxisSlotState, 3> lastAxes;

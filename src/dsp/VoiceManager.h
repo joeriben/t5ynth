@@ -24,8 +24,9 @@ public:
 
     // ── MIDI handling ──
     void noteOn(int note, float velocity, bool isBind, float glideMs,
-                bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode);
-    void noteOff(int note);
+                bool lfo1TrigMode, bool lfo2TrigMode, bool lfo3TrigMode,
+                int sourceId = -1, float pan = 0.0f);
+    void noteOff(int note, int sourceId = -1);
     void allNotesOff();
 
     // ── Drone (step-hold) handling ──
@@ -105,9 +106,11 @@ private:
 
     // Pre-allocated per-voice scratch buffers
     std::array<std::vector<float>, MAX_VOICES> voiceScratch;
+    std::array<float, MAX_VOICES> voicePan {};
+    std::array<int, MAX_VOICES> voiceSourceId {};
 
     // ── Voice allocation ──
-    int findVoiceForNote(int note) const;
+    int findVoiceForNote(int note, int sourceId = -1) const;
     int findFreeVoice() const;
     int stealVoice() const; // oldest-note policy
 

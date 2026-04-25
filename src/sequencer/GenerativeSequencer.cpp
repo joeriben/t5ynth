@@ -59,6 +59,9 @@ double T5ynthGenerativeSequencer::shuffledStrandStepDurationSamples(const Strand
         }
     }
 
+    if (strandIndexOf(s) == 0)
+        return base * factor;
+
     const auto moment = metricMomentForStep(s, stepIdx);
     const double elasticity = static_cast<double>(0.012f + 0.030f * s.mutationRate);
     double metricFactor = 1.0;
@@ -465,7 +468,7 @@ void T5ynthGenerativeSequencer::allNotesOff(juce::MidiBuffer& midi, int sampleOf
     {
         if (s.lastPlayedNote >= 0)
         {
-            midi.addEvent(juce::MidiMessage::noteOff(1, s.lastPlayedNote), sampleOffset);
+            midi.addEvent(juce::MidiMessage::noteOff(midiChannelForStrand(s), s.lastPlayedNote), sampleOffset);
             s.lastPlayedNote = -1;
         }
         s.samplesUntilGateOff = -1.0;
@@ -583,7 +586,8 @@ void T5ynthGenerativeSequencer::rebuildPattern(Strand& s)
             // Accent if: downbeat, preceded by longest gap, or a contextual
             // metric group start (e.g. 9 = 3-3-3 / 4-4-1 depending on role).
             s.accentPattern[static_cast<size_t>(i)] =
-                (i == 0) || (gapBefore >= maxGapBefore) || isMetricStrongStep(s, i);
+                (i == 0) || (gapBefore >= maxGapBefore)
+                || (strandIndexOf(s) != 0 && isMetricStrongStep(s, i));
         }
     }
 
@@ -1198,6 +1202,10 @@ float T5ynthGenerativeSequencer::contextualFireProbability(const Strand& s, int 
                                                             bool isPulse,
                                                             bool isStrong) const
 {
+    if (strandIndexOf(s) == 0)
+        return isPulse ? (0.90f + 0.10f * (1.0f - s.mutationRate))
+                       : (s.mutationRate * 0.15f);
+
     const auto moment = metricMomentForStep(s, stepIdx);
     float probability = roleFireProbability(s, isPulse, isStrong);
 
@@ -1248,6 +1256,9 @@ float T5ynthGenerativeSequencer::metricGateScale(const Strand& s, int stepIdx,
                                                   bool isPulse,
                                                   bool isStrong) const
 {
+    if (strandIndexOf(s) == 0)
+        return 1.0f;
+
     const auto moment = metricMomentForStep(s, stepIdx);
     float scale = 1.0f;
 
@@ -1267,9 +1278,99 @@ float T5ynthGenerativeSequencer::metricGateScale(const Strand& s, int stepIdx,
     return juce::jlimit(0.35f, 1.25f, scale);
 }
 
+int T5ynthGenerativeSequencer::midiChannelForStrand(const Strand& s) const
+{
+    // Channel 2 is reserved by the step sequencer for bind/glide.
+    return juce::jlimit(1, 16, 3 + strandIndexOf(s));
+}
+
+float T5ynthGenerativeSequencer::spatialTargetForStrand(const Strand& s, int stepIdx,
+                                                         bool isPulse,
+                                                         bool isStrong) const
+{
+    const int idx = strandIndexOf(s);
+    static constexpr float kLanes[MAX_STRANDS] = { -0.32f, 0.34f, -0.62f, 0.66f };
+    const float lane = kLanes[static_cast<size_t>(idx)];
+    const float sign = lane >= 0.0f ? 1.0f : -1.0f;
+    const auto moment = metricMomentForStep(s, stepIdx);
+
+    float width = 0.45f;
+    float motion = 0.06f;
+    switch (s.role)
+    {
+        case Role::Anchor:  width = 0.24f; motion = 0.025f; break;
+        case Role::Line:    width = 0.42f; motion = 0.055f; break;
+        case Role::Density: width = 0.66f; motion = 0.085f; break;
+        case Role::Gesture: width = 0.82f; motion = 0.120f; break;
+    }
+
+    float target = sign * width;
+
+    if (moment.path == MetricPath::Gathering)
+        target *= 0.72f;
+    if (isStrong || moment.groupStart)
+        target *= s.role == Role::Anchor ? 0.55f : 0.74f;
+    if (moment.phraseEnd || moment.path == MetricPath::OpenBreath)
+        target = sign * juce::jmin(0.92f, std::abs(target) + 0.14f + 0.08f * s.mutationRate);
+
+    const int activeOthers = activeOtherStrandCount(s);
+    if (activeOthers <= 0)
+    {
+        target *= 0.76f;
+    }
+    else if (activeOthers >= 2)
+    {
+        target = sign * juce::jmin(0.95f, std::abs(target) + 0.08f * static_cast<float>(activeOthers));
+    }
+
+    if (!isPulse && !isStrong && (s.role == Role::Density || s.role == Role::Gesture))
+        target = sign * juce::jmin(0.95f, std::abs(target) + 0.06f);
+
+    const float phase = static_cast<float>(s.cycleCount) * 0.61f
+                      + static_cast<float>(stepIdx) * 0.37f
+                      + static_cast<float>(idx) * 1.93f;
+    target += std::sin(phase) * motion * (moment.groupEnd ? 1.35f : 1.0f);
+
+    return juce::jlimit(-0.95f, 0.95f, target);
+}
+
+float T5ynthGenerativeSequencer::updateSpatialPan(Strand& s, int stepIdx,
+                                                   bool isPulse,
+                                                   bool isStrong)
+{
+    s.spatialTargetPan = spatialTargetForStrand(s, stepIdx, isPulse, isStrong);
+
+    float slew = 0.12f;
+    switch (s.role)
+    {
+        case Role::Anchor:  slew = 0.07f; break;
+        case Role::Line:    slew = 0.13f; break;
+        case Role::Density: slew = 0.20f; break;
+        case Role::Gesture: slew = 0.16f; break;
+    }
+    if (isStrong)
+        slew += 0.05f;
+
+    if (s.cycleCount == 0 && s.scheduledStep == 0 && s.previousOutputNote < 0)
+        s.spatialPan = s.spatialTargetPan;
+    else
+        s.spatialPan += (s.spatialTargetPan - s.spatialPan) * juce::jlimit(0.02f, 0.35f, slew);
+
+    return juce::jlimit(-0.95f, 0.95f, s.spatialPan);
+}
+
+int T5ynthGenerativeSequencer::panControllerValue(float pan) const
+{
+    pan = juce::jlimit(-1.0f, 1.0f, pan);
+    return juce::jlimit(0, 127, juce::roundToInt((pan * 0.5f + 0.5f) * 127.0f));
+}
+
 int T5ynthGenerativeSequencer::baseMidiForStrand(const Strand& s) const
 {
     const int idx = strandIndexOf(s);
+    if (idx == 0)
+        return 48; // Legacy mono-gen voice: C3 base, transposed only by Seq Octave.
+
     int base = 60;
     switch (s.role)
     {
@@ -1517,6 +1618,15 @@ int T5ynthGenerativeSequencer::roleVelocityBase(const Strand& s, bool isPulse, b
 int T5ynthGenerativeSequencer::velocityForNote(const Strand& s, int stepIdx, int note,
                                                 bool isPulse, bool isStrong)
 {
+    if (strandIndexOf(s) == 0)
+    {
+        const int baseVel = !isPulse ? 55
+                          : s.accentPattern[static_cast<size_t>(stepIdx)] ? 100
+                          : 85;
+        std::uniform_int_distribution<int> velJitter(-5, 5);
+        return juce::jlimit(1, 127, baseVel + velJitter(rng));
+    }
+
     int velocity = roleVelocityBase(s, isPulse, isStrong);
     const auto moment = metricMomentForStep(s, stepIdx);
 
@@ -1569,6 +1679,9 @@ int T5ynthGenerativeSequencer::velocityForNote(const Strand& s, int stepIdx, int
 
 float T5ynthGenerativeSequencer::roleGateFraction(const Strand& s) const
 {
+    if (strandIndexOf(s) == 0)
+        return gate_;
+
     switch (s.role)
     {
         case Role::Anchor:  return juce::jlimit(0.10f, 1.35f, gate_ * 1.20f);
@@ -1583,6 +1696,18 @@ int T5ynthGenerativeSequencer::pickNote(Strand& s, int stepIdx, int rawDegree)
 {
     auto scale = static_cast<ScaleQuantizer::Scale>(
         juce::jlimit(1, static_cast<int>(ScaleQuantizer::COUNT) - 1, scaleType));
+
+    if (strandIndexOf(s) == 0)
+    {
+        const int octaveOffset = s.octaveShift * 12;
+        const int patternNote = s.notePattern[static_cast<size_t>(stepIdx)];
+        if (patternNote > 0)
+            return juce::jlimit(0, 127, patternNote + octaveOffset);
+
+        const int baseNote = baseMidiForStrand(s) + octaveOffset;
+        return juce::jlimit(0, 127,
+            ScaleQuantizer::degreeToMidi(rawDegree, scaleRoot, scale, baseNote));
+    }
 
     const bool isStrong = (stepIdx == 0)
                        || s.accentPattern[static_cast<size_t>(stepIdx)]
@@ -1602,10 +1727,22 @@ int T5ynthGenerativeSequencer::pickNote(Strand& s, int stepIdx, int rawDegree)
         case Role::Anchor:
         {
             const int anchorBase = baseMidiForStrand(s) + s.octaveShift * 12;
-            const int pc = (pullToCenter || isStrong)
-                         ? voiceLedFieldMember(pitchField.centerPc)
-                         : fieldPcNearCenterByIndex(rawDegree / 2);
-            note = closestMidiForPc(pc, anchorBase);
+            const auto moment = metricMomentForStep(s, stepIdx);
+            const bool settleToCenter = (stepIdx == 0)
+                                     && ((s.cycleCount % 2) == 0 || pullToCenter);
+            int pc = settleToCenter
+                   ? voiceLedFieldMember(pitchField.centerPc)
+                   : fieldPcNearCenterByIndex(rawDegree + stepIdx + s.cycleCount * 2);
+            note = nearestFieldMidi(closestMidiForPc(pc, anchorBase),
+                                    s.previousOutputNote, pc);
+            if (!settleToCenter && s.previousOutputNote >= 0
+                && wrapPc(note) == wrapPc(s.previousOutputNote)
+                && (moment.groupStart || moment.groupEnd))
+            {
+                pc = fieldPcNearCenterByIndex(rawDegree + stepIdx + s.cycleCount * 2 + 1);
+                note = nearestFieldMidi(closestMidiForPc(pc, anchorBase),
+                                        s.previousOutputNote, pc);
+            }
             break;
         }
 
@@ -1662,7 +1799,7 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         {
             if (st.lastPlayedNote >= 0)
             {
-                midi.addEvent(juce::MidiMessage::noteOff(1, st.lastPlayedNote), 0);
+                midi.addEvent(juce::MidiMessage::noteOff(midiChannelForStrand(st), st.lastPlayedNote), 0);
                 st.lastPlayedNote = -1;
             }
             st.currentStep = 0;
@@ -1733,7 +1870,7 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         {
             if (s.lastPlayedNote >= 0)
             {
-                midi.addEvent(juce::MidiMessage::noteOff(1, s.lastPlayedNote), eventPos);
+                midi.addEvent(juce::MidiMessage::noteOff(midiChannelForStrand(s), s.lastPlayedNote), eventPos);
                 s.lastPlayedNote = -1;
             }
             s.samplesUntilGateOff = -1.0;
@@ -1755,7 +1892,7 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         // Note-off for this strand's previous note
         if (s.lastPlayedNote >= 0)
         {
-            midi.addEvent(juce::MidiMessage::noteOff(1, s.lastPlayedNote), eventPos);
+            midi.addEvent(juce::MidiMessage::noteOff(midiChannelForStrand(s), s.lastPlayedNote), eventPos);
             s.lastPlayedNote = -1;
         }
 
@@ -1789,9 +1926,12 @@ void T5ynthGenerativeSequencer::processBlock(juce::AudioBuffer<float>& buffer,
         {
             const int note = pickNote(s, stepIdx, rawDegree);
             const double stepDur = shuffledStrandStepDurationSamples(s, stepIdx);
+            const int channel = midiChannelForStrand(s);
+            const float pan = updateSpatialPan(s, stepIdx, isPulse, isStrong);
 
             const int velInt = velocityForNote(s, stepIdx, note, isPulse, isStrong);
-            midi.addEvent(juce::MidiMessage::noteOn(1, note,
+            midi.addEvent(juce::MidiMessage::controllerEvent(channel, 10, panControllerValue(pan)), eventPos);
+            midi.addEvent(juce::MidiMessage::noteOn(channel, note,
                           static_cast<juce::uint8>(velInt)), eventPos);
 
             s.lastPlayedNote       = note;

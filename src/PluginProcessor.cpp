@@ -1022,6 +1022,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // (seqRunning already read above for idle detection)
     float seqBpm = parameters.getRawParameterValue(PID::seqBpm)->load();
     int seqSteps = static_cast<int>(parameters.getRawParameterValue(PID::seqSteps)->load());
+    int seqOctaveShift = static_cast<int>(parameters.getRawParameterValue(PID::seqOctave)->load()) - 2;
     float seqGate = parameters.getRawParameterValue(PID::seqGate)->load();
     float seqShuffle = parameters.getRawParameterValue(PID::seqShuffle)->load();
     int seqPreset = static_cast<int>(parameters.getRawParameterValue(PID::seqPreset)->load());
@@ -1234,6 +1235,17 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
                 generativeSequencer.setStrandRole(i, static_cast<int>(
                     parameters.getRawParameterValue(ids.role)->load()));
+
+                if (i == 0)
+                {
+                    // Strand 0 is the legacy mono-gen voice: preserve its
+                    // original melody/rhythm and let only Seq Octave transpose it.
+                    generativeSequencer.setStrandOctave(i, seqOctaveShift);
+                    generativeSequencer.setStrandDivMult(i, 1.0f);
+                    generativeSequencer.setStrandDominance(i, 0.0f);
+                    continue;
+                }
+
                 generativeSequencer.setStrandOctave(i, static_cast<int>(
                     parameters.getRawParameterValue(ids.octave)->load()));
                 {
@@ -1243,10 +1255,6 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 }
                 generativeSequencer.setStrandDominance(i, static_cast<float>(
                     parameters.getRawParameterValue(ids.dominance)->load()));
-
-                // Strand 0's Euclidean params are already pushed above via setSteps/setPulses/etc.
-                // (kept distinct so the existing drift-writeback logic remains untouched).
-                if (i == 0) continue;
 
                 const bool sFix = parameters.getRawParameterValue(ids.fixSteps   )->load() > 0.5f;
                 const bool pFix = parameters.getRawParameterValue(ids.fixPulses  )->load() > 0.5f;
@@ -1506,7 +1514,12 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                     {
                         int note = msg.getNoteNumber();
                         float velocity = msg.getFloatVelocity();
-                        bool isBind = (msg.getChannel() == 2);
+                        const int channel = msg.getChannel();
+                        bool isBind = (channel == 2);
+                        const int genSourceId = (channel >= 3 && channel <= 6) ? channel - 3 : -1;
+                        const float sourcePan = genSourceId >= 0
+                                              ? genStrandPan[static_cast<size_t>(genSourceId)]
+                                              : 0.0f;
 
                         lastMidiNote.store(note, std::memory_order_relaxed);
                         lastMidiVelocity.store(juce::roundToInt(velocity * 127.0f),
@@ -1515,13 +1528,26 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
 
                         voiceManager.noteOn(note, velocity, isBind,
                             isBind ? 0.0f : stepSequencer.getGlideTime(),
-                            lfo1TrigMode, lfo2TrigMode, lfo3TrigMode);
+                            lfo1TrigMode, lfo2TrigMode, lfo3TrigMode,
+                            genSourceId, sourcePan);
                     }
                     else if (msg.isNoteOff())
                     {
-                        voiceManager.noteOff(msg.getNoteNumber());
+                        const int channel = msg.getChannel();
+                        const int genSourceId = (channel >= 3 && channel <= 6) ? channel - 3 : -1;
+                        voiceManager.noteOff(msg.getNoteNumber(), genSourceId);
                         if (!voiceManager.hasActiveVoices())
                             lastMidiNoteOn.store(false, std::memory_order_relaxed);
+                    }
+                    else if (msg.isController()
+                             && msg.getControllerNumber() == 10
+                             && msg.getChannel() >= 3
+                             && msg.getChannel() <= 6)
+                    {
+                        const int genSourceId = msg.getChannel() - 3;
+                        const float value = static_cast<float>(msg.getControllerValue()) / 127.0f;
+                        genStrandPan[static_cast<size_t>(genSourceId)] =
+                            juce::jlimit(-1.0f, 1.0f, value * 2.0f - 1.0f);
                     }
                     ++midiIter;
                 }
