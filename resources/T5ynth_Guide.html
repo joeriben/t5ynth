@@ -360,21 +360,26 @@ You have two text input fields. Each prompt is encoded into a <strong>768-dimens
 These embedding vectors — not the text itself — are what steers the diffusion model. T5ynth operates on them as geometric objects: moving, blending, scaling, and perturbing them before any audio is generated.
 </p>
 <ul>
-  <li><strong>Single prompt</strong> — enter text in Prompt A only. The model generates audio matching that description.</li>
-  <li><strong>Two prompts</strong> — enter text in both A and B. The <em>Alpha</em> slider navigates between them in embedding space.</li>
+  <li><strong>Two prompts</strong> — enter text in both A and B. The <em>Alpha</em> slider (labeled <strong>A ↔ B</strong>) interpolates between them in embedding space.</li>
+  <li><strong>One prompt + Echoraum</strong> — leave one field empty. The empty field becomes the <em>reflection</em> of the present prompt through the model's neutral encoding (the encoding of <code>""</code>, also used as <code>emb_neutral</code> in the Semantic Axes math): geometrically <code>2·neutral − other</code>. Alpha then traces a path from the prompt through the model-neutral midpoint to the prompt's tonal antipode — sounds the prompt actively isn't. A and B are peers; either side may be the empty one.</li>
+  <li><strong>Both empty</strong> — both embeddings collapse to the neutral encoding. The model produces its own self-portrait (pure unconditional sampling), varying with the seed.</li>
 </ul>
 
 <div class="tip">
   Prompts should describe <strong>sound qualities</strong>, not musical genres. "A warm resonant drone with metallic harmonics" works better than "ambient techno." The model has no reliable concept of genre.
 </div>
 
+<div class="tip">
+  Leaving a field empty is an <strong>active musical decision</strong>, not a fallback. If you want the same character regardless of the A ↔ B slider, type the same text in both fields — that is mathematically equivalent to a pinned single-prompt sound (since <code>0.5·A + 0.5·A = A</code> for every value of Alpha).
+</div>
+
 <h3>Generation Controls</h3>
 <table>
   <tr><th>Control</th><th>Range</th><th>What It Does</th></tr>
   <tr>
-    <td><strong>Alpha</strong></td>
+    <td><strong>Alpha (A ↔ B)</strong></td>
     <td>-2.0 … +2.0</td>
-    <td>Navigates between Prompt A (−1) and Prompt B (+1) <strong>in embedding space, not in audio</strong>. This is not a crossfade or mix of two audio signals — it is movement through a semantic space. The midpoint (0) is not "half A plus half B" in any audible sense; it is a new point in meaning-space that the model interprets independently. For example, if Prompt A is <em>"bowed cello, sustained"</em> and Prompt B is <em>"crackling fire"</em>, the midpoint will not sound like cello mixed with fire — it might produce something like a warm, textured, resonant hum that resembles neither source directly. Values beyond ±1 <em>extrapolate</em> — pushing past either pole into regions of the embedding space that no text prompt would naturally reach. The slider uses a quadratic curve for fine control near the center.</td>
+    <td>Navigates between Prompt A (−1) and Prompt B (+1) <strong>in embedding space, not in audio</strong>. This is not a crossfade or mix of two audio signals — it is movement through a semantic space. The midpoint (0) is not "half A plus half B" in any audible sense; it is a new point in meaning-space that the model interprets independently. For example, if Prompt A is <em>"bowed cello, sustained"</em> and Prompt B is <em>"crackling fire"</em>, the midpoint will not sound like cello mixed with fire — it might produce something like a warm, textured, resonant hum that resembles neither source directly. Values beyond ±1 <em>extrapolate</em> — pushing past either pole into regions of the embedding space that no text prompt would naturally reach. When one prompt field is left empty, the empty side is the Echoraum reflection of the other, so Alpha sweeps from the prompt through the model-neutral midpoint to its antipode (see <a href="#gen">the Prompts section</a>). The slider uses a quadratic curve for fine control near the center.</td>
   </tr>
   <tr>
     <td><strong>Magnitude</strong></td>
@@ -471,8 +476,9 @@ The Dimension Explorer gives you direct access to all <strong>768 individual dim
 After generating audio, T5ynth receives the 768-dimensional embedding vectors for your prompts. The DimExplorer displays these as a row of vertical bars — one per dimension, sorted by magnitude (the most significant dimensions appear on the left).
 </p>
 <ul>
-  <li><strong>With two prompts:</strong> Each bar shows the <em>difference</em> between Prompt A and Prompt B for that dimension. <span style="color:var(--green)">Green</span> bars point toward A, <span style="color:var(--accent2)">orange</span> bars toward B. The leftmost bars are the dimensions where your two prompts differ most — editing here affects the A/B contrast. The rightmost bars are where A and B are nearly identical — editing here changes what both prompts share, often producing more fundamental sonic shifts.</li>
-  <li><strong>With one prompt:</strong> Bars show the absolute activation values of the embedding.</li>
+  <li>Each bar shows the <em>difference</em> between Embedding A and Embedding B for that dimension. <span style="color:var(--green)">Green</span> bars point toward A, <span style="color:var(--accent2)">orange</span> bars toward B. The leftmost bars are the dimensions where the two embeddings differ most — editing here affects the A/B contrast. The rightmost bars are where A and B are nearly identical — editing here changes what both share, often producing more fundamental sonic shifts.</li>
+  <li>If one prompt field is empty, the absent side is the <strong>Echoraum reflection</strong> of the present one (<code>2·neutral − other</code>), not a zero vector. The orange/green bars then read as opposing in a structured way: dimensions where the prompt is most articulate are the dimensions where the echo opposes it most strongly.</li>
+  <li>If both fields are empty, A and B are both the neutral encoding, so all bars collapse — there is no A↔B contrast to display.</li>
 </ul>
 
 <h4>What You Can Do</h4>
@@ -886,7 +892,7 @@ Same prompt + different seed = very different audio. If a prompt feels right but
 
 <h4>4. Alpha for morphing, not mixing</h4>
 <p>
-Alpha is not a volume crossfade. It interpolates in embedding space — the midpoint (0.0) is often <em>not</em> a blend of A and B but something new. Use Alpha to discover unexpected sounds between your two prompts. Push it past ±1.0 to extrapolate.
+Alpha is not a volume crossfade. It interpolates in embedding space — the midpoint (0.0) is often <em>not</em> a blend of A and B but something new. Use Alpha to discover unexpected sounds between your two prompts. Push it past ±1.0 to extrapolate. If you leave one prompt field empty, Alpha sweeps from your prompt through the model-neutral midpoint to its <em>antipode</em> — the Echoraum trajectory, sounds the prompt actively isn't.
 </p>
 
 <h4>5. One axis at a time</h4>
@@ -1099,9 +1105,10 @@ Top-down view of every stage from text prompt to stereo output. Each outer box i
 │             EMBEDDING SPACE   (768d, JUCE → Python)             │
 │                                                                 │
 │ Prompt A  ──→  T5 Encoder  ──→  Embedding A ─┐                  │
+│   (empty A → Echoraum: 2·neutral − B)         │                 │
 │                                               │                 │
 │ Prompt B  ──→  T5 Encoder  ──→  Embedding B ─┤                  │
-│                                               ▼                 │
+│   (empty B → Echoraum: 2·neutral − A)         ▼                 │
 │                 Interpolate along alpha (A↔B)                   │
 │                               │                                 │
 │       Semantic Axes  ──→  + axis offsets                        │
@@ -1179,7 +1186,7 @@ Same pipeline from a parameter-routing perspective: which UI control feeds which
     │                                     │
     ├─ Prompt A text ──────────────────── T5 Tokenizer + Encoder ─── emb_a [1, seq, 768]
     ├─ Prompt B text ──────────────────── T5 Tokenizer + Encoder ─── emb_b [1, seq, 768]
-    │                                     │
+    │                                     │   (empty side → 2·emb_neutral − other)
     ├─ Alpha ─────────────────────────── Interpolate(emb_a, emb_b, alpha)
     │                                     │
     ├─ Dimension Offsets ─────────────── Add per-dim offsets to embedding
