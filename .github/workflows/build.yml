@@ -216,9 +216,18 @@ jobs:
             -PassThru
           Start-Sleep -Seconds 5
           if ($proc.HasExited) {
+            $stdoutBytes = if (Test-Path $stdoutLog) { [System.IO.File]::ReadAllBytes($stdoutLog) } else { @() }
+            $stderrText = if (Test-Path $stderrLog) { Get-Content $stderrLog -Raw } else { "" }
+            $stdoutText = if ($stdoutBytes.Length -gt 0) { [System.Text.Encoding]::UTF8.GetString($stdoutBytes) } else { "" }
+            $sentReadyFrame = $stdoutBytes.Length -gt 0 -and $stdoutBytes[0] -eq 2 -and $stdoutText.Contains('"devices"')
+            $smokeTestNotice = $stderrText.Contains("smoke-test mode")
+            if ($sentReadyFrame -and $smokeTestNotice) {
+              Write-Host "Bundled backend emitted ready frame and exited after smoke-test startup."
+              exit 0
+            }
             Write-Host "::error::Bundled backend exited early with code $($proc.ExitCode)"
-            if (Test-Path $stdoutLog) { Get-Content $stdoutLog }
-            if (Test-Path $stderrLog) { Get-Content $stderrLog }
+            if ($stdoutText) { Write-Host $stdoutText }
+            if ($stderrText) { Write-Host $stderrText }
             exit 1
           }
           Stop-Process -Id $proc.Id -Force
