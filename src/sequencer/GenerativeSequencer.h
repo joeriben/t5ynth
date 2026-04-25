@@ -38,7 +38,10 @@ class T5ynthGenerativeSequencer
 {
 public:
     static constexpr int MAX_STEPS   = 32;
-    static constexpr int MAX_STRANDS = 4;
+    // 5 = the S1 reference voice + 4 secondary strands, so each of the four
+    // textural roles (Anchor / Line / Density / Gesture) can be assigned to
+    // its own strand alongside the reference.
+    static constexpr int MAX_STRANDS = 5;
 
     T5ynthGenerativeSequencer();
 

@@ -1034,7 +1034,8 @@ float T5ynthGenerativeSequencer::spatialTargetForStrand(const Strand& s) const
     // Static lane per strand index. The previous metric/role-modulated
     // sinusoid was a Pseudo-Prinzip layer (decoration without musical cause)
     // and is removed. Stereo separation comes from the lane choice alone.
-    static constexpr float kLanes[MAX_STRANDS] = { -0.32f, 0.34f, -0.62f, 0.66f };
+    // S5 sits dead-centre to fill the remaining gap between the inner pair.
+    static constexpr float kLanes[MAX_STRANDS] = { -0.32f, 0.34f, -0.62f, 0.66f, 0.0f };
     return kLanes[static_cast<size_t>(strandIndexOf(s))];
 }
 
@@ -1066,7 +1067,10 @@ int T5ynthGenerativeSequencer::baseMidiForStrand(const Strand& s) const
         case Role::Gesture: base = 72; break;
     }
 
-    static constexpr int kStrandRegisterOffsets[MAX_STRANDS] = { 0, -7, 5, 12 };
+    // Default register stagger relative to the role base. S5 is offset an
+    // octave below the role base to give the user a deep-bass option that
+    // is otherwise absent from the {-7, +5, +12} family.
+    static constexpr int kStrandRegisterOffsets[MAX_STRANDS] = { 0, -7, 5, 12, -12 };
     return juce::jlimit(24, 96, base + kStrandRegisterOffsets[static_cast<size_t>(idx)]);
 }
 
