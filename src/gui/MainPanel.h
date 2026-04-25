@@ -27,13 +27,26 @@ public:
     SettingsPage& getModelPanel() { return settingsPage; }
 
 private:
+    class GenerateButton : public juce::TextButton
+    {
+    public:
+        explicit GenerateButton(const juce::String& label);
+
+        void setAnimationState(float phase, bool isGenerating);
+        void paintButton(juce::Graphics& g, bool highlighted, bool down) override;
+
+    private:
+        float animationPhase = 0.0f;
+        bool generating = false;
+    };
+
     T5ynthProcessor& processorRef;
 
     // Col 1: GENERATION — three cards with headers
     juce::Label oscHeader, axesHeader, dimHeader, axesNote, poweredByLabel;
     PromptPanel promptPanel;
     AxesPanel axesPanel;
-    juce::TextButton mainGenerateBtn { "Generate" };
+    GenerateButton mainGenerateBtn { "GENERATE" };
     float glowPhase = 0.0f;
     bool glowGenerating = false;
     void timerCallback() override;

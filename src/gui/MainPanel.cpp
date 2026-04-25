@@ -4,6 +4,7 @@
 #include "../presets/PresetTagSuggester.h"
 #include "GuiHelpers.h"
 #include "BinaryData.h"
+#include <cmath>
 #include <cstring>
 #include <thread>
 
@@ -46,6 +47,108 @@ juce::StringArray getWindowsCompanionBackendRoots()
     return roots;
 }
 #endif
+
+}
+
+MainPanel::GenerateButton::GenerateButton(const juce::String& label)
+    : juce::TextButton(label)
+{
+    setTooltip("Generate audio from the current prompts and latent controls");
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+}
+
+void MainPanel::GenerateButton::setAnimationState(float phase, bool isGenerating)
+{
+    animationPhase = phase;
+    generating = isGenerating;
+    repaint();
+}
+
+void MainPanel::GenerateButton::paintButton(juce::Graphics& g, bool highlighted, bool down)
+{
+    auto bounds = getLocalBounds().toFloat().reduced(1.0f);
+    if (bounds.getWidth() <= 0.0f || bounds.getHeight() <= 0.0f)
+        return;
+
+    const bool active = isEnabled() || generating;
+    bounds = bounds.translated(0.0f, down ? 1.0f : 0.0f);
+    const auto body = bounds.reduced(2.0f);
+
+    auto base = kCard.brighter(highlighted ? 0.06f : 0.02f);
+    if (down)
+        base = base.darker(0.12f);
+
+    g.setColour(base.withAlpha(active ? 1.0f : 0.55f));
+    g.fillRect(body);
+
+    const auto border = kOscCol;
+    const float borderAlpha = active ? (highlighted || generating ? 0.92f : 0.74f) : 0.34f;
+    g.setColour(border.withAlpha(borderAlpha));
+    g.drawRect(body, 1.2f);
+
+    g.setColour(border.withAlpha(active ? 0.20f : 0.08f));
+    g.drawRect(body.reduced(3.0f), 1.0f);
+
+    g.setColour(kBg.withAlpha(0.35f));
+    g.drawLine(body.getX() + 4.0f, body.getBottom() - 1.0f,
+               body.getRight() - 2.0f, body.getBottom() - 1.0f, 1.0f);
+
+    static const juce::Colour palette[] = {
+        juce::Colour(0xff667eea), juce::Colour(0xffe91e63),
+        juce::Colour(0xff7C4DFF), juce::Colour(0xffFF6F00),
+        juce::Colour(0xff4CAF50), juce::Colour(0xff00BCD4)
+    };
+    static constexpr int numColours = static_cast<int>(sizeof(palette) / sizeof(palette[0]));
+    static constexpr const char* word = "GENERATE";
+    static constexpr int numLetters = 8;
+
+    auto textArea = body.reduced(12.0f, 5.0f);
+    float fontSize = juce::jlimit(16.0f, 24.0f, bounds.getHeight() * 0.40f);
+
+    auto measureWord = [](float fs)
+    {
+        const int tracking = juce::roundToInt(fs * 0.15f);
+        int total = 0;
+        for (int i = 0; i < numLetters; ++i)
+        {
+            if (i > 0)
+                total += tracking;
+
+            char letterText[] = { word[i], 0 };
+            total += measureTextWidth(juce::String(letterText), fs);
+        }
+        return total;
+    };
+
+    int wordW = measureWord(fontSize);
+    if (wordW > textArea.getWidth())
+    {
+        fontSize = juce::jmax(12.0f, fontSize * textArea.getWidth() / static_cast<float>(wordW));
+        wordW = measureWord(fontSize);
+    }
+
+    const int tracking = juce::roundToInt(fontSize * 0.15f);
+    const int textH = juce::roundToInt(fontSize * 1.35f);
+    int x = juce::roundToInt(textArea.getCentreX() - static_cast<float>(wordW) * 0.5f);
+    const int y = juce::roundToInt(textArea.getCentreY() - static_cast<float>(textH) * 0.5f);
+    const int colourOffset = generating
+        ? static_cast<int>(std::floor((animationPhase / juce::MathConstants<float>::twoPi) * numColours)) % numColours
+        : 0;
+
+    g.setFont(juce::Font(juce::FontOptions(fontSize, juce::Font::bold)));
+    for (int i = 0; i < numLetters; ++i)
+    {
+        if (i > 0)
+            x += tracking;
+
+        char letterText[] = { word[i], 0 };
+        juce::String ch(letterText);
+        const int cw = measureTextWidth(ch, fontSize);
+        auto colour = palette[(i + colourOffset) % numColours];
+        g.setColour(colour.withAlpha(active ? 0.96f : 0.45f));
+        g.drawText(ch, x, y, cw + 2, textH, juce::Justification::centredLeft);
+        x += cw;
+    }
 }
 
 MainPanel::MainPanel(T5ynthProcessor& processor)
@@ -306,21 +409,22 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
 
 
 
-    // Status callback — show in Generate button
+    // Status callback — drive Generate animation and status bar text.
     startTimerHz(30);  // 30fps glow animation
 
     promptPanel.onStatusChanged = [this](const juce::String& text, bool isGenerating) {
         glowGenerating = isGenerating;
+        mainGenerateBtn.setAnimationState(glowPhase, glowGenerating);
         if (isGenerating)
         {
-            mainGenerateBtn.setButtonText("generating...");
+            mainGenerateBtn.setButtonText("GENERATE");
             mainGenerateBtn.setEnabled(false);
             dimApplyBtn.setButtonText("generating...");
             dimApplyBtn.setEnabled(false);
         }
         else
         {
-            mainGenerateBtn.setButtonText("Re-Generate");
+            mainGenerateBtn.setButtonText("GENERATE");
             mainGenerateBtn.setEnabled(true);
             dimApplyBtn.setButtonText("Apply + Generate");
             dimApplyBtn.setEnabled(true);
@@ -1044,21 +1148,13 @@ void MainPanel::paint(juce::Graphics& g)
         paintCard(g, juce::Rectangle<int>(left, top, cardW, bot - top));
     }
 
-    // ── Pulsing glow behind Generate button ──
+    if (glowGenerating)
     {
-        float pulse = std::sin(glowPhase);
-        float expand = 4.0f + 6.0f * (0.5f + 0.5f * pulse);
-        float alpha  = 0.12f + 0.10f * (0.5f + 0.5f * pulse);
-        if (glowGenerating) alpha += 0.10f;
-
-        auto gb = mainGenerateBtn.getBounds().toFloat();
-        for (int i = 3; i >= 0; --i)
-        {
-            float layerExpand = expand * (1.0f + static_cast<float>(i) * 0.4f);
-            float layerAlpha  = alpha * (0.25f + 0.75f / (1.0f + static_cast<float>(i)));
-            g.setColour(kOscCol.withAlpha(layerAlpha));
-            g.fillRect(gb.expanded(layerExpand));
-        }
+        auto gb = mainGenerateBtn.getBounds().toFloat().expanded(7.0f, 5.0f);
+        g.setColour(kOscCol.withAlpha(0.10f));
+        g.fillRect(gb);
+        g.setColour(kOscCol.withAlpha(0.18f));
+        g.drawRect(gb, 1.0f);
     }
 }
 
@@ -1067,6 +1163,7 @@ void MainPanel::timerCallback()
     glowPhase += glowGenerating ? 0.25f : 0.08f;
     if (glowPhase > juce::MathConstants<float>::twoPi)
         glowPhase -= juce::MathConstants<float>::twoPi;
+    mainGenerateBtn.setAnimationState(glowPhase, glowGenerating);
     repaint(mainGenerateBtn.getBounds().expanded(20));
 
     // Poll drift ghost offsets for AxesPanel (30Hz)
@@ -1131,15 +1228,17 @@ void MainPanel::resized()
     auto genCol = b.removeFromLeft(col1W).reduced(6, 2);
 
     int headerH = juce::jlimit(14, 20, juce::roundToInt(h * 0.022f));
-    constexpr int kGenBtnH = 54;
     int kGap = juce::jlimit(3, 6, juce::roundToInt(h * 0.005f));
     constexpr int kMinDimH = 72;
     constexpr int kMinOscH = 220;
     constexpr int kMinAxesH = 78;
+    int genBtnH = juce::jlimit(50, 96,
+                               juce::roundToInt(juce::jmax(static_cast<float>(genCol.getWidth()) * 0.20f,
+                                                           h * 0.068f)));
 
     int oscH = juce::jmax(kMinOscH, promptPanel.getPreferredHeightForWidth(genCol.getWidth()));
     int axesH = juce::jlimit(kMinAxesH, 128, juce::roundToInt(h * 0.12f));
-    int dimBudget = genCol.getHeight() - (headerH * 3 + kGap * 3 + kGenBtnH + oscH + axesH);
+    int dimBudget = genCol.getHeight() - (headerH * 3 + kGap * 3 + genBtnH + oscH + axesH);
     if (dimBudget < kMinDimH)
     {
         int shortage = kMinDimH - dimBudget;
@@ -1170,13 +1269,13 @@ void MainPanel::resized()
     // Card 3: DIM EXPLORER
     // Cap the explorer's vertical footprint: at tall windows it would otherwise
     // flex to fill the whole remaining column and squash the Generate button
-    // visually against the bottom, making it look incidental. Re-Generate is
-    // the central action — it must be framed with breathing room, not pinned.
+    // visually against the bottom, making it look incidental. Generate is the
+    // central action — it must be framed with breathing room, not pinned.
     // See memory/feedback_regenerate_button_layout.md.
     constexpr int kMaxDimH = 174;
     dimHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
     dimHeader.setBounds(genCol.removeFromTop(headerH));
-    int dimH = juce::jlimit(48, kMaxDimH, genCol.getHeight() - kGap - kGenBtnH);
+    int dimH = juce::jlimit(48, kMaxDimH, genCol.getHeight() - kGap - genBtnH);
     if (!dimExplorerVisible)
         dimensionExplorer.setBounds(genCol.removeFromTop(dimH));
     genCol.removeFromTop(kGap);
@@ -1184,8 +1283,9 @@ void MainPanel::resized()
     // Generate button gets all the slack freed by the explorer cap, centered
     // in the remaining card area so it has vertical padding above and below.
     int remainH = genCol.getHeight();
-    int genBtnY = genCol.getY() + juce::jmax(0, (remainH - kGenBtnH) / 2);
-    auto genBtnArea = juce::Rectangle<int>(genCol.getX(), genBtnY, genCol.getWidth(), kGenBtnH);
+    genBtnH = juce::jmin(genBtnH, juce::jmax(44, remainH));
+    int genBtnY = genCol.getY() + juce::jmax(0, (remainH - genBtnH) / 2);
+    auto genBtnArea = juce::Rectangle<int>(genCol.getX(), genBtnY, genCol.getWidth(), genBtnH);
     int genW = juce::roundToInt(genBtnArea.getWidth() * 0.6f);
     int genX = genBtnArea.getX() + (genBtnArea.getWidth() - genW) / 2;
     mainGenerateBtn.setBounds(genX, genBtnArea.getY(), genW, genBtnArea.getHeight());
