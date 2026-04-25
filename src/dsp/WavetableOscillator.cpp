@@ -20,7 +20,7 @@ void WavetableOscillator::reset()
 
 WavetableOscillator::MipDataPtr WavetableOscillator::loadPublishedMipData() const
 {
-    return publishedMipData_.load(std::memory_order_acquire);
+    return std::atomic_load_explicit(&publishedMipData_, std::memory_order_acquire);
 }
 
 bool WavetableOscillator::hasFrames() const
@@ -58,7 +58,7 @@ void WavetableOscillator::adoptMipData(const MipDataPtr& mipData)
     if (mipData == nullptr)
         return;
 
-    publishedMipData_.store(mipData, std::memory_order_release);
+    std::atomic_store_explicit(&publishedMipData_, mipData, std::memory_order_release);
     activeMorphMipData_ = mipData;
     targetMorphMipData_.reset();
     morphAlpha_ = 1.0f;
@@ -71,7 +71,7 @@ void WavetableOscillator::beginMorphToMipData(const MipDataPtr& mipData)
     if (mipData == nullptr)
         return;
 
-    publishedMipData_.store(mipData, std::memory_order_release);
+    std::atomic_store_explicit(&publishedMipData_, mipData, std::memory_order_release);
 
     if (activeMorphMipData_ == nullptr || activeMorphMipData_->numFrames == 0)
     {
@@ -127,7 +127,7 @@ void WavetableOscillator::shareFramesFrom(const WavetableOscillator& source)
         && activeMorphMipData_->generation == mipData->generation;
     if (sameActive && !morphActive_)
     {
-        publishedMipData_.store(mipData, std::memory_order_release);
+        std::atomic_store_explicit(&publishedMipData_, mipData, std::memory_order_release);
         return;
     }
 
@@ -143,7 +143,7 @@ void WavetableOscillator::morphToFramesFrom(const WavetableOscillator& source)
     if (mipData == nullptr)
         return;
 
-    publishedMipData_.store(mipData, std::memory_order_release);
+    std::atomic_store_explicit(&publishedMipData_, mipData, std::memory_order_release);
 
     const bool sameActive = activeMorphMipData_ != nullptr
         && activeMorphMipData_->generation == mipData->generation;
@@ -253,7 +253,7 @@ void WavetableOscillator::generateMipLevels(const std::vector<std::vector<float>
     dest->numLevels = NUM_MIP_LEVELS;
     dest->generation = ++nextPublishedGeneration_;
     MipDataPtr published = dest;
-    publishedMipData_.store(std::move(published), std::memory_order_release);
+    std::atomic_store_explicit(&publishedMipData_, published, std::memory_order_release);
 }
 
 // ─── Pitch detection (simplified YIN autocorrelation) ───

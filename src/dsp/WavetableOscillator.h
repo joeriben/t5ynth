@@ -127,7 +127,7 @@ private:
     };
 
     using MipDataPtr = std::shared_ptr<const MipData>;
-    std::atomic<MipDataPtr> publishedMipData_ {};
+    mutable MipDataPtr publishedMipData_;
     uint64_t nextPublishedGeneration_ = 0;
 
     // Shared mode: voice adopts new banks from a master oscillator.

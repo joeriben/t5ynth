@@ -1474,22 +1474,29 @@ def main():
 
     _available_models = find_models()
     if not _available_models:
-        send_error("No model directories found")
-        return
+        if os.environ.get("T5YNTH_ALLOW_NO_MODELS") == "1":
+            devices = available_devices()
+            default_device = devices[0] if devices else "cpu"
+            default_model = ""
+            send_ready(devices, default_device, _available_models, "")
+            log.warning("No model directories found; continuing in smoke-test mode")
+        else:
+            send_error("No model directories found")
+            return
+    else:
+        try:
+            devices = available_devices()
+            default_model, default_device, startup_failures = choose_startup_model(_available_models, devices)
+        except Exception as e:
+            log.error(f"Failed to load default model: {e}")
+            send_error(f"Pipeline load failed: {e}")
+            return
 
-    try:
-        devices = available_devices()
-        default_model, default_device, startup_failures = choose_startup_model(_available_models, devices)
-    except Exception as e:
-        log.error(f"Failed to load default model: {e}")
-        send_error(f"Pipeline load failed: {e}")
-        return
-
-    send_ready(devices, default_device, _available_models, default_model)
-    log.info(f"Ready. Models: {list(_available_models.keys())}, default: {default_model}, "
-             f"devices: {devices}, default device: {default_device}")
-    if startup_failures:
-        log.warning(f"Skipped unusable startup models: {startup_failures}")
+        send_ready(devices, default_device, _available_models, default_model)
+        log.info(f"Ready. Models: {list(_available_models.keys())}, default: {default_model}, "
+                 f"devices: {devices}, default device: {default_device}")
+        if startup_failures:
+            log.warning(f"Skipped unusable startup models: {startup_failures}")
 
     for line in sys.stdin:
         line = line.strip()

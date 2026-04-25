@@ -203,6 +203,8 @@ jobs:
       - name: Verify bundled backend starts
         shell: powershell
         working-directory: backend
+        env:
+          T5YNTH_ALLOW_NO_MODELS: "1"
         run: |
           $backendExe = (Resolve-Path ".\dist\pipe_inference\pipe_inference.exe").Path
           $stdoutLog = Join-Path $env:RUNNER_TEMP "t5ynth_backend_stdout.log"
@@ -238,6 +240,8 @@ jobs:
 
       - name: Smoke-test Windows standalone
         shell: powershell
+        env:
+          T5YNTH_ALLOW_NO_MODELS: "1"
         run: |
           $env:T5YNTH_REQUIRE_BUNDLED_BACKEND = "1"
           $appExe = (Resolve-Path ".\dist\T5ynth\T5ynth.exe").Path
