@@ -616,8 +616,7 @@ PipeInference::Result PipeInference::generate(const Request& request)
     // Build JSON request
     auto json = juce::DynamicObject::Ptr(new juce::DynamicObject());
     json->setProperty("prompt_a", request.promptA);
-    if (request.promptB.isNotEmpty())
-        json->setProperty("prompt_b", request.promptB);
+    json->setProperty("prompt_b", request.promptB);
     json->setProperty("alpha", request.alpha);
     json->setProperty("magnitude", request.magnitude);
     json->setProperty("noise_sigma", request.noiseSigma);

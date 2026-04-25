@@ -87,7 +87,7 @@ private:
 
     // Embedding controls (linear sliders)
     juce::Slider alphaSlider, magnitudeSlider, noiseSlider;
-    juce::Label alphaLabel, alphaValue, alphaHint;
+    juce::Label alphaLabel, alphaValue;
     juce::Label magLabel, magValue, magHint;
     juce::Label noiseLabel, noiseValue, noiseHint;
 

@@ -71,7 +71,7 @@ static void makeLabel(juce::Label& l, const juce::String& text, juce::Colour col
 PromptPanel::PromptPanel(T5ynthProcessor& processor)
     : processorRef(processor)
 {
-    makeLabel(promptALabel, "Prompt A (Basis)", kDim, juce::Justification::centredLeft, this);
+    makeLabel(promptALabel, "Prompt A", kDim, juce::Justification::centredLeft, this);
     // Two-line with word-wrap so longer prompts stay visible. With
     // setReturnKeyStartsNewLine(false) Return still triggers generation; the
     // wrap only kicks in when the text itself exceeds one line's width.
@@ -86,7 +86,7 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     promptAEditor.setBufferedToImage(true);
     addAndMakeVisible(promptAEditor);
 
-    makeLabel(promptBLabel, "Prompt B (optional, for interpolation)", kDim, juce::Justification::centredLeft, this);
+    makeLabel(promptBLabel, "Prompt B", kDim, juce::Justification::centredLeft, this);
     promptBEditor.setMultiLine(true, true);
     promptBEditor.setReturnKeyStartsNewLine(false);
     promptBEditor.setText("glass breaking");
@@ -99,9 +99,8 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
 
     // Alpha
     makeSlider(alphaSlider, this);
-    makeLabel(alphaLabel, "Alpha", kDim, juce::Justification::centredLeft, this);
+    makeLabel(alphaLabel, "A " + juce::String(juce::CharPointer_UTF8("\xe2\x86\x94")) + " B", kDim, juce::Justification::centredLeft, this);
     makeLabel(alphaValue, "0", kOscCol, juce::Justification::centredRight, this);
-    makeLabel(alphaHint, "Interpolation: -1.0 = A only, 1.0 = B only", kDim, juce::Justification::centredLeft, this);
     alphaSlider.onValueChange = [this] {
         float v = static_cast<float>(alphaSlider.getValue());
         if (std::abs(v) < 0.001f)
@@ -372,7 +371,6 @@ void PromptPanel::resized()
         area.removeFromTop(gap);
     }
 
-    alphaHint.setVisible(false);
     magHint.setVisible(false);
     noiseHint.setVisible(false);
     durHint.setVisible(false);
@@ -681,8 +679,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
 
     PipeInference::Request req;
     req.promptA = promptAEditor.getText().trim();
-    auto promptB = promptBEditor.getText().trim();
-    if (promptB.isNotEmpty()) req.promptB = promptB;
+    req.promptB = promptBEditor.getText().trim();
     req.alpha = alpha;
     req.magnitude = magnitude;
     req.noiseSigma = noiseSigma;
@@ -704,8 +701,6 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
 void PromptPanel::triggerGeneration()
 {
     if (generating) return;
-    auto promptA = promptAEditor.getText().trim();
-    if (promptA.isEmpty()) return;
 
     if (!processorRef.isInferenceReady())
     {
@@ -794,7 +789,6 @@ void PromptPanel::triggerDriftRegeneration(float effectiveAlpha,
                                             bool /*holdForBar*/)
 {
     if (generating) return;
-    if (promptAEditor.getText().trim().isEmpty()) return;
     if (!processorRef.isPipeInferenceReady()) return;
 
     generating = true;

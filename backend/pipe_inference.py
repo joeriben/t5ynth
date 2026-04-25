@@ -790,6 +790,19 @@ def _mean_pool(emb, mask):
     return pooled.squeeze(0).cpu().float().numpy()  # [768]
 
 
+def _echo_through_null(other_emb, null_emb):
+    """Spiegelung am Modell-Null: 2·null − other.
+
+    When one prompt field is empty, the empty side's embedding becomes
+    the reflection of the present side through the null/unconditional
+    encoding (the model's encoding of ""). Standard interpolation
+    (1-α)/2·A + (1+α)/2·B then traces a path from the present prompt
+    through the model-neutral point to its tonal antipode, instead of
+    collapsing to the present prompt for all α.
+    """
+    return 2.0 * null_emb - other_emb
+
+
 def _generate_audioldm2(wrapper, request):
     """Generate audio using AudioLDM2Pipeline with full embedding manipulation.
 
@@ -819,32 +832,73 @@ def _generate_audioldm2(wrapper, request):
     generator = torch.Generator("cpu").manual_seed(seed)
 
     with torch.no_grad():
-        # Encode A with CFG — returns [2, seq, dim] (neg @ 0, pos @ 1)
-        pe_a, mask_a, gpe_a = pipe.encode_prompt(
-            prompt=prompt_a, device=device,
-            num_waveforms_per_prompt=1,
-            do_classifier_free_guidance=True,
-            negative_prompt="",
-        )
-        neg_pe   = pe_a[0:1]
-        pos_pe_a = pe_a[1:2]
-        neg_mask  = mask_a[0:1]
-        pos_mask_a = mask_a[1:2]
-        neg_gpe  = gpe_a[0:1]
-        pos_gpe_a = gpe_a[1:2]
+        # Symmetric prompt handling: encode whichever prompts are present.
+        # encode_prompt with CFG=True returns [neg, pos] — the negative half
+        # is always the encoding of "" and serves as both the CFG anchor and
+        # the Spiegel-Punkt for echo derivation.
+        a_present = bool(prompt_a)
+        b_present = bool(prompt_b)
 
-        if prompt_b:
+        if a_present:
+            pe_a, mask_a, gpe_a = pipe.encode_prompt(
+                prompt=prompt_a, device=device,
+                num_waveforms_per_prompt=1,
+                do_classifier_free_guidance=True,
+                negative_prompt="",
+            )
+            neg_pe     = pe_a[0:1]
+            neg_mask   = mask_a[0:1]
+            neg_gpe    = gpe_a[0:1]
+            pos_pe_a   = pe_a[1:2]
+            pos_mask_a = mask_a[1:2]
+            pos_gpe_a  = gpe_a[1:2]
+
+        if b_present:
             pe_b, mask_b, gpe_b = pipe.encode_prompt(
                 prompt=prompt_b, device=device,
                 num_waveforms_per_prompt=1,
                 do_classifier_free_guidance=True,
                 negative_prompt="",
             )
+            if not a_present:
+                neg_pe   = pe_b[0:1]
+                neg_mask = mask_b[0:1]
+                neg_gpe  = gpe_b[0:1]
             pos_pe_b   = pe_b[1:2]
             pos_mask_b = mask_b[1:2]
             pos_gpe_b  = gpe_b[1:2]
 
-            # Pad prompt_embeds to same seq_len (T5 uses dynamic padding)
+        if not a_present and not b_present:
+            pe_e, mask_e, gpe_e = pipe.encode_prompt(
+                prompt="", device=device,
+                num_waveforms_per_prompt=1,
+                do_classifier_free_guidance=True,
+                negative_prompt="",
+            )
+            neg_pe     = pe_e[0:1]
+            neg_mask   = mask_e[0:1]
+            neg_gpe    = gpe_e[0:1]
+            pos_pe_a   = neg_pe.clone()
+            pos_pe_b   = neg_pe.clone()
+            pos_mask_a = neg_mask
+            pos_mask_b = neg_mask
+            pos_gpe_a  = neg_gpe.clone()
+            pos_gpe_b  = neg_gpe.clone()
+
+        # Echoraum: a leeres Feld is the reflection of the other prompt
+        # through neg_pe (the empty-string encoding).
+        if a_present and not b_present:
+            pos_pe_b   = _echo_through_null(pos_pe_a, neg_pe)
+            pos_mask_b = pos_mask_a
+            pos_gpe_b  = _echo_through_null(pos_gpe_a, neg_gpe)
+        elif b_present and not a_present:
+            pos_pe_a   = _echo_through_null(pos_pe_b, neg_pe)
+            pos_mask_a = pos_mask_b
+            pos_gpe_a  = _echo_through_null(pos_gpe_b, neg_gpe)
+
+        # Pad prompt_embeds to same seq_len (only needed when both prompts
+        # were independently encoded — echoes inherit the source's shape).
+        if a_present and b_present:
             s_a, s_b = pos_pe_a.shape[1], pos_pe_b.shape[1]
             if s_a != s_b:
                 pad_a = max(0, s_b - s_a)
@@ -858,25 +912,21 @@ def _generate_audioldm2(wrapper, request):
                     pos_pe_b   = torch.nn.functional.pad(pos_pe_b, (0, 0, 0, pad_b))
                     pos_mask_b = torch.nn.functional.pad(pos_mask_b, (0, pad_b))
 
-            # Alpha interpolation: 0 = midpoint, -1 = pure A, +1 = pure B
-            w_a = 0.5 - 0.5 * alpha
-            w_b = 0.5 + 0.5 * alpha
-            manipulated_pe  = w_a * pos_pe_a  + w_b * pos_pe_b
-            manipulated_gpe = w_a * pos_gpe_a + w_b * pos_gpe_b
-            pos_mask = (pos_mask_a | pos_mask_b)
+        # Alpha interpolation: 0 = midpoint, -1 = pure A, +1 = pure B
+        w_a = 0.5 - 0.5 * alpha
+        w_b = 0.5 + 0.5 * alpha
+        manipulated_pe  = w_a * pos_pe_a  + w_b * pos_pe_b
+        manipulated_gpe = w_a * pos_gpe_a + w_b * pos_gpe_b
+        pos_mask = (pos_mask_a | pos_mask_b)
 
-            # Renormalize if extrapolating (|alpha| > 1)
-            if alpha < -1.0 or alpha > 1.0:
-                for manip, ref_a, ref_b in [(manipulated_pe, pos_pe_a, pos_pe_b),
-                                             (manipulated_gpe, pos_gpe_a, pos_gpe_b)]:
-                    ref_norm = ref_a.norm() if alpha < 0.0 else ref_b.norm()
-                    res_norm = manip.norm()
-                    if res_norm > 1e-8:
-                        manip.mul_(ref_norm / res_norm)
-        else:
-            manipulated_pe  = pos_pe_a.clone()
-            manipulated_gpe = pos_gpe_a.clone()
-            pos_mask = pos_mask_a
+        # Renormalize if extrapolating (|alpha| > 1)
+        if alpha < -1.0 or alpha > 1.0:
+            for manip, ref_a, ref_b in [(manipulated_pe, pos_pe_a, pos_pe_b),
+                                         (manipulated_gpe, pos_gpe_a, pos_gpe_b)]:
+                ref_norm = ref_a.norm() if alpha < 0.0 else ref_b.norm()
+                res_norm = manip.norm()
+                if res_norm > 1e-8:
+                    manip.mul_(ref_norm / res_norm)
 
         # Magnitude scaling
         if abs(magnitude - 1.0) > 1e-6:
@@ -980,46 +1030,73 @@ def _generate_native(pipe, request):
     # Then manipulate embeddings (alpha, magnitude, noise, dim offsets)
     # and pass as pre-computed conditioning_tensors.
     with torch.no_grad():
-        # Run full conditioner to get base conditioning tensors
-        cond_a = pipe.model.conditioner(
-            [_build_native_conditioning_input(pipe, prompt_a, duration, start_pos)],
+        a_present = bool(prompt_a)
+        b_present = bool(prompt_b)
+
+        # Always encode "" for the Spiegel-Punkt and as conditioning carrier
+        # (for timing fields like seconds_start/seconds_total when neither
+        # prompt is present).
+        cond_null = pipe.model.conditioner(
+            [_build_native_conditioning_input(pipe, "", duration, start_pos)],
             device,
         )
+        null_pe = cond_null["prompt"][0]
+        null_mask = cond_null["prompt"][1]
 
-        # Extract T5 embedding for manipulation: {"prompt": [emb_tensor, None], ...}
-        prompt_emb_a = cond_a["prompt"][0]   # [1, seq, 768]
-        mask_a = cond_a["prompt"][1]
+        if a_present:
+            cond_a = pipe.model.conditioner(
+                [_build_native_conditioning_input(pipe, prompt_a, duration, start_pos)],
+                device,
+            )
+            prompt_emb_a = cond_a["prompt"][0]   # [1, seq, 768]
+            mask_a = cond_a["prompt"][1]
+        else:
+            # Carry timing/duration conditioning from cond_null. Deep-copy so
+            # the later cond_a["prompt"] = [...] assignment doesn't corrupt
+            # cond_null in case anything else holds a reference.
+            cond_a = copy.deepcopy(cond_null)
+            prompt_emb_a = null_pe.clone()
+            mask_a = null_mask if null_mask is None else null_mask.clone()
 
-        # Mean-pool for DimensionExplorer stats (before manipulation)
-        # Use attention-style pooling (non-zero tokens)
-        emb_a_pooled = prompt_emb_a.squeeze(0).mean(dim=0).cpu().float().numpy()
-
-        if prompt_b:
+        if b_present:
             cond_b = pipe.model.conditioner(
                 [_build_native_conditioning_input(pipe, prompt_b, duration, start_pos)],
                 device,
             )
             prompt_emb_b = cond_b["prompt"][0]
             mask_b = cond_b["prompt"][1]
-            emb_b_pooled = prompt_emb_b.squeeze(0).mean(dim=0).cpu().float().numpy()
-            # Alpha interpolation: 0 = midpoint, -1 = pure A, +1 = pure B
-            manipulated = (0.5 - 0.5 * alpha) * prompt_emb_a + (0.5 + 0.5 * alpha) * prompt_emb_b
-            combined_mask = None
-            if mask_a is not None and mask_b is not None:
-                combined_mask = (mask_a | mask_b)
-            elif mask_a is not None:
-                combined_mask = mask_a
-            else:
-                combined_mask = mask_b
-            if alpha < -1.0 or alpha > 1.0:
-                ref_norm = prompt_emb_a.norm() if alpha < 0.0 else prompt_emb_b.norm()
-                res_norm = manipulated.norm()
-                if res_norm > 1e-8:
-                    manipulated = manipulated * (ref_norm / res_norm)
         else:
-            emb_b_pooled = np.zeros(768, dtype=np.float32)
-            manipulated = prompt_emb_a.clone()
+            prompt_emb_b = null_pe.clone()
+            mask_b = null_mask
+
+        # Echoraum: a leeres Feld is the reflection of the other prompt
+        # through null_pe (encoding of "").
+        if a_present and not b_present:
+            prompt_emb_b = _echo_through_null(prompt_emb_a, null_pe)
+            mask_b = mask_a
+        elif b_present and not a_present:
+            prompt_emb_a = _echo_through_null(prompt_emb_b, null_pe)
+            mask_a = mask_b
+
+        # Mean-pool for DimensionExplorer stats (post-echo, pre-manipulation)
+        emb_a_pooled = prompt_emb_a.squeeze(0).mean(dim=0).cpu().float().numpy()
+        emb_b_pooled = prompt_emb_b.squeeze(0).mean(dim=0).cpu().float().numpy()
+
+        # Alpha interpolation: 0 = midpoint, -1 = pure A, +1 = pure B
+        manipulated = (0.5 - 0.5 * alpha) * prompt_emb_a + (0.5 + 0.5 * alpha) * prompt_emb_b
+        combined_mask = None
+        if mask_a is not None and mask_b is not None:
+            combined_mask = (mask_a | mask_b)
+        elif mask_a is not None:
             combined_mask = mask_a
+        else:
+            combined_mask = mask_b
+
+        if alpha < -1.0 or alpha > 1.0:
+            ref_norm = prompt_emb_a.norm() if alpha < 0.0 else prompt_emb_b.norm()
+            res_norm = manipulated.norm()
+            if res_norm > 1e-8:
+                manipulated = manipulated * (ref_norm / res_norm)
 
         # Magnitude scaling
         if abs(magnitude - 1.0) > 1e-6:
@@ -1144,27 +1221,49 @@ def generate(pipe, request):
             out = text_encoder(input_ids=ids, attention_mask=mask)
             return out.last_hidden_state, mask
 
-        emb_a, mask_a = encode_text(prompt_a)
+        a_present = bool(prompt_a)
+        b_present = bool(prompt_b)
 
-        # Mean-pool for DimensionExplorer stats (before manipulation)
-        emb_a_pooled = _mean_pool(emb_a, mask_a)
+        # Always encode "" for the Spiegel-Punkt (used only for echo
+        # derivation; CFG neg_embeds stays as torch.zeros_like below,
+        # unchanged from the original behavior to keep CFG-driven sound
+        # identical when both prompts are present).
+        null_pe, null_mask = encode_text("")
 
-        if prompt_b:
-            emb_b, mask_b = encode_text(prompt_b)
-            emb_b_pooled = _mean_pool(emb_b, mask_b)
-            combined_mask = (mask_a | mask_b)
-            # alpha: 0 = midpoint, -1 = pure A, +1 = pure B
-            manipulated = (0.5 - 0.5 * alpha) * emb_a + (0.5 + 0.5 * alpha) * emb_b
-            # Renormalize if extrapolating (|alpha| > 1)
-            if alpha < -1.0 or alpha > 1.0:
-                ref_norm = emb_a.norm() if alpha < 0.0 else emb_b.norm()
-                res_norm = manipulated.norm()
-                if res_norm > 1e-8:
-                    manipulated = manipulated * (ref_norm / res_norm)
+        if a_present:
+            emb_a, mask_a = encode_text(prompt_a)
         else:
-            emb_b_pooled = np.zeros(768, dtype=np.float32)
-            manipulated = emb_a.clone()
-            combined_mask = mask_a
+            emb_a = null_pe.clone()
+            mask_a = null_mask
+
+        if b_present:
+            emb_b, mask_b = encode_text(prompt_b)
+        else:
+            emb_b = null_pe.clone()
+            mask_b = null_mask
+
+        # Echoraum: a leeres Feld is the reflection of the other prompt
+        # through null_pe (encoding of "").
+        if a_present and not b_present:
+            emb_b = _echo_through_null(emb_a, null_pe)
+            mask_b = mask_a
+        elif b_present and not a_present:
+            emb_a = _echo_through_null(emb_b, null_pe)
+            mask_a = mask_b
+
+        # Mean-pool for DimensionExplorer stats (post-echo, pre-manipulation)
+        emb_a_pooled = _mean_pool(emb_a, mask_a)
+        emb_b_pooled = _mean_pool(emb_b, mask_b)
+
+        combined_mask = (mask_a | mask_b)
+        # alpha: 0 = midpoint, -1 = pure A, +1 = pure B
+        manipulated = (0.5 - 0.5 * alpha) * emb_a + (0.5 + 0.5 * alpha) * emb_b
+        # Renormalize if extrapolating (|alpha| > 1)
+        if alpha < -1.0 or alpha > 1.0:
+            ref_norm = emb_a.norm() if alpha < 0.0 else emb_b.norm()
+            res_norm = manipulated.norm()
+            if res_norm > 1e-8:
+                manipulated = manipulated * (ref_norm / res_norm)
 
         # Magnitude scaling
         if abs(magnitude - 1.0) > 1e-6:

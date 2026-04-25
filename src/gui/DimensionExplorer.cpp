@@ -55,16 +55,11 @@ void DimensionExplorer::setEmbeddings(const std::vector<float>& embA, const std:
     embA_ = embA;
     embB_ = embB;
 
-    // Detect if B is all zeros (no prompt B)
-    hasBPrompt_ = false;
-    for (auto v : embB_)
-    {
-        if (std::abs(v) > 1e-8f)
-        {
-            hasBPrompt_ = true;
-            break;
-        }
-    }
+    // Symmetric prompt design: B is always meaningful — either typed text,
+    // the Spiegelung-am-Modell-Null echo of A, or the model-unconditional
+    // when both fields are empty. The backend always returns a non-zero
+    // emb_b, so we always treat B as present for visualization purposes.
+    hasBPrompt_ = !embB_.empty();
 
     rebuildBars(baselineValues, preserveOffsets);
     repaint();
