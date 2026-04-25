@@ -1397,17 +1397,46 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         for (const auto metadata : midiMessages)
         {
             auto msg = metadata.getMessage();
+
+            // When a sequencer is driving, only the "lead" channel feeds the
+            // arp — otherwise the polyphonic gen-seq's secondary strands
+            // (channels 4-7) would chaotically slap the arp's base note
+            // between every step. Lead channels:
+            //   gen-seq active → channel 3 (strand 0)
+            //   step-seq active → channel 1 (normal) or 2 (bind/glide)
+            // When seq is stopped (manual keyboard play) any channel feeds
+            // the arp, preserving the historical external-input behaviour.
+            const int ch = msg.getChannel();
+            const bool isLead = !seqRunning
+                              || (genModeActiveInAudio
+                                  ? (ch == 3)
+                                  : (ch == 1 || ch == 2));
+
             if (msg.isNoteOn())
-                arpeggiator.setBaseNote(msg.getNoteNumber(), msg.getFloatVelocity());
+            {
+                if (isLead)
+                    arpeggiator.setBaseNote(msg.getNoteNumber(), msg.getFloatVelocity());
+                else
+                    filtered.addEvent(msg, metadata.samplePosition);
+            }
             else if (msg.isNoteOff())
             {
-                // When seq is running, don't kill arp on seq gate-offs —
-                // arp runs continuously, seq just updates the base note
-                if (!seqRunning)
-                    arpeggiator.stopArp();
+                if (isLead)
+                {
+                    // When seq is running, don't kill arp on seq gate-offs —
+                    // arp runs continuously, seq just updates the base note.
+                    if (!seqRunning)
+                        arpeggiator.stopArp();
+                }
+                else
+                {
+                    filtered.addEvent(msg, metadata.samplePosition);
+                }
             }
             else
+            {
                 filtered.addEvent(msg, metadata.samplePosition);
+            }
         }
         midiMessages.swapWith(filtered);
         arpeggiator.processBlock(buffer, midiMessages);
