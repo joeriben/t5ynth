@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace
 {
@@ -336,7 +337,15 @@ SamplePlayer::PreparedPlaybackState SamplePlayer::preparePlaybackState(
     if (config.loopMode == LoopMode::Loop)
     {
         if (config.loopOptimizeLevel > 0 && numCh > 0)
-            actualEnd = optimizeLoopEnd(sourceBuffer.getReadPointer(0), ls, le, bufLen, config.loopOptimizeLevel);
+        {
+            const float* data = sourceBuffer.getReadPointer(0);
+            // Stage 1: phase-align loop end via cross-correlation (texture match).
+            actualEnd = optimizeLoopEnd(data, ls, le, bufLen, config.loopOptimizeLevel);
+            // Stage 2: refine loop start so the wrap splice matches in amplitude
+            // AND slope. xcorr alone matches surrounding context but can leave a
+            // small step at the splice itself — this stage closes that gap.
+            ls = refineLoopStart(data, ls, actualEnd, bufLen, config.loopOptimizeLevel);
+        }
 
         int preEnd = actualEnd;
         applyLoopCrossfade(prepared.playBuffer, ls, actualEnd, config.crossfadeMs, sourceSampleRate);
@@ -346,7 +355,26 @@ SamplePlayer::PreparedPlaybackState SamplePlayer::preparePlaybackState(
         prepared.playEnd   = actualEnd;
         prepared.coldStart = ls + fadeSamples;
     }
-    else
+    else if (config.loopMode == LoopMode::PingPong)
+    {
+        // Snap both boundaries to the nearest local extremum so velocity-reversal
+        // happens where the first derivative is naturally near zero (eliminates
+        // the click that comes from sudden direction change at high-slope samples).
+        if (config.loopOptimizeLevel > 0 && numCh > 0)
+        {
+            const float* data = sourceBuffer.getReadPointer(0);
+            const int radius = (config.loopOptimizeLevel == 1) ? 512 : 2048;
+            // End first, so start can use the snapped end as its upper bound.
+            // boundHi is the *highest readable index* — the function reads i+1 internally,
+            // so passing bufLen (one-past-end) would let i reach bufLen-1 and read data[bufLen].
+            actualEnd = snapToLocalExtremum(data, le, radius, ls + 4, bufLen - 1);
+            ls        = snapToLocalExtremum(data, ls, radius, 0,      actualEnd - 4);
+        }
+        prepared.playStart = ls;
+        prepared.playEnd   = actualEnd;
+        prepared.coldStart = ls;
+    }
+    else // OneShot
     {
         prepared.playStart = ls;
         prepared.playEnd   = actualEnd;
@@ -359,6 +387,12 @@ SamplePlayer::PreparedPlaybackState SamplePlayer::preparePlaybackState(
         int normStart = std::min(p1, prepared.playStart);
         normalizeBuffer(prepared.playBuffer, normStart, prepared.playEnd, sourceSampleRate);
     }
+
+    // Boundary guard samples MUST be written last so they capture the final state
+    // of the playback region (post-crossfade, post-normalization). Without these,
+    // cubic interpolation at the wrap/reverse moment reads unrelated audio past
+    // the loop region — the primary cause of clicks/dropouts at boundaries.
+    writeBoundaryGuards(prepared.playBuffer, prepared.playStart, prepared.playEnd, config.loopMode);
 
     return prepared;
 }
@@ -925,11 +959,16 @@ void SamplePlayer::processBlock(juce::AudioBuffer<float>& output)
 
 int SamplePlayer::optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen, int level) const
 {
-    int win = std::min(XCORR_WINDOW[level], (loopEnd - loopStart) / 4);
+    const int loopLen = loopEnd - loopStart;
+    int win = std::min(XCORR_WINDOW[level], loopLen / 4);
     if (win < 16) return loopEnd;
 
-    int searchLo = std::max(loopStart + win * 2, loopEnd - XCORR_SEARCH[level]);
-    int searchHi = std::min(bufLen, loopEnd + XCORR_SEARCH[level]);
+    // Cap search range so we never extend by more than one loop length past the
+    // user's region — keeps the optimizer's choices musically plausible even at
+    // High level with very short user loops.
+    const int searchRange = std::min(XCORR_SEARCH[level], std::max(loopLen, 256));
+    int searchLo = std::max(loopStart + win * 2, loopEnd - searchRange);
+    int searchHi = std::min(bufLen, loopEnd + searchRange);
 
     float bestCorr = -1e30f;
     int   bestEnd  = loopEnd;
@@ -958,6 +997,75 @@ int SamplePlayer::optimizeLoopEnd(const float* data, int loopStart, int loopEnd,
         }
     }
     return bestEnd;
+}
+
+int SamplePlayer::refineLoopStart(const float* data, int loopStart, int loopEnd, int bufLen, int level) const
+{
+    if (loopEnd - loopStart < 8 || loopEnd < 2 || loopStart >= bufLen)
+        return loopStart;
+
+    // Symmetric window around the user's loopStart. Smaller for Low (fast,
+    // conservative) and larger for High (more chances to find a clean splice).
+    const int delta = (level == 1) ? 64 : 256;
+    const int lo = std::max(1, loopStart - delta);
+    const int hi = std::min(loopEnd - 4, loopStart + delta);
+    if (hi <= lo) return loopStart;
+
+    // Splice quality is dominated by the sample-to-sample step at the wrap:
+    //   prev_at_wrap = data[loopEnd - 1]
+    //   next_at_wrap = data[startCand]
+    // We minimize both amplitude jump (|next - prev|) and slope mismatch
+    // (|outgoing_slope - incoming_slope|). Slope mismatch is more audible
+    // because it produces a derivative discontinuity (click) — weight x2.
+    const float endValue = data[loopEnd - 1];
+    const float endSlope = endValue - data[loopEnd - 2];
+
+    float bestErr = std::numeric_limits<float>::max();
+    int bestStart = loopStart;
+    for (int cand = lo; cand <= hi; ++cand)
+    {
+        const float candValue = data[cand];
+        const float candSlope = data[cand + 1] - data[cand];
+        const float ampErr   = std::abs(candValue - endValue);
+        const float slopeErr = std::abs(candSlope - endSlope);
+        // Tiny distance penalty keeps refinement near user intent when the
+        // boundary error is already low and many candidates are equivalent.
+        const float distPenalty = static_cast<float>(std::abs(cand - loopStart)) * 1.0e-6f;
+        const float err = ampErr + 2.0f * slopeErr + distPenalty;
+        if (err < bestErr)
+        {
+            bestErr = err;
+            bestStart = cand;
+        }
+    }
+    return bestStart;
+}
+
+int SamplePlayer::snapToLocalExtremum(const float* data, int centre, int searchRadius,
+                                      int boundLo, int boundHi) const
+{
+    // Centered first-difference is a good proxy for instantaneous slope;
+    // minima of its absolute value mark local extrema (peaks/troughs/zero
+    // crossings of derivative). For ping-pong reversal these are the points
+    // where direction-change introduces no velocity discontinuity.
+    const int lo = std::max(boundLo + 1, centre - searchRadius);
+    const int hi = std::min(boundHi - 1, centre + searchRadius);
+    if (hi <= lo) return juce::jlimit(boundLo, boundHi, centre);
+
+    float bestScore = std::numeric_limits<float>::max();
+    int bestIdx = centre;
+    for (int i = lo; i <= hi; ++i)
+    {
+        const float deriv = std::abs(data[i + 1] - data[i - 1]);
+        const float distPenalty = static_cast<float>(std::abs(i - centre)) * 1.0e-6f;
+        const float score = deriv + distPenalty;
+        if (score < bestScore)
+        {
+            bestScore = score;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -995,6 +1103,85 @@ void SamplePlayer::applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopSta
 
     // Shorten loop: tail samples are baked into head, never played directly
     loopEnd -= fadeSamples;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Boundary guard samples — make cubic interpolation safe at loop edges
+// ═══════════════════════════════════════════════════════════════════
+//
+// cubicSample(pos) reads data[i1-1, i1, i1+1, i1+2] using ABSOLUTE buffer
+// indices. Without intervention, reads at pos ≈ playEnd or pos ≈ playStart
+// touch samples outside [playStart, playEnd) which contain unrelated original
+// audio. The cubic curve through those samples is discontinuous with what the
+// loop logic will play next — audible as a click at every wrap/reverse.
+//
+// Fix: write guard samples that match the periodic (Loop) or palindromic
+// (PingPong) continuation. After this, cubic interpolation produces smooth
+// curves across the boundary without any awareness of the loop itself.
+
+void SamplePlayer::writeBoundaryGuards(juce::AudioBuffer<float>& buf,
+                                       int playStart, int playEnd, LoopMode mode)
+{
+    if (mode == LoopMode::OneShot)
+        return;
+
+    const int bufLen = buf.getNumSamples();
+    const int numCh  = buf.getNumChannels();
+    const int loopLen = playEnd - playStart;
+    if (bufLen <= 0 || numCh <= 0 || loopLen < kBoundaryGuardSamples * 2)
+        return;
+
+    const int G = kBoundaryGuardSamples;
+
+    for (int ch = 0; ch < numCh; ++ch)
+    {
+        float* d = buf.getWritePointer(ch);
+
+        if (mode == LoopMode::Loop)
+        {
+            // Backward guards: wrap from the loop's tail end.
+            // data[playStart - i] should equal data[playEnd - i] for i = 1..G,
+            // so reading at pos = playStart + 0.x sees the natural prior cycle.
+            for (int i = 1; i <= G; ++i)
+            {
+                const int dst = playStart - i;
+                const int src = playEnd - i;
+                if (dst >= 0 && src >= playStart && src < bufLen)
+                    d[dst] = d[src];
+            }
+            // Forward guards: continue from the loop's head start.
+            // The crossfade has been baked into [playStart, playStart + fadeSamples),
+            // so copying from there gives the exact post-wrap continuation.
+            for (int i = 0; i < G; ++i)
+            {
+                const int dst = playEnd + i;
+                const int src = playStart + i;
+                if (dst < bufLen && src < playEnd)
+                    d[dst] = d[src];
+            }
+        }
+        else // PingPong
+        {
+            // Backward guards: mirror forward (palindrome).
+            // data[playStart - 1 - k] = data[playStart + k] for k = 0..G-1.
+            for (int k = 0; k < G; ++k)
+            {
+                const int dst = playStart - 1 - k;
+                const int src = playStart + k;
+                if (dst >= 0 && src < playEnd)
+                    d[dst] = d[src];
+            }
+            // Forward guards: mirror back (palindrome).
+            // data[playEnd + k] = data[playEnd - 1 - k] for k = 0..G-1.
+            for (int k = 0; k < G; ++k)
+            {
+                const int dst = playEnd + k;
+                const int src = playEnd - 1 - k;
+                if (dst < bufLen && src >= playStart)
+                    d[dst] = d[src];
+            }
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════

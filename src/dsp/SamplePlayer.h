@@ -297,12 +297,39 @@ private:
                                                const PrepareConfig& config) const;
     void applyPreparedPlaybackState(PreparedPlaybackState preparedState);
 
-    /** Cross-correlation loop-end optimizer (channel 0). */
+    /** Cross-correlation loop-end optimizer with boundary smoothness penalty.
+     *  Returns the refined loop end (channel 0). */
     int optimizeLoopEnd(const float* data, int loopStart, int loopEnd, int bufLen, int level) const;
+
+    /** Local refinement of loopStart so the splice {data[loopEnd-1] -> data[loopStart]}
+     *  matches in amplitude AND slope. Searches a small neighborhood around the user's
+     *  loopStart. Returns refined start (channel 0). */
+    int refineLoopStart(const float* data, int loopStart, int loopEnd, int bufLen, int level) const;
+
+    /** Find the nearest local extremum (zero of first derivative) around `centre`.
+     *  Used by ping-pong to place reversal points where slope is naturally near zero,
+     *  eliminating velocity-discontinuity clicks. Returns sample index (channel 0). */
+    int snapToLocalExtremum(const float* data, int centre, int searchRadius,
+                            int boundLo, int boundHi) const;
 
     /** Apply equal-power crossfade at loop boundary. */
     static void applyLoopCrossfade(juce::AudioBuffer<float>& buf, int loopStart, int& loopEnd,
                                    float crossfadeMs, double bufferSampleRate);
+
+    /** Write boundary continuation samples into playBuffer so cubic interpolation
+     *  near loop edges sees the *correct* surrounding context, not unrelated audio
+     *  past the loop region. Mode-aware:
+     *    - Loop:     periodic continuation (wrap)
+     *    - PingPong: palindromic continuation (mirror)
+     *    - OneShot:  no-op
+     *  Writes up to kBoundaryGuardSamples on each side, clamped to buffer bounds. */
+    static void writeBoundaryGuards(juce::AudioBuffer<float>& buf,
+                                    int playStart, int playEnd, LoopMode mode);
+
+    /** Cubic interpolation needs i1-1, i1, i1+1, i1+2 — at most 2 samples ahead and
+     *  1 behind. We use 4 on each side to absorb overshoot at high transposition
+     *  ratios (worst case ~ srRatio * transposeRatio per step). */
+    static constexpr int kBoundaryGuardSamples = 4;
 
     float chooseNormalizeGain(const NormalizeAnalysis& analysis, NormalizeMode mode) const;
 
