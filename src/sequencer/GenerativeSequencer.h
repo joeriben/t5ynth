@@ -82,6 +82,10 @@ public:
     void setFieldCenterPc      (int pc);
     void setFieldPivotInterval (int semitones);
 
+    // Inter-strand coordination.
+    void setCoordinationMode (int mode);   // 0..3 (CoordinationMode enum)
+    void setCoordinationCap  (int cap);    // 1..4 simultaneous strand notes
+
     // Shared / global
     void setRange(int octaves);
     void setScale(int scaleType, int root);
@@ -162,29 +166,24 @@ private:
     };
 
     /**
-     * Internal rhythmic path. This is intentionally contextual rather than a
-     * public preset parameter for now: role + step count select a distinct
-     * metric attitude without widening preset migration.
+     * Inter-strand coordination strategy.
+     *
+     * Voice-1 principles (V1–V6) describe how a single strand operates
+     * (pure Euclidean+Turing pipeline, no cost tables, no mix hierarchy).
+     * They are silent on how strands relate to each other — strand 0 was
+     * monophonic and never had to answer that question. This enum is where
+     * the ensemble-level question is answered.
+     *
+     * Phase 1 ships DensityBudget as the default and Independent as a
+     * no-op fallback. AlgebraicCoupling and ContrapuntalChecks are reserved
+     * IDs for Phase 2; until implemented they fall through to Independent.
      */
-    enum class MetricPath : int
+    enum class CoordinationMode : int
     {
-        Gathering      = 0,  // stable common accents around the center
-        Additive       = 1,  // 3/2 additive groupings (9=3-3-3, 11=3-3-3-2)
-        Conversational = 2,  // offset 4-based groupings (9=4-4-1, 11=4-4-3)
-        OpenBreath     = 3,  // sparse windows and caesuras
-    };
-
-    struct MetricMoment
-    {
-        MetricPath path = MetricPath::Additive;
-        bool downbeat = false;
-        bool groupStart = false;
-        bool groupEnd = false;
-        bool anticipatesGroup = false;
-        bool phraseEnd = false;
-        int groupLength = 0;
-        float accent = 1.0f;
-        float breath = 1.0f;
+        Independent        = 0,  // strands share only the field; no per-event check
+        DensityBudget      = 1,  // cap simultaneous notes; lowest-priority displaces
+        AlgebraicCoupling  = 2,  // (Phase 2) algebraic functions of strand 0 / row
+        ContrapuntalChecks = 3,  // (Phase 2) post-hoc m2-clash check
     };
 
     /** Per-strand pattern + playback state. */
@@ -248,35 +247,10 @@ private:
         float chordToneDominance = 0.0f;    // 0 = pure Turing, higher = snap to centerPc on strong beats
     };
 
-    /**
-     * Shared momentary ensemble reading.
-     *
-     * Secondary strands use this to read strand 0 as the primary line and
-     * adapt to its recent motion, expected next pulse, and the current stack.
-     */
-    struct EnsembleContext
-    {
-        bool hasPrimary = false;
-        bool primaryIsActive = false;
-        int primaryNote = -1;
-        int primaryPreviousNote = -1;
-        int primaryNextNote = -1;
-        int primaryDirection = 0;
-        int primaryCurrentStep = 0;
-        int primaryNextStep = 0;
-        bool primaryNowStrong = false;
-        bool primaryNextStrong = false;
-        float primaryPhaseAffinity = 0.0f;
-
-        int soundingCount = 0;
-        int distinctPcCount = 0;
-        int soundingPcMask = 0;
-        int lowestNote = 128;
-        int highestNote = -1;
-    };
-
     std::array<Strand, MAX_STRANDS> strands{};
     PitchField pitchField{};
+    CoordinationMode coordinationMode = CoordinationMode::DensityBudget;
+    int coordinationCap = 3;   // max simultaneous strand notes under DensityBudget
 
     // Timing (shared across strands)
     double bpm_         = 120.0;
@@ -325,43 +299,21 @@ private:
     void applyPivot();              // rotate pcSet by pivotInterval semitones
     void syncRowFromPcSet();        // keep Transform row aligned with current pcSet
 
-    // Per-strand rendering — Phase 3.
+    // Per-strand rendering.
     double strandStepDurationSamples(const Strand& s) const;
     int    baseMidiForStrand(const Strand& s) const;
     int    strandIndexOf(const Strand& s) const;
-    MetricPath metricPathForStrand(const Strand& s) const;
-    void   buildMetricGroups(int steps, MetricPath path, int* groups, int* groupCount) const;
-    int    metricPhaseOffset(const Strand& s, MetricPath path) const;
-    MetricMoment metricMomentForStep(const Strand& s, int stepIdx) const;
-    bool   isMetricStrongStep(const Strand& s, int stepIdx) const;
-    int    activeOtherStrandCount(const Strand& s) const;
-    int    primaryNoteForStep(int stepIdx) const;
-    int    nextPrimaryPulseStep(int fromStep) const;
-    EnsembleContext ensembleContextFor(const Strand& s, int stepIdx, bool isStrong) const;
-    float  primaryRhythmicSupport(const Strand& s, int stepIdx, bool isStrong) const;
-    float  contextualFireProbability(const Strand& s, int stepIdx, bool isPulse, bool isStrong) const;
-    float  metricGateScale(const Strand& s, int stepIdx, bool isPulse, bool isStrong) const;
     int    midiChannelForStrand(const Strand& s) const;
-    float  spatialTargetForStrand(const Strand& s, int stepIdx, bool isPulse, bool isStrong) const;
-    float  updateSpatialPan(Strand& s, int stepIdx, bool isPulse, bool isStrong);
+    int    rolePriority(const Strand& s) const;     // strand 0 = -1, else static_cast<int>(role)
+    float  fireProbability(const Strand& s, bool isPulse) const;   // V4: strand-0-symmetric
+    float  spatialTargetForStrand(const Strand& s) const;          // static lane per strand
+    float  updateSpatialPan(Strand& s);
     int    panControllerValue(float pan) const;
     int    pickNote(Strand& s, int stepIdx, int rawDegree);
     int    voiceLedFieldMember(int rawPc) const;
     bool   fieldContains(int pc) const;
     int    fieldPcForDegree(int degree) const;
-    int    fieldPcNearCenterByIndex(int index) const;
     int    closestMidiForPc(int pc, int anchorMidi) const;
-    int    nearestFieldMidi(int preferredMidi, int previousMidi, int fallbackPc) const;
-    int    relatedFieldPc(int primaryMidi, Role role, int seed, bool isStrong) const;
-    int    bestFieldMidiNear(int targetMidi, int contourMidi, int previousMidi, int seedPc) const;
-    int    chromaticPassingNote(int lastMidi, int seedMidi);
-    int    socialIntervalScore(Role role, int candidate, const EnsembleContext& context, bool isStrong) const;
-    int    ensembleAdjustedNote(const Strand& s, const EnsembleContext& context,
-                                int candidate, bool isStrong, bool allowPassing) const;
-    bool   hasHardSmallSecondClash(const Strand& s, int candidate) const;
-    bool   isJustifiedPassingTone(const Strand& s, int candidate, bool isStrong) const;
-    float  roleFireProbability(const Strand& s, bool isPulse, bool isStrong) const;
-    int    roleVelocityBase(const Strand& s, bool isPulse, bool isStrong) const;
-    int    velocityForNote(const Strand& s, int stepIdx, int note, bool isPulse, bool isStrong);
+    int    velocityForNote(const Strand& s, int stepIdx, bool isPulse);   // V3: no hierarchy
     float  roleGateFraction(const Strand& s) const;
 };
