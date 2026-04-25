@@ -1134,73 +1134,76 @@ void SequencerPanel::resized()
         genFixMutationBtn.setBounds(row2.removeFromLeft(fixW));
         area.removeFromTop(2);
 
-        // Row 3:  [C▾] [Min▾]     |  Range [1][2][3][4]
-        auto row3 = area.removeFromTop(genCtrlH);
-        auto r3L = row3.removeFromLeft(colW);
-        row3.removeFromLeft(colGap);
-        auto r3R = row3;
-
-        // Scale-type dropdown holds labels up to "Hirajoshi" (9 chars) and
-        // "Hung.Min"/"Neap.Min" — 70 px clipped to "Kuma" / "Harm". Keep the
-        // root combo narrow (just C..B[#/b], 2 chars max).
-        genScaleRootBox.setBounds(r3L.removeFromLeft(55));  r3L.removeFromLeft(2);
-        genScaleTypeBox.setBounds(r3L.removeFromLeft(100));
-
-        genRangeLabel.setFont(juce::FontOptions(juce::jmax(kUiLabelFontMin, genCtrlH * 0.55f)));
-        genRangeLabel.setBounds(r3R.removeFromLeft(42));  r3R.removeFromLeft(2);
-        int rangeBtnW = 22;
-        for (int i = 0; i < kNumRangeBtns; ++i)
+        // Merged row: [C▾] [DblHarm▾] [Rng][1][2][3][4]  [Mode▾] [Field== 12cyc]  [S2][Role▾] [S3][Role▾] [S4][Role▾] [S5][Role▾]
+        // The previous two-row split (Scale + Range on one row, Polyphony on
+        // the next) was generously spaced. Combining them saves a row in
+        // GEN mode without crowding any single control. Proportional fill:
+        // Field Rate gets 2 units, each Role 1 unit; the remaining width
+        // after the fixed-size controls is divided across (2 + N) units.
         {
-            int edges = 0;
-            if (i > 0) edges |= juce::Button::ConnectedOnLeft;
-            if (i < kNumRangeBtns - 1) edges |= juce::Button::ConnectedOnRight;
-            genRangeBtns[i].setConnectedEdges(edges);
-            genRangeBtns[i].setBounds(r3R.removeFromLeft(rangeBtnW));
-        }
+            auto rowM = area.removeFromTop(genCtrlH);
+            const int rowW    = rowM.getWidth();
+            const int rootW   = 55;   // C..B[#/b], 2 chars max
+            const int scaleW  = 100;  // longest label "Hirajoshi" / "Hung.Min"
+            const int rngLblW = 32;   // "Rng" — short form of "Range"
+            const int rngBtnW = 22;
+            const int modeW   = 95;   // "Transform" longest mode label
+            const int onW     = 28;   // strand "Sx" button width
+            const int gapTiny = 2;
+            const int gapSm   = 4;
+            const int gapMid  = 8;    // section divider
 
-        area.removeFromTop(g);
+            const int rangeBtnsTotal = rngBtnW * kNumRangeBtns;
+            const int fixedTotal = rootW + gapTiny + scaleW + gapMid
+                                 + rngLblW + gapTiny + rangeBtnsTotal + gapMid
+                                 + modeW + gapSm
+                                 + onW * kNumExtraStrands
+                                 + gapMid                          // before strand group
+                                 + gapTiny * kNumExtraStrands       // ON-to-Role
+                                 + gapSm   * (kNumExtraStrands - 1); // between clusters
 
-        // Polyphony row: [Mode▾] [Rate==] | [S2][Role▾] [S3][Role▾] [S4][Role▾] [S5][Role▾]
-        // Proportional fill: Field Rate gets 2 units, each Role gets 1 unit
-        // of the remaining space after fixed elements + gaps are subtracted.
-        // With kNumExtraStrands strand clusters the unit divisor is 2 + N.
-        {
-            auto rowP = area.removeFromTop(genCtrlH);
-            const int rowW  = rowP.getWidth();
-            const int modeW = 95;   // "Transform" is the longest mode label — 70 px truncated it to "Transfo"
-            const int onW   = 28;   // "Sx" button with margin
-            const int gapA  = 4;    // after Field Mode
-            const int gapB  = 8;    // between field group and strand group
-            const int gapC  = 2;    // between ON btn and role dropdown
-            const int gapD  = 4;    // between strand clusters
+            const int unitDiv   = 2 + kNumExtraStrands;
+            const int flexTotal = juce::jmax(unitDiv * 30, rowW - fixedTotal);
+            const int unit      = flexTotal / unitDiv;
+            const int rateW     = 2 * unit;
+            const int roleW     = unit;
 
-            const int fixedTotal = modeW + onW * kNumExtraStrands
-                                 + gapA + gapB
-                                 + gapC * kNumExtraStrands
-                                 + gapD * (kNumExtraStrands - 1);
-            const int unitDiv    = 2 + kNumExtraStrands;
-            const int flexTotal  = juce::jmax(unitDiv * 30, rowW - fixedTotal);
-            const int unit       = flexTotal / unitDiv;
-            const int rateW      = 2 * unit;
-            const int roleW      = unit;
+            // Scale + Range
+            genScaleRootBox.setBounds(rowM.removeFromLeft(rootW));  rowM.removeFromLeft(gapTiny);
+            genScaleTypeBox.setBounds(rowM.removeFromLeft(scaleW)); rowM.removeFromLeft(gapMid);
+            genRangeLabel.setText("Rng", juce::dontSendNotification);
+            genRangeLabel.setFont(juce::FontOptions(juce::jmax(kUiLabelFontMin, genCtrlH * 0.55f)));
+            genRangeLabel.setBounds(rowM.removeFromLeft(rngLblW)); rowM.removeFromLeft(gapTiny);
+            for (int i = 0; i < kNumRangeBtns; ++i)
+            {
+                int edges = 0;
+                if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+                if (i < kNumRangeBtns - 1) edges |= juce::Button::ConnectedOnRight;
+                genRangeBtns[i].setConnectedEdges(edges);
+                genRangeBtns[i].setBounds(rowM.removeFromLeft(rngBtnW));
+            }
+            rowM.removeFromLeft(gapMid);
 
-            genFieldModeBox.setBounds(rowP.removeFromLeft(modeW));
-            rowP.removeFromLeft(gapA);
-            if (genFieldRateRow) genFieldRateRow->setBounds(rowP.removeFromLeft(rateW));
-            rowP.removeFromLeft(gapB);
+            // Field Mode + Rate
+            genFieldModeBox.setBounds(rowM.removeFromLeft(modeW));
+            rowM.removeFromLeft(gapSm);
+            if (genFieldRateRow) genFieldRateRow->setBounds(rowM.removeFromLeft(rateW));
+            rowM.removeFromLeft(gapMid);
+
+            // Strand clusters
             for (int i = 0; i < kNumExtraStrands; ++i)
             {
-                strandEnableBtns[i].setBounds(rowP.removeFromLeft(onW));
-                rowP.removeFromLeft(gapC);
+                strandEnableBtns[i].setBounds(rowM.removeFromLeft(onW));
+                rowM.removeFromLeft(gapTiny);
                 if (i == kNumExtraStrands - 1)
                 {
                     // Last role absorbs any rounding leftover so the row fills rowW exactly.
-                    strandRoleBoxes[i].setBounds(rowP);
+                    strandRoleBoxes[i].setBounds(rowM);
                 }
                 else
                 {
-                    strandRoleBoxes[i].setBounds(rowP.removeFromLeft(roleW));
-                    rowP.removeFromLeft(gapD);
+                    strandRoleBoxes[i].setBounds(rowM.removeFromLeft(roleW));
+                    rowM.removeFromLeft(gapSm);
                 }
             }
             area.removeFromTop(g);
