@@ -4,6 +4,7 @@
 #include "../presets/PresetTagSuggester.h"
 #include "GuiHelpers.h"
 #include "BinaryData.h"
+#include <cstring>
 #include <thread>
 
 namespace
@@ -79,12 +80,14 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     // Axes description note is inside AxesPanel
 
     // Wire StatusBar buttons
-    statusBar.onNewPreset  = [this] { loadInitPreset(); };
-    statusBar.onSavePreset = [this] { savePreset(); };
-    statusBar.onLoadPreset = [this] { loadPreset(); };
-    statusBar.onExportWav = [this] { exportWav(); };
-    statusBar.onSettings = [this] { if (settingsVisible) hideSettings(); else showSettings(); };
-    statusBar.onManual = [this] { showManual(); };
+    statusBar.onNewPreset    = [this] { loadInitPreset(); };
+    statusBar.onSavePreset   = [this] { savePreset(); };
+    statusBar.onSaveAsPreset = [this] { saveAsPreset(); };
+    statusBar.onLoadPreset   = [this] { loadPreset(); };
+    statusBar.onExportWav    = [this] { exportWav(); };
+    statusBar.onSettings     = [this] { if (settingsVisible) hideSettings(); else showSettings(); };
+    statusBar.onManual       = [this] { showManual(); };
+    statusBar.onPresetNameContextMenu = [this](juce::Point<int> p) { showPresetNameContextMenu(p); };
 
     // Settings overlay (same pattern as DimExplorer)
     settingsScrim.onClick = [this] { hideSettings(); };
@@ -143,33 +146,87 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
             presetManager.setStatusText("Load preset first to edit its tags", true);
         }
     };
+    presetManager.onRenameRequested = [this](const juce::File& file)
+    {
+        // Modal AlertWindow with a single text editor pre-filled with the
+        // current name. Save = rename file on disk + patch the JSON `name`
+        // field so the in-file metadata stays consistent with the filename.
+        auto* alert = new juce::AlertWindow("Rename Preset",
+                                            "New name for \"" + file.getFileNameWithoutExtension() + "\":",
+                                            juce::MessageBoxIconType::QuestionIcon, this);
+        alert->addTextEditor("name", file.getFileNameWithoutExtension());
+        alert->addButton("Rename", 1, juce::KeyPress(juce::KeyPress::returnKey));
+        alert->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+        alert->enterModalState(true,
+            juce::ModalCallbackFunction::create([this, alert, file](int result)
+            {
+                std::unique_ptr<juce::AlertWindow> deleter(alert);
+                if (result != 1) return;
+
+                const auto requested = juce::File::createLegalFileName(
+                    alert->getTextEditorContents("name").trim());
+                if (requested.isEmpty() || requested == file.getFileNameWithoutExtension())
+                    return;
+
+                auto target = file.getParentDirectory().getChildFile(requested).withFileExtension("t5p");
+                if (target.existsAsFile())
+                {
+                    presetManager.setStatusText("Rename failed: name already exists", true);
+                    return;
+                }
+                if (! file.moveFileTo(target))
+                {
+                    presetManager.setStatusText("Rename failed: could not move file", true);
+                    return;
+                }
+                // Patch the JSON `name` field inside the file so the embedded
+                // metadata stays consistent with the new filename.
+                patchPresetNameField(target, requested);
+
+                if (currentPresetFile == file)
+                    currentPresetFile = target;
+
+                presetManager.refreshLibrary();
+                presetManager.setCurrentPreset(currentPresetFile, getCurrentPresetDisplayName());
+                presetManager.setStatusText("Renamed to " + requested);
+            }), false);
+    };
     presetManager.onDeleteRequested = [this](const juce::File& file)
     {
-        const auto shouldDelete = juce::AlertWindow::showOkCancelBox(
-            juce::AlertWindow::WarningIcon,
-            "Delete Preset",
-            "Delete " + file.getFileNameWithoutExtension() + " from the user library?",
-            "Delete",
-            "Cancel",
-            this,
-            nullptr);
+        // Async confirmation — the legacy showOkCancelBox returns false on
+        // Linux without ever showing the dialog, which made Delete appear
+        // permanently broken. The MessageBoxOptions/showAsync path works on
+        // every platform.
+        juce::AlertWindow::showAsync(
+            juce::MessageBoxOptions()
+                .withIconType(juce::MessageBoxIconType::WarningIcon)
+                .withTitle("Delete Preset")
+                .withMessage("Delete \"" + file.getFileNameWithoutExtension()
+                             + "\" from the user library?")
+                .withButton("Delete")
+                .withButton("Cancel")
+                .withParentComponent(this),
+            [this, file](int result)
+            {
+                // showAsync convention: result == 1 → first button (Delete).
+                if (result != 1) return;
 
-        if (!shouldDelete)
-            return;
-
-        if (file.deleteFile())
-        {
-            if (currentPresetFile == file)
-                currentPresetFile = juce::File();
-
-            presetManager.refreshLibrary();
-            presetManager.setCurrentPreset(currentPresetFile, getCurrentPresetDisplayName());
-            presetManager.setStatusText("Deleted " + file.getFileNameWithoutExtension());
-        }
-        else
-        {
-            presetManager.setStatusText("Preset delete failed", true);
-        }
+                if (file.deleteFile())
+                {
+                    if (currentPresetFile == file)
+                        currentPresetFile = juce::File();
+                    presetManager.refreshLibrary();
+                    presetManager.setCurrentPreset(currentPresetFile,
+                                                   getCurrentPresetDisplayName());
+                    presetManager.setStatusText("Deleted "
+                                                + file.getFileNameWithoutExtension());
+                }
+                else
+                {
+                    presetManager.setStatusText("Preset delete failed (write-protected?)",
+                                                true);
+                }
+            });
     };
     addChildComponent(presetManager);
 
@@ -181,24 +238,19 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     savePresetDialog.setVisible(false);
     savePresetDialog.onCancel = [this] { hideSaveDialog(); };
     savePresetDialog.onSave = [this](const juce::String& presetName,
-                                     const juce::StringArray& tags)
+                                     const juce::StringArray& tags,
+                                     const juce::String& bank)
     {
-        auto target = PresetFormat::getUserPresetsDirectory()
-                          .getChildFile(presetName).withFileExtension("t5p");
-        const bool targetExists = target.existsAsFile();
-        const bool savingCurrent = currentPresetFile.existsAsFile()
-                                   && currentPresetFile == target;
+        // The dialog already labels the Save button as "Replace \"NAME\""
+        // (in red) when the chosen bank+name combination would overwrite an
+        // existing file, so reaching this callback IS the user's confirmed
+        // intent — no second popup needed.
+        auto bankDir = PresetFormat::getUserPresetsDirectory();
+        if (bank.isNotEmpty())
+            bankDir = bankDir.getChildFile(bank);
+        bankDir.createDirectory();
 
-        if (targetExists && ! savingCurrent)
-        {
-            const auto shouldReplace = juce::AlertWindow::showOkCancelBox(
-                juce::AlertWindow::WarningIcon,
-                "Save Preset",
-                "A user preset named " + target.getFileNameWithoutExtension()
-                    + " already exists. Replace it?",
-                "Save", "Cancel", this, nullptr);
-            if (! shouldReplace) return;
-        }
+        auto target = bankDir.getChildFile(presetName).withFileExtension("t5p");
 
         processorRef.setLastTags(tags);
         if (savePresetToFile(target))
@@ -403,12 +455,48 @@ void MainPanel::hidePresetManager()
     repaint();
 }
 
-void MainPanel::showSaveDialog()
+void MainPanel::showSaveDialog(SaveDialogPrefill mode)
 {
     auto defaultName = getCurrentPresetDisplayName();
     if (defaultName.isEmpty()) defaultName = "New Preset";
+    if (mode == SaveDialogPrefill::copySuffix && getCurrentPresetDisplayName().isNotEmpty())
+        defaultName = defaultName + " copy";
 
-    savePresetDialog.configure(defaultName, suggestTagsForCurrent());
+    // Snapshot existing user preset names + bank subdirs so the dialog can
+    // (a) warn about name collisions, (b) populate the Bank picker, and
+    // (c) make the Save button bank-aware (a conflict is only a real
+    // overwrite when bank+name match an existing file).
+    juce::StringArray existingNames;
+    juce::StringArray existingBanks;
+    std::set<juce::String> existingPathKeys;   // lowercased bank/name.t5p
+    auto userDir = PresetFormat::getUserPresetsDirectory();
+    if (userDir.isDirectory())
+    {
+        for (auto& f : userDir.findChildFiles(juce::File::findFiles, true, "*.t5p"))
+        {
+            existingNames.add(f.getFileNameWithoutExtension());
+            const auto rel = f.getRelativePathFrom(userDir).replace("\\", "/");
+            existingPathKeys.insert(rel.toLowerCase());
+        }
+        for (auto& d : userDir.findChildFiles(juce::File::findDirectories, false, "*"))
+            existingBanks.add(d.getFileName());
+    }
+    existingBanks.removeEmptyStrings();
+    existingBanks.removeDuplicates(true);
+    existingBanks.sortNatural();
+
+    // Pre-select the bank of the currently loaded preset, if any.
+    juce::String currentBank;
+    if (currentPresetFile.existsAsFile())
+    {
+        const auto parent = currentPresetFile.getParentDirectory();
+        if (parent != userDir && parent.isAChildOf(userDir))
+            currentBank = parent.getFileName();
+    }
+
+    savePresetDialog.configure(defaultName, suggestTagsForCurrent(),
+                               existingNames, existingBanks,
+                               std::move(existingPathKeys), currentBank);
     saveDialogVisible = true;
     saveDialogScrim.setVisible(true);
     savePresetDialog.setVisible(true);
@@ -424,6 +512,46 @@ void MainPanel::hideSaveDialog()
     saveDialogScrim.setVisible(false);
     savePresetDialog.setVisible(false);
     repaint();
+}
+
+bool MainPanel::patchPresetNameField(const juce::File& file, const juce::String& newName)
+{
+    juce::MemoryBlock data;
+    if (! file.loadFileAsData(data)) return false;
+    const auto* bytes = static_cast<const uint8_t*>(data.getData());
+    const auto size = data.getSize();
+    if (size < 12 || std::memcmp(bytes, "T5YN", 4) != 0) return false;
+
+    const uint32_t version    = *reinterpret_cast<const uint32_t*>(bytes + 4);
+    const uint32_t oldJsonLen = *reinterpret_cast<const uint32_t*>(bytes + 8);
+    if (12 + (size_t) oldJsonLen > size) return false;
+
+    const juce::String oldJson(reinterpret_cast<const char*>(bytes + 12),
+                               static_cast<size_t>(oldJsonLen));
+    auto parsed = juce::JSON::parse(oldJson);
+    auto* root = parsed.getDynamicObject();
+    if (root == nullptr) return false;
+    root->setProperty("name", newName);
+
+    const juce::String newJson = juce::JSON::toString(parsed, true);
+    const uint32_t newJsonLen = static_cast<uint32_t>(newJson.getNumBytesAsUTF8());
+
+    juce::TemporaryFile tmp(file);
+    juce::FileOutputStream out(tmp.getFile());
+    if (out.failedToOpen()) return false;
+
+    out.write("T5YN", 4);
+    out.writeInt(static_cast<int>(version));
+    out.writeInt(static_cast<int>(newJsonLen));
+    out.write(newJson.toRawUTF8(), static_cast<size_t>(newJsonLen));
+
+    const size_t audioOffset = 12 + (size_t) oldJsonLen;
+    if (audioOffset < size)
+        out.write(bytes + audioOffset, size - audioOffset);
+
+    out.flush();
+    if (! out.getStatus().wasOk()) return false;
+    return tmp.overwriteTargetFileWithTemporary();
 }
 
 juce::StringArray MainPanel::suggestTagsForCurrent()
@@ -557,93 +685,69 @@ bool MainPanel::loadPresetFromFile(const juce::File& file)
 
 void MainPanel::importPresetFile()
 {
-    auto presetsDir = PresetFormat::getPresetsDirectory();
+    // Multi-select file picker — drops the per-file overwrite confirm
+    // (silently broken on Linux anyway) in favour of automatic suffixing
+    // " (1)", " (2)", … on filename collision. Imported files are NOT
+    // auto-loaded; the user double-clicks in the library to load.
+    auto presetsDir = PresetFormat::getUserPresetsDirectory();
     auto chooser = std::make_shared<juce::FileChooser>(
-        "Import Preset", presetsDir, "*.t5p;*.json");
+        "Import Presets", presetsDir, "*.t5p");
 
     juce::Component::SafePointer<MainPanel> safeThis(this);
-    chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+    chooser->launchAsync(juce::FileBrowserComponent::openMode
+                       | juce::FileBrowserComponent::canSelectFiles
+                       | juce::FileBrowserComponent::canSelectMultipleItems,
         [safeThis, chooser](const juce::FileChooser& fc)
         {
-            if (!safeThis)
-                return;
-
+            if (! safeThis) return;
             auto* self = safeThis.getComponent();
-            auto file = fc.getResult();
-            if (!file.existsAsFile())
-                return;
 
-            const auto previousPresetFile = self->currentPresetFile;
-            auto restoreFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
-                                   .getNonexistentChildFile("t5ynth_import_restore", ".t5p", false);
-            self->syncGuiStateForPresetSave();
-            const bool restoreWritten = PresetFormat::saveToFile(restoreFile, self->processorRef);
+            const auto results = fc.getResults();
+            if (results.isEmpty()) return;
 
-            auto restorePreviousState = [&]()
+            const auto userDir = PresetFormat::getUserPresetsDirectory();
+            int imported = 0, renamed = 0, skippedNonT5p = 0, failed = 0;
+            juce::File lastImported;
+
+            for (auto& src : results)
             {
-                if (!restoreWritten)
-                    return;
+                if (! src.existsAsFile())          { ++failed; continue; }
+                if (! src.hasFileExtension("t5p")) { ++skippedNonT5p; continue; }
 
-                auto restoreResult = PresetFormat::loadFromFile(restoreFile, self->processorRef);
-                if (restoreResult.success)
-                    self->applyLoadedPreset(restoreResult, previousPresetFile);
+                // Do not import a file that already lives in the user dir
+                if (src.isAChildOf(userDir)) { continue; }
 
-                restoreFile.deleteFile();
-            };
-
-            auto result = PresetFormat::loadFromFile(file, self->processorRef);
-            if (!result.success)
-            {
-                restorePreviousState();
-                self->presetManager.setStatusText("Preset load failed", true);
-                return;
-            }
-
-            auto importedName = juce::File::createLegalFileName(file.getFileNameWithoutExtension().trim());
-            if (importedName.isEmpty())
-                importedName = juce::File::createLegalFileName(result.presetName.trim());
-            if (importedName.isEmpty())
-                importedName = "Imported Preset";
-
-            auto target = PresetFormat::getUserPresetsDirectory()
-                              .getChildFile(importedName)
-                              .withFileExtension("t5p");
-
-            if (target.existsAsFile() && target != file)
-            {
-                const auto shouldOverwrite = juce::AlertWindow::showOkCancelBox(
-                    juce::AlertWindow::WarningIcon,
-                    "Import Preset",
-                    "A user preset named " + target.getFileNameWithoutExtension() + " already exists. Replace it?",
-                    "Import",
-                    "Cancel",
-                    self,
-                    nullptr);
-
-                if (!shouldOverwrite)
+                auto target = userDir.getChildFile(src.getFileName());
+                bool didRename = false;
+                if (target.existsAsFile())
                 {
-                    restorePreviousState();
-                    self->presetManager.setStatusText("Import cancelled");
-                    return;
+                    target = target.getNonexistentSibling(true);
+                    didRename = true;
+                }
+
+                if (src.copyFileTo(target))
+                {
+                    ++imported;
+                    if (didRename) ++renamed;
+                    lastImported = target;
+                }
+                else
+                {
+                    ++failed;
                 }
             }
 
-            self->applyLoadedPreset(result, {});
+            self->presetManager.refreshLibrary();
+            if (lastImported.existsAsFile())
+                self->presetManager.setCurrentPreset(self->currentPresetFile,
+                                                    self->getCurrentPresetDisplayName());
 
-            if (self->savePresetToFile(target))
-            {
-                self->presetManager.refreshLibrary();
-                self->presetManager.setCurrentPreset(target, target.getFileNameWithoutExtension());
-                self->presetManager.setStatusText("Imported " + target.getFileNameWithoutExtension());
-            }
-            else
-            {
-                restorePreviousState();
-                self->presetManager.setStatusText("Preset import failed", true);
-                return;
-            }
-
-            restoreFile.deleteFile();
+            juce::String msg;
+            msg << "Imported " << imported << (imported == 1 ? " preset" : " presets");
+            if (renamed > 0)        msg << " (" << renamed << " renamed to avoid clash)";
+            if (skippedNonT5p > 0)  msg << ", skipped " << skippedNonT5p << " non-.t5p";
+            if (failed > 0)         msg << ", " << failed << " failed";
+            self->presetManager.setStatusText(msg, failed > 0);
         });
 }
 
@@ -979,7 +1083,7 @@ void MainPanel::resized()
     auto footer = b.removeFromBottom(footerH);
     int volW = juce::jlimit(40, 60, juce::roundToInt(w * 0.05f));
     auto volArea = footer.removeFromRight(volW);
-    masterVolLabel.setFont(juce::FontOptions(10.0f));
+    masterVolLabel.setFont(juce::FontOptions(kUiLabelFontMin));
     masterVolLabel.setBounds(volArea.removeFromTop(14));
     masterVolKnob.setBounds(volArea);
     int footerGap = juce::jlimit(4, 8, juce::roundToInt(w * 0.005f));
@@ -1034,7 +1138,8 @@ void MainPanel::resized()
     oscHeader.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.85f));
     oscHeader.setBounds(genCol.removeFromTop(headerH));
     // "Powered by Stability AI" overlays right side of header
-    poweredByLabel.setFont(juce::FontOptions(static_cast<float>(headerH) * 0.6f));
+    poweredByLabel.setFont(juce::FontOptions(juce::jmax(kUiLabelFontMin,
+                                                        static_cast<float>(headerH) * 0.6f)));
     poweredByLabel.setBounds(oscHeader.getBounds());
     promptPanel.setBounds(genCol.removeFromTop(oscH));
     genCol.removeFromTop(kGap);
@@ -1096,8 +1201,8 @@ void MainPanel::resized()
 
     if (saveDialogVisible)
     {
-        const int dialogW = juce::jlimit(360, 480, juce::roundToInt(w * 0.36f));
-        const int dialogH = 220;
+        const int dialogW = juce::jlimit(380, 520, juce::roundToInt(w * 0.38f));
+        const int dialogH = juce::jlimit(360, 480, juce::roundToInt(h * 0.55f));
         savePresetDialog.setBounds((getWidth() - dialogW) / 2,
                                    (getHeight() - dialogH) / 2,
                                    dialogW,
@@ -1346,10 +1451,68 @@ void MainPanel::hideManual()
 
 void MainPanel::savePreset()
 {
-    showSaveDialog();
+    // Always open the dialog. The in-dialog conflict UI is the only path
+    // that overwrites an existing preset, and the user has to click the
+    // explicit red "Replace \"NAME\"" button to confirm. There is no Undo
+    // in the synth, so silent overwrites of disk state are not acceptable.
+    showSaveDialog(SaveDialogPrefill::sameName);
+}
+
+void MainPanel::saveAsPreset()
+{
+    // Same dialog, but pre-fill nudges the user toward a NEW filename by
+    // appending " copy" to the current name. Conflict protection still
+    // applies if the user manually picks a name that collides.
+    showSaveDialog(SaveDialogPrefill::copySuffix);
 }
 
 void MainPanel::loadPreset()
 {
     showPresetManager();
+}
+
+void MainPanel::renameCurrentPreset()
+{
+    if (! currentPresetFile.existsAsFile()) return;
+    if (! currentPresetFile.isAChildOf(PresetFormat::getUserPresetsDirectory()))
+    {
+        statusBar.setStatusText("Cannot rename a factory preset");
+        return;
+    }
+    if (presetManager.onRenameRequested) presetManager.onRenameRequested(currentPresetFile);
+}
+
+void MainPanel::deleteCurrentPreset()
+{
+    if (! currentPresetFile.existsAsFile()) return;
+    if (! currentPresetFile.isAChildOf(PresetFormat::getUserPresetsDirectory()))
+    {
+        statusBar.setStatusText("Cannot delete a factory preset");
+        return;
+    }
+    if (presetManager.onDeleteRequested) presetManager.onDeleteRequested(currentPresetFile);
+}
+
+void MainPanel::showPresetNameContextMenu(juce::Point<int>)
+{
+    juce::PopupMenu menu;
+    const bool haveUserPreset = currentPresetFile.existsAsFile()
+        && currentPresetFile.isAChildOf(PresetFormat::getUserPresetsDirectory());
+    menu.addItem(1, juce::String::fromUTF8("Rename\xe2\x80\xa6"), haveUserPreset);
+    menu.addItem(2, "Delete",                                     haveUserPreset);
+    menu.addSeparator();
+    menu.addItem(3, "Reveal in file manager",
+                 currentPresetFile.existsAsFile());
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&statusBar),
+        [this](int result)
+        {
+            switch (result)
+            {
+                case 1: renameCurrentPreset(); break;
+                case 2: deleteCurrentPreset(); break;
+                case 3: if (currentPresetFile.existsAsFile()) currentPresetFile.revealToUser(); break;
+                default: break;
+            }
+        });
 }

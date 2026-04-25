@@ -357,8 +357,8 @@ void DimensionExplorer::paint(juce::Graphics& g)
 
     if (bars_.empty())
     {
-        g.setColour(kDimmer);
-        g.setFont(juce::FontOptions(fs * 0.85f));
+        g.setColour(kTextMuted);
+        g.setFont(juce::FontOptions(juce::jmax(kUiLabelFontMin, fs * 0.85f)));
         g.drawText(overlayMode_ ? "Generate to see embedding dimensions" : "Generate first",
                    area, juce::Justification::centred);
         return;

@@ -19,6 +19,7 @@ Files in this directory:
 - [`IPC_PROTOCOL.md`](IPC_PROTOCOL.md) — JUCE ↔ Python binary pipe protocol specification.
 - [`ADDING_A_MODEL.md`](ADDING_A_MODEL.md) — HOWTO for adding a new inference engine.
 - [`ADDING_A_MODULATION_TARGET.md`](ADDING_A_MODULATION_TARGET.md) — HOWTO for adding a new mod matrix destination.
+- [`INTERFACE_DESIGN_POLICY.md`](INTERFACE_DESIGN_POLICY.md) — UI text, contrast, and control-density rules for the synth interface.
 - [`PRESET_FORMAT.md`](PRESET_FORMAT.md) — `.t5p` binary preset format specification.
 - [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) — Tag-driven CI release flow.
 - [`TESTING.md`](TESTING.md) — Current testing state and conventions.
@@ -75,6 +76,7 @@ In `docs/`:
 - …understand the code layout → [`/ARCHITECTURE.md`](../ARCHITECTURE.md)
 - …add a new diffusion model → [`ADDING_A_MODEL.md`](ADDING_A_MODEL.md)
 - …change how modulation routing works → [`ADDING_A_MODULATION_TARGET.md`](ADDING_A_MODULATION_TARGET.md)
+- …change the GUI style or add controls → [`INTERFACE_DESIGN_POLICY.md`](INTERFACE_DESIGN_POLICY.md)
 - …understand the `.t5p` format → [`PRESET_FORMAT.md`](PRESET_FORMAT.md)
 - …replace the Python inference backend → [`IPC_PROTOCOL.md`](IPC_PROTOCOL.md)
 - …cut a new release → [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md)

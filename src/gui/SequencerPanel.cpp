@@ -922,7 +922,8 @@ void SequencerPanel::resized()
         }
     };
 
-    const float midiFont = compactTopRow ? 10.0f : juce::jmax(9.0f, static_cast<float>(rH) * 0.6f);
+    const float midiFont = compactTopRow ? kUiValueFontMin : juce::jmax(kUiValueFontMin,
+                                                                         static_cast<float>(rH) * 0.6f);
     const int midiTextW = measureTextWidth("D#4 v127", midiFont) + 8;
     const int midiLedW = compactTopRow ? 10 : 14;
     const int midiGap = compactTopRow ? 2 : 5;
@@ -1064,7 +1065,7 @@ void SequencerPanel::resized()
     }
     r4.removeFromLeft(g);
     arpRateBox.setBounds(r4.removeFromLeft(60));   r4.removeFromLeft(g);
-    arpOctLabel.setFont(juce::FontOptions(juce::jmax(9.0f, rH * 0.55f)));
+    arpOctLabel.setFont(juce::FontOptions(juce::jmax(kUiLabelFontMin, rH * 0.55f)));
     arpOctLabel.setBounds(r4.removeFromLeft(28));   r4.removeFromLeft(2);
     int arpOctBtnW = 22;
     for (int i = 0; i < kNumOctBtns; ++i)
@@ -1145,7 +1146,7 @@ void SequencerPanel::resized()
         genScaleRootBox.setBounds(r3L.removeFromLeft(55));  r3L.removeFromLeft(2);
         genScaleTypeBox.setBounds(r3L.removeFromLeft(100));
 
-        genRangeLabel.setFont(juce::FontOptions(juce::jmax(9.0f, genCtrlH * 0.55f)));
+        genRangeLabel.setFont(juce::FontOptions(juce::jmax(kUiLabelFontMin, genCtrlH * 0.55f)));
         genRangeLabel.setBounds(r3R.removeFromLeft(42));  r3R.removeFromLeft(2);
         int rangeBtnW = 22;
         for (int i = 0; i < kNumRangeBtns; ++i)

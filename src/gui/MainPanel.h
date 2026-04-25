@@ -71,8 +71,12 @@ private:
     void showDimExplorer();
     void hideDimExplorer();
     void tryLoadInferenceModels(bool forceRestart = false);
-    void savePreset();
-    void loadPreset();
+    void savePreset();        // quick save (overwrite current; fall back to dialog)
+    void saveAsPreset();      // always opens the save dialog
+    void loadPreset();        // open library browser
+    void renameCurrentPreset();
+    void deleteCurrentPreset();
+    void showPresetNameContextMenu(juce::Point<int> screenPos);
     void importPresetFile();
     void exportWav();
     void loadDefaultPreset();
@@ -84,10 +88,16 @@ private:
     void syncGuiStateForPresetSave();
     void showPresetManager();
     void hidePresetManager();
-    void showSaveDialog();
+    enum class SaveDialogPrefill { sameName, copySuffix };
+    void showSaveDialog(SaveDialogPrefill mode = SaveDialogPrefill::sameName);
     void hideSaveDialog();
     juce::String getCurrentPresetDisplayName() const;
     juce::StringArray suggestTagsForCurrent();
+    /** Re-write a .t5p file's embedded JSON `name` field without touching
+     *  any other field or the audio PCM. Used by the rename flow so the
+     *  metadata stored inside the file stays consistent with the new
+     *  filename. Returns true on success. */
+    static bool patchPresetNameField(const juce::File& file, const juce::String& newName);
     // Shared implementation used by loadDefaultPreset / loadInitPreset:
     // writes the embedded binary to a temp file and routes it through the
     // standard PresetFormat loader. Returns false on failure.

@@ -344,14 +344,17 @@ juce::Array<juce::File> PresetFormat::getAllPresetFiles()
 {
     juce::Array<juce::File> files;
 
+    // Recursive scan so user-created subdirectories ("banks") show up in
+    // the library. Factory dir is also scanned recursively in case a future
+    // installer ships categorized subfolders.
     auto factoryDir = getFactoryPresetsDirectory();
     if (factoryDir.isDirectory())
-        for (auto& f : factoryDir.findChildFiles(juce::File::findFiles, false, "*.t5p"))
+        for (auto& f : factoryDir.findChildFiles(juce::File::findFiles, true, "*.t5p"))
             files.add(f);
 
     auto userDir = getUserPresetsDirectory();
     if (userDir.isDirectory())
-        for (auto& f : userDir.findChildFiles(juce::File::findFiles, false, "*.t5p"))
+        for (auto& f : userDir.findChildFiles(juce::File::findFiles, true, "*.t5p"))
             files.add(f);
 
     return files;

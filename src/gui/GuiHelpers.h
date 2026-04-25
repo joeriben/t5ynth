@@ -7,12 +7,20 @@
 
 // ── Color constants (shared across all GUI files) ──────────────────────────
 static const auto kAccent  = juce::Colour(0xffe91e63);  // C — Pink (engine accent)
-static const auto kDim     = juce::Colour(0xff888888);
-static const auto kDimmer  = juce::Colour(0xff606060);
+static const auto kTextPrimary   = juce::Colour(0xffe7edf5);
+static const auto kTextSecondary = juce::Colour(0xffc2cad7);
+static const auto kTextMuted     = juce::Colour(0xff9aa6b8);
+static const auto kTextDisabled  = juce::Colour(0xff768294);
+static const auto kDim     = kTextSecondary;
+static const auto kDimmer  = kTextMuted;
 static const auto kSurface = juce::Colour(0xff1e2130);  // Slider track bg, input fields
 static const auto kCard    = juce::Colour(0xff1a1e2a);  // Card/section background
 static const auto kBg      = juce::Colour(0xff0e1018);  // Main background (dark blue-gray, not black)
 static const auto kBorder  = juce::Colour(0xff353a4a);  // Section borders (more visible)
+
+static constexpr float kUiLabelFontMin = 11.0f;
+static constexpr float kUiValueFontMin = 11.0f;
+static constexpr float kUiControlFontMin = 11.0f;
 
 // Semantic axis colors
 static const auto kAxis1   = juce::Colour(0xffe91e63);  // Pink
@@ -420,11 +428,11 @@ private:
     SliderLayoutProfile getLayoutProfile(bool compact, bool applyForcedLabelWidth = true) const
     {
         const int resolvedHeight = juce::jmax(18, getHeight() > 0 ? getHeight() : 22);
-        const float maxFs = static_cast<float>(resolvedHeight) * 0.75f;
-        const float labelFs = juce::jmax(7.0f, juce::jmin(maxFs, compact ? 9.0f : 10.5f));
-        const float valueFs = juce::jmax(7.0f, juce::jmin(maxFs, compact ? 9.0f : 10.5f));
-        const int labelPadding = compact ? 6 : 10;
-        const int valuePadding = compact ? 6 : 10;
+        const float maxFs = static_cast<float>(resolvedHeight) * 0.74f;
+        const float labelFs = juce::jmax(kUiLabelFontMin, juce::jmin(maxFs, compact ? 11.0f : 12.0f));
+        const float valueFs = juce::jmax(kUiValueFontMin, juce::jmin(maxFs, compact ? 11.0f : 12.0f));
+        const int labelPadding = compact ? 8 : 12;
+        const int valuePadding = compact ? 8 : 12;
 
         SliderLayoutProfile profile;
         profile.labelFontSize = labelFs;
@@ -433,8 +441,8 @@ private:
         profile.valueWidth = currentValueText().isEmpty() ? 0 : measureTextWidth(currentValueText(), valueFs) + valuePadding;
         if (applyForcedLabelWidth && forcedLabelWidth >= 0)
             profile.labelWidth = forcedLabelWidth;
-        profile.minTrackWidth = compact ? 48 : 72;
-        profile.preferredTrackWidth = compact ? 72 : 112;
+        profile.minTrackWidth = compact ? 40 : 64;
+        profile.preferredTrackWidth = compact ? 70 : 112;
         profile.minimumWidth = profile.labelWidth + profile.valueWidth + profile.minTrackWidth;
         profile.preferredWidth = profile.labelWidth + profile.valueWidth + profile.preferredTrackWidth;
         return profile;
@@ -451,8 +459,8 @@ private:
         int overflow = profile.minimumWidth - totalWidth;
         if (overflow > 0)
         {
-            const int minLabelWidth = label.getText().isEmpty() ? 0 : 8;
-            const int minValueWidth = currentValueText().isEmpty() ? 0 : 8;
+            const int minLabelWidth = label.getText().isEmpty() ? 0 : measureTextWidth("M", profile.labelFontSize) + 2;
+            const int minValueWidth = currentValueText().isEmpty() ? 0 : measureTextWidth("00", profile.valueFontSize) + 2;
             const int labelShrink = juce::jmin(overflow / 2 + overflow % 2,
                                                juce::jmax(0, profile.labelWidth - minLabelWidth));
             profile.labelWidth -= labelShrink;
@@ -494,7 +502,7 @@ private:
 
     void updateLabelAppearance()
     {
-        juce::Colour textColour = kDimmer;
+        juce::Colour textColour = kTextSecondary;
         auto border = juce::BorderSize<int>(1, 5, 1, 5);
         if (labelMode == LabelMode::Positive)
         {
@@ -503,7 +511,7 @@ private:
         }
         else if (labelMode == LabelMode::Negative)
         {
-            textColour = kDim;
+            textColour = kTextMuted;
             border = juce::BorderSize<int>(1, 3, 1, 3);
         }
         label.setColour(juce::Label::textColourId, textColour);

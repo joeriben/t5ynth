@@ -7,6 +7,7 @@
 #include "GuiHelpers.h"
 #include "AxesPanel.h"
 #include "../presets/PresetFormat.h"
+#include "../presets/PresetTagSuggester.h"
 
 /**
  * Three-pane preset library overlay.
@@ -26,7 +27,8 @@
  * enough to scan the whole library on each open.
  */
 class PresetManagerPanel : public juce::Component,
-                           private juce::ListBoxModel
+                           private juce::ListBoxModel,
+                           private juce::KeyListener
 {
 public:
     struct Entry
@@ -39,12 +41,23 @@ public:
         juce::StringArray tags;
         juce::Time modified;
         bool isFactory = false;
+        /** Bank label: "Factory" for any factory file, "Default" for user
+         *  presets at the user-dir root, or the subdir name (joined with
+         *  "/" if nested) for presets in user-created subdirectories. */
+        juce::String bank;
         bool hasAxes = false;
         std::array<std::pair<juce::String, float>, 3> axes;
         double sampleRate = 0.0;
         int    numChannels = 0;
         int    numSamples  = 0;
     };
+
+    /** Display label for the user-presets-root pseudo-bank. */
+    static const juce::String& kRootUserBank()
+    {
+        static const juce::String s = "Default";
+        return s;
+    }
 
     PresetManagerPanel()
     {
@@ -54,6 +67,8 @@ public:
         addAndMakeVisible(titleLabel);
 
         configureEditor(searchEditor, "Search name or prompt…");
+        searchEditor.setEscapeAndReturnKeysConsumed(false);
+        searchEditor.addKeyListener(this);
         searchEditor.onTextChange = [this] { rebuildFiltered(); };
         addAndMakeVisible(searchEditor);
 
@@ -61,9 +76,22 @@ public:
         importBtn.onClick = [this] { if (onImportRequested) onImportRequested(); };
         addAndMakeVisible(importBtn);
 
-        configureButton(closeBtn, kSurface);
-        closeBtn.onClick = [this] { if (onCloseRequested) onCloseRequested(); };
-        addAndMakeVisible(closeBtn);
+        // Top-right × icon — replaces the wider "Close" text button
+        closeIconBtn.setButtonText(juce::String::fromUTF8("\xc3\x97"));
+        closeIconBtn.setColour(juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+        closeIconBtn.setColour(juce::TextButton::textColourOffId, kDim);
+        closeIconBtn.setColour(juce::TextButton::textColourOnId,  juce::Colours::white);
+        closeIconBtn.onClick = [this] { if (onCloseRequested) onCloseRequested(); };
+        addAndMakeVisible(closeIconBtn);
+
+        // Bottom-right Cancel button — explicit dismiss alongside the × icon
+        // and Esc, matching the SavePresetDialog convention.
+        configureButton(cancelBtn, kSurface);
+        cancelBtn.onClick = [this] { if (onCloseRequested) onCloseRequested(); };
+        addAndMakeVisible(cancelBtn);
+
+        setWantsKeyboardFocus(true);
+        addKeyListener(this);
 
         sidebar.onChanged = [this] { rebuildFiltered(); };
         addAndMakeVisible(sidebar);
@@ -72,19 +100,13 @@ public:
         presetList.setColour(juce::ListBox::backgroundColourId, kSurface);
         presetList.setColour(juce::ListBox::outlineColourId, kBorder);
         presetList.setRowHeight(54);
+        presetList.addKeyListener(this);
         addAndMakeVisible(presetList);
 
         detail.onLoadRequested = [this]
         {
             if (selectedEntryIndex < 0 || onLoadRequested == nullptr) return;
             onLoadRequested(allEntries[(size_t) selectedEntryIndex].file);
-        };
-        detail.onDeleteRequested = [this]
-        {
-            if (selectedEntryIndex < 0 || onDeleteRequested == nullptr) return;
-            const auto& e = allEntries[(size_t) selectedEntryIndex];
-            if (e.isFactory) return;
-            onDeleteRequested(e.file);
         };
         detail.onTagsCommitted = [this](const juce::StringArray& newTags)
         {
@@ -93,6 +115,7 @@ public:
             if (e.isFactory) return;
             onTagsChanged(e.file, newTags);
         };
+        detail.installEscListener(this);
         addAndMakeVisible(detail);
 
         statusLabel.setColour(juce::Label::textColourId, kDim);
@@ -110,20 +133,23 @@ public:
     {
         auto area = getLocalBounds().reduced(12);
 
-        // Top row: title + search + buttons + close
+        // Top row: title + search + Import + × close icon
         auto topRow = area.removeFromTop(28);
         auto titleArea = topRow.removeFromLeft(150);
         titleLabel.setBounds(titleArea.withTrimmedTop(4));
-        closeBtn.setBounds(topRow.removeFromRight(72));
-        topRow.removeFromRight(6);
+        closeIconBtn.setBounds(topRow.removeFromRight(28));
+        topRow.removeFromRight(8);
         importBtn.setBounds(topRow.removeFromRight(82));
-        topRow.removeFromRight(6);
+        topRow.removeFromRight(8);
         searchEditor.setBounds(topRow);
 
         area.removeFromTop(10);
 
-        // Status at bottom
-        statusLabel.setBounds(area.removeFromBottom(20));
+        // Bottom row: status label (stretchy left) + Cancel button (right)
+        auto footer = area.removeFromBottom(28);
+        cancelBtn.setBounds(footer.removeFromRight(96));
+        footer.removeFromRight(8);
+        statusLabel.setBounds(footer);
         area.removeFromBottom(6);
 
         // Three panes
@@ -149,18 +175,22 @@ public:
             [](const Entry& a, const Entry& b)
             {
                 if (a.isFactory != b.isFactory) return a.isFactory && ! b.isFactory;
+                if (a.bank != b.bank)           return a.bank.compareIgnoreCase(b.bank) < 0;
                 return a.name.compareIgnoreCase(b.name) < 0;
             });
 
-        // Update sidebar's vocabulary based on what's actually in the library
-        std::set<juce::String> models, tags;
+        // Sidebar vocabulary — banks come from actual disk layout, models +
+        // tags from parsed JSON content. Drives sidebar filter chips.
+        std::set<juce::String> banks, models, tags;
         for (auto& e : allEntries)
         {
+            if (e.bank.isNotEmpty())  banks.insert(e.bank);
             if (e.model.isNotEmpty()) models.insert(e.model);
             for (auto& t : e.tags)    tags.insert(t);
         }
-        sidebar.setVocabulary({ models.begin(), models.end() },
-                              { tags.begin(), tags.end() });
+        sidebar.setVocabulary({ banks.begin(),  banks.end()  },
+                              { models.begin(), models.end() },
+                              { tags.begin(),   tags.end()   });
 
         rebuildFiltered();
         setStatusText(allEntries.empty() ? "No presets found" : "");
@@ -194,6 +224,7 @@ public:
     // lives in a separate StatusBar-driven dialog (SavePresetDialog).
     std::function<void(const juce::File&)>                              onLoadRequested;
     std::function<void(const juce::File&)>                              onDeleteRequested;
+    std::function<void(const juce::File&)>                              onRenameRequested;
     std::function<void()>                                                onImportRequested;
     std::function<void()>                                                onCloseRequested;
     std::function<void(const juce::File&, const juce::StringArray&)>    onTagsChanged;
@@ -222,6 +253,36 @@ private:
         return t.substring(0, maxLen - 1).trimEnd() + juce::String(juce::CharPointer_UTF8("…"));
     }
 
+    /** Bank label derived from a preset's location on disk:
+     *    factory file       → "Factory"
+     *    user dir root      → "Default"
+     *    user dir subdir(s) → joined subdirectory path, e.g. "Ambient" or
+     *                         "Drones/Long".
+     *  This is the ONLY place that maps disk layout to bank semantics so
+     *  the same logic can be reused by Save (where target dir is derived
+     *  from a chosen bank name). */
+    static juce::String computeBankLabel(const juce::File& file, bool isFactory)
+    {
+        if (isFactory) return "Factory";
+        const auto userRoot = PresetFormat::getUserPresetsDirectory();
+        auto parent = file.getParentDirectory();
+        if (parent == userRoot) return kRootUserBank();
+        const auto rel = parent.getRelativePathFrom(userRoot);
+        return rel.isEmpty() ? kRootUserBank() : rel.replace("\\", "/");
+    }
+
+    /** Map full HuggingFace model IDs to short labels used in the GUI
+     *  (matches PromptPanel's switchbox labels). Unknown IDs come back
+     *  unchanged so future models still display, just longer. */
+    static juce::String shortenModelName(const juce::String& full)
+    {
+        const auto lc = full.toLowerCase();
+        if (lc.contains("stable-audio-open-small")) return "SA Small";
+        if (lc.contains("stable-audio-open"))       return "SA Open 1.0";
+        if (lc.contains("audioldm"))                return "AudioLDM2";
+        return full;
+    }
+
     Entry parseEntry(const juce::File& file, bool isFactory)
     {
         Entry e;
@@ -229,6 +290,7 @@ private:
         e.name = file.getFileNameWithoutExtension();
         e.modified = file.getLastModificationTime();
         e.isFactory = isFactory;
+        e.bank = computeBankLabel(file, isFactory);
 
         // Read header — only the JSON section, not the audio PCM
         juce::FileInputStream in(file);
@@ -255,7 +317,8 @@ private:
         {
             e.promptA = synth->getProperty("promptA").toString();
             e.promptB = synth->getProperty("promptB").toString();
-            e.model   = synth->getProperty("model").toString().trim();
+            const auto rawModel = synth->getProperty("model").toString().trim();
+            e.model = shortenModelName(rawModel);
         }
 
         if (auto* arr = root->getProperty("tags").getArray())
@@ -264,6 +327,15 @@ private:
                 auto t = v.toString().trim();
                 if (t.isNotEmpty()) e.tags.addIfNotAlreadyThere(t);
             }
+
+        // Cheap auto-tagging from prompt content — runs on every refresh
+        // for every preset, so the Sidebar TAGS section + filter is useful
+        // even for legacy presets without a persisted `tags` field. Audio-
+        // based tagging (analyzeNormalizeRegion) is not done here because
+        // it would force decoding every preset's embedded PCM on each
+        // library scan.
+        for (auto& t : PresetTagSuggester::fromPrompts(e.promptA, e.promptB))
+            e.tags.addIfNotAlreadyThere(t);
 
         if (auto* axesArr = root->getProperty("semanticAxes").getArray())
         {
@@ -302,13 +374,9 @@ private:
         {
             const auto& e = allEntries[i];
 
-            // Bank filter
-            switch (sidebar.activeBank)
-            {
-                case Sidebar::Bank::Factory: if (! e.isFactory) continue; break;
-                case Sidebar::Bank::User:    if (  e.isFactory) continue; break;
-                case Sidebar::Bank::All:     break;
-            }
+            // Bank filter (empty active = show all)
+            if (! sidebar.activeBank.isEmpty() && e.bank != sidebar.activeBank)
+                continue;
 
             // Model filter (empty selection → all)
             if (! sidebar.selectedModels.empty()
@@ -369,18 +437,24 @@ private:
     class Sidebar : public juce::Component
     {
     public:
-        enum class Bank { All, Factory, User };
-        Bank activeBank = Bank::All;
+        /** Bank filter — empty string means "all banks". */
+        juce::String activeBank;
         std::set<juce::String> selectedModels;
         std::set<juce::String> selectedTags;
         std::function<void()> onChanged;
 
-        void setVocabulary(std::vector<juce::String> models, std::vector<juce::String> tags)
+        void setVocabulary(std::vector<juce::String> banks,
+                           std::vector<juce::String> models,
+                           std::vector<juce::String> tags)
         {
+            bankEntries  = std::move(banks);
             modelEntries = std::move(models);
             tagEntries   = std::move(tags);
 
             // Drop selections that no longer exist
+            if (! activeBank.isEmpty()
+                && std::find(bankEntries.begin(), bankEntries.end(), activeBank) == bankEntries.end())
+                activeBank.clear();
             for (auto it = selectedModels.begin(); it != selectedModels.end(); )
                 it = std::find(modelEntries.begin(), modelEntries.end(), *it) == modelEntries.end()
                        ? selectedModels.erase(it) : std::next(it);
@@ -401,7 +475,7 @@ private:
                 if (it.kind == Item::Kind::Header)
                 {
                     g.setColour(kDim);
-                    g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+                    g.setFont(juce::FontOptions(kUiLabelFontMin, juce::Font::bold));
                     g.drawText(it.label, it.rect, juce::Justification::centredLeft, false);
                     g.setColour(kBorder.withAlpha(0.5f));
                     g.drawLine((float) it.rect.getX(), (float) it.rect.getBottom() - 1.0f,
@@ -420,7 +494,11 @@ private:
                     g.setColour(juce::Colours::white);
                     g.setFont(juce::FontOptions(12.0f));
                     auto txt = it.rect.withTrimmedLeft(8);
-                    g.drawText(it.label, txt, juce::Justification::centredLeft, true);
+                    // Bank entries with an empty label are the "show all" marker.
+                    const auto display = (it.kind == Item::Kind::Bank && it.label.isEmpty())
+                                            ? juce::String("All")
+                                            : it.label;
+                    g.drawText(display, txt, juce::Justification::centredLeft, true);
                 }
             }
         }
@@ -452,10 +530,10 @@ private:
             enum class Kind { Header, Bank, Model, Tag };
             Kind kind;
             juce::Rectangle<int> rect;
-            juce::String label;
-            Bank bank = Bank::All;
+            juce::String label;     // for Bank / Model / Tag this IS the value
         };
         std::vector<Item> items;
+        std::vector<juce::String> bankEntries;
         std::vector<juce::String> modelEntries;
         std::vector<juce::String> tagEntries;
 
@@ -470,20 +548,21 @@ private:
             auto pushHeader = [&](const char* label)
             {
                 auto r = area.removeFromTop(headerH);
-                items.push_back({ Item::Kind::Header, r, label, Bank::All });
+                items.push_back({ Item::Kind::Header, r, label });
                 area.removeFromTop(2);
             };
-            auto pushRow = [&](Item::Kind kind, const juce::String& label, Bank bank = Bank::All)
+            auto pushRow = [&](Item::Kind kind, const juce::String& label)
             {
                 if (area.getHeight() < rowH) return;
                 auto r = area.removeFromTop(rowH);
-                items.push_back({ kind, r, label, bank });
+                items.push_back({ kind, r, label });
             };
 
             pushHeader("BANK");
-            pushRow(Item::Kind::Bank, "All",     Bank::All);
-            pushRow(Item::Kind::Bank, "Factory", Bank::Factory);
-            pushRow(Item::Kind::Bank, "User",    Bank::User);
+            // "All" is represented by an empty `label` so activeBank.isEmpty()
+            // means "no filter".
+            pushRow(Item::Kind::Bank, "");
+            for (auto& b : bankEntries) pushRow(Item::Kind::Bank, b);
 
             if (! modelEntries.empty())
             {
@@ -505,7 +584,7 @@ private:
             switch (it.kind)
             {
                 case Item::Kind::Header: return false;
-                case Item::Kind::Bank:   return activeBank == it.bank;
+                case Item::Kind::Bank:   return activeBank == it.label;
                 case Item::Kind::Model:  return selectedModels.count(it.label) > 0;
                 case Item::Kind::Tag:    return selectedTags.count(it.label) > 0;
             }
@@ -517,7 +596,7 @@ private:
             switch (it.kind)
             {
                 case Item::Kind::Header: break;
-                case Item::Kind::Bank:   activeBank = it.bank; break;
+                case Item::Kind::Bank:   activeBank = it.label; break;
                 case Item::Kind::Model:
                     if (selectedModels.erase(it.label) == 0) selectedModels.insert(it.label);
                     break;
@@ -534,23 +613,20 @@ private:
     {
     public:
         std::function<void()> onLoadRequested;
-        std::function<void()> onDeleteRequested;
         std::function<void(const juce::StringArray&)> onTagsCommitted;
 
         Detail()
         {
             configureBtn(loadBtn, kAccent);
-            configureBtn(delBtn,  juce::Colour(0xff5c2432));
             loadBtn.onClick = [this] { if (onLoadRequested) onLoadRequested(); };
-            delBtn.onClick  = [this] { if (onDeleteRequested) onDeleteRequested(); };
             addAndMakeVisible(loadBtn);
-            addAndMakeVisible(delBtn);
 
             tagInput.setTextToShowWhenEmpty("+ tag", kDimmer);
             tagInput.setColour(juce::TextEditor::backgroundColourId, kSurface.brighter(0.05f));
             tagInput.setColour(juce::TextEditor::textColourId, juce::Colours::white);
             tagInput.setColour(juce::TextEditor::outlineColourId, kBorder);
             tagInput.setColour(juce::TextEditor::focusedOutlineColourId, kAccent);
+            tagInput.setEscapeAndReturnKeysConsumed(false);
             tagInput.onReturnKey = [this]
             {
                 const auto t = tagInput.getText().trim();
@@ -563,6 +639,13 @@ private:
                 repaint();
             };
             addAndMakeVisible(tagInput);
+        }
+
+        /** Forward Esc keystrokes from the tag editor to the panel-level
+         *  KeyListener so the overlay can be dismissed even while typing. */
+        void installEscListener(juce::KeyListener* l)
+        {
+            tagInput.addKeyListener(l);
         }
 
         void clear()
@@ -584,7 +667,7 @@ private:
         {
             entryValid = true;
             name = e.name;
-            bank = e.isFactory ? "Factory" : "User";
+            bank = e.bank.isNotEmpty() ? e.bank : (e.isFactory ? "Factory" : "User");
             modified = e.modified;
             promptA = e.promptA;
             promptB = e.promptB;
@@ -688,16 +771,16 @@ private:
 
         void resized() override
         {
-            const int actionStripH = 28;
+            const int actionStripH = 32;
             const int tagInputW    = 80;
             const int tagBlockH    = 72;
             auto bounds = getLocalBounds().reduced(12);
 
-            // Action strip at bottom — Load (primary) wide-left, Delete right
+            // Action strip at bottom — Load is the only primary action.
+            // Delete / Rename live in the right-click context menu so that
+            // the destructive action can never be hit by accident from a
+            // mis-aimed Load click.
             auto strip = bounds.removeFromBottom(actionStripH);
-            const int delBtnW = juce::jmin(96, strip.getWidth() / 2);
-            delBtn.setBounds(strip.removeFromRight(delBtnW));
-            strip.removeFromRight(8);
             loadBtn.setBounds(strip);
 
             bounds.removeFromBottom(8);
@@ -717,14 +800,13 @@ private:
         void updateButtonsEnabled()
         {
             loadBtn.setEnabled(entryValid);
-            delBtn.setEnabled(entryValid && ! locked);
             tagInput.setEnabled(entryValid && ! locked);
         }
 
         void paintSection(juce::Graphics& g, juce::Rectangle<int> r, const juce::String& title, const juce::String& body)
         {
             g.setColour(kDim);
-            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.setFont(juce::FontOptions(kUiLabelFontMin, juce::Font::bold));
             g.drawText(title, r.removeFromTop(14), juce::Justification::centredLeft, false);
             g.setColour(juce::Colours::white);
             g.setFont(juce::FontOptions(12.0f));
@@ -735,7 +817,7 @@ private:
         void paintAxes(juce::Graphics& g, juce::Rectangle<int> r)
         {
             g.setColour(kDim);
-            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.setFont(juce::FontOptions(kUiLabelFontMin, juce::Font::bold));
             g.drawText("AXES", r.removeFromTop(14), juce::Justification::centredLeft, false);
             g.setColour(juce::Colours::white);
             g.setFont(juce::FontOptions(12.0f));
@@ -759,7 +841,7 @@ private:
         {
             chipRects.clear();
             g.setColour(kDim);
-            g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+            g.setFont(juce::FontOptions(kUiLabelFontMin, juce::Font::bold));
             g.drawText("TAGS", r.removeFromTop(14), juce::Justification::centredLeft, false);
 
             r.removeFromBottom(24);  // input row
@@ -838,7 +920,6 @@ private:
         std::vector<ChipRect> chipRects;
 
         juce::TextButton loadBtn { "Load" };
-        juce::TextButton delBtn  { "Delete" };
         juce::TextEditor tagInput;
     };
     Detail detail;
@@ -878,7 +959,7 @@ private:
         if (dateW > 0)
         {
             g.setColour(kDimmer);
-            g.setFont(juce::FontOptions(10.5f));
+            g.setFont(juce::FontOptions(kUiLabelFontMin));
             g.drawText(e.modified.formatted("%Y-%m-%d"), dateArea, juce::Justification::centredRight, false);
         }
 
@@ -908,11 +989,59 @@ private:
         if (onLoadRequested) onLoadRequested(allEntries[(size_t) filteredIndices[(size_t) row]].file);
     }
 
+    void listBoxItemClicked(int row, const juce::MouseEvent& e) override
+    {
+        if (! e.mods.isPopupMenu()) return;     // right-click only
+        if (! juce::isPositiveAndBelow(row, (int) filteredIndices.size())) return;
+        presetList.selectRow(row, false, true);
+        showRowContextMenu(filteredIndices[(size_t) row]);
+    }
+
+    void backgroundClicked(const juce::MouseEvent&) override
+    {
+        // No-op; required by ListBoxModel signature compatibility.
+    }
+
+    void showRowContextMenu(int entryIndex)
+    {
+        if (! juce::isPositiveAndBelow(entryIndex, (int) allEntries.size())) return;
+        const auto& entry = allEntries[(size_t) entryIndex];
+        const auto file = entry.file;
+        const bool isFactory = entry.isFactory;
+
+        juce::PopupMenu menu;
+        menu.addItem(1, juce::String::fromUTF8("Rename\xe2\x80\xa6"), ! isFactory);
+        menu.addItem(2, "Delete",                                     ! isFactory);
+
+        menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&presetList),
+            [this, file](int result)
+            {
+                switch (result)
+                {
+                    case 1: if (onRenameRequested) onRenameRequested(file); break;
+                    case 2: if (onDeleteRequested) onDeleteRequested(file); break;
+                    default: break;
+                }
+            });
+    }
+
+    // ─── KeyListener ─────────────────────────────────────────────────────
+    bool keyPressed(const juce::KeyPress& key, juce::Component*) override
+    {
+        if (key == juce::KeyPress::escapeKey)
+        {
+            if (onCloseRequested) onCloseRequested();
+            return true;
+        }
+        return false;
+    }
+
     // ─── State ───────────────────────────────────────────────────────────
     juce::Label titleLabel;
     juce::TextEditor searchEditor;
     juce::TextButton importBtn { "Import" };
-    juce::TextButton closeBtn  { "Close" };
+    juce::TextButton closeIconBtn;     // top-right × icon
+    juce::TextButton cancelBtn { "Cancel" };
     juce::Label statusLabel;
     juce::ListBox presetList;
 
