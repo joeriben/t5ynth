@@ -73,14 +73,14 @@ on:
 - Pushes to `main` and pull requests run the `macos`, `windows`, and
   Ubuntu-based Linux base-artifact build job (`linux`) — but **not** the
   `release` job.
-- Pushes of a tag matching `v*` run the `macos` build job plus the
-  `release` job. The `windows` and `linux` jobs are skipped on tags by
-  explicit `if:` guards. The `release` job is gated by:
+- Pushes of a tag matching `v*` run the `macos` and `windows` build jobs
+  plus the `release` job. The `linux` job is skipped on tags by an
+  explicit `if:` guard. The `release` job is gated by:
 
   ```yaml
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos]
+    needs: [macos, windows]
   ```
 
 - **Tags are the only way to produce a GitHub Release from CI.** There is no
@@ -94,14 +94,14 @@ on:
 ## 4. Build and package matrix
 
 On `main` and pull requests, three platforms build in parallel. On tag pushes,
-only the macOS job runs and the `release` job waits for that macOS job
-(`needs: [macos]`).
+the `macos` and `windows` jobs run, and the `release` job waits for both
+(`needs: [macos, windows]`).
 
 | Job       | Runner           | Targets                                             |
 |-----------|------------------|-----------------------------------------------------|
 | `macos`   | `macos-14`       | macOS app + `.pkg` installer                        |
 | `linux`   | `ubuntu-latest`  | Linux base standalone + VST3 archives + Ubuntu `.deb` artifact |
-| `windows` | `windows-latest` | App, VST3                                           |
+| `windows` | `windows-latest` | Standalone app, VST3, Inno Setup installer          |
 
 Important distinction:
 
@@ -126,10 +126,16 @@ Every job:
    - For Linux package-layer outputs such as the Fedora RPM and Ubuntu/Debian
      `.deb`, that backend should be staged as a named release bundle and then
      consumed by the packager, rather than rebuilt on the target machine.
+   - The Windows job immediately smoke-tests
+     `backend/dist/pipe_inference/pipe_inference.exe` and fails if it exits
+     during startup.
 5. Runs `cmake -B build -DCMAKE_BUILD_TYPE=Release`, then
    `cmake --build build --config Release -j<ncpu>`.
 6. Assembles a distribution directory containing the built binary plus the
    bundled backend under `backend/`.
+   - The Windows job then smoke-tests `dist/T5ynth/T5ynth.exe` with
+     `T5YNTH_REQUIRE_BUNDLED_BACKEND=1` so the packaged layout is exercised,
+     not a repo fallback.
 7. Creates `.tar.xz` archives on the build machine (see §5).
 8. On the Ubuntu Linux job, stages a named backend bundle and builds an Ubuntu
    `.deb` from the same app/backend layout.
@@ -250,27 +256,29 @@ as the Fedora RPM and Ubuntu/Debian `.deb` are separate deliverables built from
 the same app/backend layout contract.
 
 The `release` job downloads artifacts with `actions/download-artifact`,
-collects only `.pkg` files into `release/`, and passes those files to
-`gh release create`.
+collects `.pkg` files plus `T5ynth-Windows-Setup.exe` into `release/`, and
+passes those files to `gh release create`.
 
-### Expected release assets for the current stable line (1 total)
+### Expected release assets for the current stable line (2 total)
 
 ```
 T5ynth-macOS-Installer.pkg
+T5ynth-Windows-Setup.exe
 ```
 
-For the current stable release process, GitHub Releases publish **only** the
-macOS installer. Windows artefacts, Linux base artefacts, Fedora RPMs,
-Ubuntu/Debian `.deb`, VST3 and AU remain outside the public stable release page
-until each distribution path has been validated and explicitly wired into CI
-release publication.
+For the current stable release process, GitHub Releases publish the macOS
+installer plus the Windows installer. Windows standalone/VST3 `.tar.xz`
+artefacts, Linux base artefacts, Fedora RPMs, Ubuntu/Debian `.deb`, VST3 and
+AU remain outside the public stable release page until each distribution path
+has been validated and explicitly wired into CI release publication.
 
-If the release page does not contain `T5ynth-macOS-Installer.pkg`, something
-went wrong — investigate before announcing the release.
+If the release page does not contain both `T5ynth-macOS-Installer.pkg` and
+`T5ynth-Windows-Setup.exe`, something went wrong — investigate before
+announcing the release.
 
-Hard rule: if CI did not publish `T5ynth-macOS-Installer.pkg`, do not replace
-it by manually uploading a locally built `.pkg`. Fix CI first, then rerun or
-retag so the published asset is traceable to GitHub Actions.
+Hard rule: if CI did not publish one of the expected installer assets, do not
+replace it by manually uploading a locally built installer. Fix CI first, then
+rerun or retag so the published asset is traceable to GitHub Actions.
 
 ---
 
@@ -287,7 +295,7 @@ Release notes are assembled by the `release` job:
    is appended to `release_notes.md`. This produces a "What's Changed" /
    contributor list section automatically from commit history.
 3. The combined file is passed to `gh release create --notes-file
-   release_notes.md`, currently with the macOS installer asset only.
+   release_notes.md`, together with the macOS and Windows installer assets.
 
 ### Customising release notes
 
@@ -413,10 +421,11 @@ versions — it may report success for a failed run. Always verify with
 | `windows` | ~19 min                                 |
 | `linux`   | ~28 min (apt install dominates)         |
 | `release` | ~2 min                                  |
-| **Total** | ~30 min from tag push to finished release |
+| **Total** | ~21 min from tag push to finished release |
 
-The `release` job cannot start until all three build jobs finish, so the
-total is gated by the slowest platform (usually Linux).
+The `release` job cannot start until its required build jobs finish, so the
+total is gated by the slowest platform that the current ref runs. On tag
+pushes, that is usually the Windows job because `linux` is skipped.
 
 ---
 
