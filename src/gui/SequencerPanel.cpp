@@ -546,6 +546,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             strandDomLabels[i].setText("Dom", juce::dontSendNotification);
             strandDomLabels[i].setColour(juce::Label::textColourId, kDim);
             strandDomLabels[i].setJustificationType(juce::Justification::centredRight);
+            strandDomLabels[i].setBorderSize(juce::BorderSize<int>(0));
             addAndMakeVisible(strandDomLabels[i]);
 
             strandDomSliders[i].setSliderStyle(juce::Slider::LinearHorizontal);
@@ -1320,6 +1321,9 @@ void SequencerPanel::resized()
                     }
                     modBot.removeFromLeft(gapPad);
 
+                    // Match Rng label's smaller font so "Dom" doesn't truncate.
+                    strandDomLabels[i].setFont(juce::FontOptions(
+                        juce::jmax(kUiLabelFontMin, genCtrlH * 0.55f)));
                     strandDomLabels[i].setBounds(modBot.removeFromLeft(domLblW));
                     modBot.removeFromLeft(gapTiny);
                     strandDomSliders[i].setBounds(modBot);
