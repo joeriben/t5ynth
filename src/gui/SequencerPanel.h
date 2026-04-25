@@ -113,13 +113,16 @@ private:
     juce::TextButton strandEnableBtns[kNumExtraStrands];
     juce::ComboBox   strandRoleBoxes[kNumExtraStrands];
     // Per-strand differentiators on the second GEN row, vertically aligned
-    // beneath the [Sx][Role] cluster they belong to. Each control has a
-    // small prefix label so it's clear without consulting tooltips.
+    // beneath the [Sx][Role] cluster they belong to.
+    //   Div:  ComboBox showing "1/4x".."4x" — value is its own label
+    //   Oct:  5-switch-button row "-2 -1 0 +1 +2" mirroring SeqOctave's
+    //         convention; the slider stays as a hidden APVTS bridge.
+    //   Dom:  small Label "Dom" + slider 0..1
+    static constexpr int kStrandOctBtns = 5;
     juce::ComboBox   strandDivBoxes[kNumExtraStrands];
-    juce::Slider     strandOctaveSliders[kNumExtraStrands];
+    juce::TextButton strandOctBtns[kNumExtraStrands][kStrandOctBtns];
+    juce::Slider     strandOctaveSliders[kNumExtraStrands]; // hidden APVTS bridge
     juce::Slider     strandDomSliders[kNumExtraStrands];
-    juce::Label      strandDivLabels[kNumExtraStrands];
-    juce::Label      strandOctLabels[kNumExtraStrands];
     juce::Label      strandDomLabels[kNumExtraStrands];
 
 

@@ -501,33 +501,11 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         juce::StringArray divItems;
         for (const auto& e : StrandDivMult::kEntries) divItems.add(e.label);
 
-        auto styleMiniLabel = [this](juce::Label& lbl, const juce::String& text)
-        {
-            lbl.setText(text, juce::dontSendNotification);
-            lbl.setColour(juce::Label::textColourId, kDim);
-            lbl.setJustificationType(juce::Justification::centredRight);
-            addAndMakeVisible(lbl);
-        };
-
-        auto styleMiniSlider = [this](juce::Slider& s, int textBoxW, const juce::String& tooltip)
-        {
-            s.setSliderStyle(juce::Slider::LinearHorizontal);
-            s.setTextBoxStyle(juce::Slider::TextBoxRight, false, textBoxW, 18);
-            s.setColour(juce::Slider::backgroundColourId, kSurface);
-            s.setColour(juce::Slider::trackColourId,      kSeqCol);
-            s.setColour(juce::Slider::thumbColourId,      juce::Colours::white);
-            s.setColour(juce::Slider::textBoxTextColourId,        kSeqCol);
-            s.setColour(juce::Slider::textBoxBackgroundColourId,  juce::Colours::transparentBlack);
-            s.setColour(juce::Slider::textBoxOutlineColourId,     juce::Colours::transparentBlack);
-            s.setTooltip(tooltip);
-            addAndMakeVisible(s);
-        };
-
         for (int i = 0; i < kNumExtraStrands; ++i)
         {
             const juce::String sName = "Strand " + juce::String(i + 2);
 
-            styleMiniLabel(strandDivLabels[i], "Div");
+            // Div: ComboBox is its own label (values "1/4x".."4x")
             strandDivBoxes[i].addItemList(divItems, 1);
             strandDivBoxes[i].setColour(juce::ComboBox::backgroundColourId, kSurface);
             strandDivBoxes[i].setColour(juce::ComboBox::textColourId, kSeqCol);
@@ -536,16 +514,52 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
             addAndMakeVisible(strandDivBoxes[i]);
             strandDivA[i] = std::make_unique<CA>(apvts, kDivPIDs[i], strandDivBoxes[i]);
 
-            styleMiniLabel(strandOctLabels[i], "Oct");
+            // Oct: hidden Slider as APVTS bridge + 5 visible toggle buttons,
+            // matching the existing Seq-Octave switch convention.
             strandOctaveSliders[i].setRange(-2.0, 2.0, 1.0);
-            styleMiniSlider(strandOctaveSliders[i], 22,
-                sName + " octave shift (-2..+2)");
+            strandOctaveSliders[i].setVisible(false);
+            addChildComponent(strandOctaveSliders[i]);
             strandOctaveA[i] = std::make_unique<SA>(apvts, kOctPIDs[i], strandOctaveSliders[i]);
+            strandOctaveSliders[i].onValueChange = [this, i] {
+                const int v = juce::roundToInt(strandOctaveSliders[i].getValue());
+                for (int b = 0; b < kStrandOctBtns; ++b)
+                    strandOctBtns[i][b].setToggleState(b - 2 == v, juce::dontSendNotification);
+            };
+            for (int b = 0; b < kStrandOctBtns; ++b)
+            {
+                strandOctBtns[i][b].setButtonText(SeqOctave::kEntries[b].label);
+                strandOctBtns[i][b].setColour(juce::TextButton::buttonColourId,   kSurface);
+                strandOctBtns[i][b].setColour(juce::TextButton::buttonOnColourId, kSeqCol);
+                strandOctBtns[i][b].setColour(juce::TextButton::textColourOffId,  kDim);
+                strandOctBtns[i][b].setColour(juce::TextButton::textColourOnId,   juce::Colours::white);
+                strandOctBtns[i][b].setClickingTogglesState(true);
+                strandOctBtns[i][b].setRadioGroupId(3001 + i); // unique per strand
+                strandOctBtns[i][b].setTooltip(sName + " octave shift");
+                strandOctBtns[i][b].onClick = [this, i, b] {
+                    strandOctaveSliders[i].setValue(static_cast<double>(b - 2));
+                };
+                addAndMakeVisible(strandOctBtns[i][b]);
+            }
+            strandOctaveSliders[i].onValueChange();   // initial toggle sync
 
-            styleMiniLabel(strandDomLabels[i], "Dom");
+            // Dom: small "Dom" label + slider 0..1
+            strandDomLabels[i].setText("Dom", juce::dontSendNotification);
+            strandDomLabels[i].setColour(juce::Label::textColourId, kDim);
+            strandDomLabels[i].setJustificationType(juce::Justification::centredRight);
+            addAndMakeVisible(strandDomLabels[i]);
+
+            strandDomSliders[i].setSliderStyle(juce::Slider::LinearHorizontal);
+            strandDomSliders[i].setTextBoxStyle(juce::Slider::TextBoxRight, false, 32, 18);
             strandDomSliders[i].setNumDecimalPlacesToDisplay(2);
-            styleMiniSlider(strandDomSliders[i], 32,
-                sName + " dominance — probability of snapping to field center at the cycle downbeat (0..1)");
+            strandDomSliders[i].setColour(juce::Slider::backgroundColourId, kSurface);
+            strandDomSliders[i].setColour(juce::Slider::trackColourId,      kSeqCol);
+            strandDomSliders[i].setColour(juce::Slider::thumbColourId,      juce::Colours::white);
+            strandDomSliders[i].setColour(juce::Slider::textBoxTextColourId,        kSeqCol);
+            strandDomSliders[i].setColour(juce::Slider::textBoxBackgroundColourId,  juce::Colours::transparentBlack);
+            strandDomSliders[i].setColour(juce::Slider::textBoxOutlineColourId,     juce::Colours::transparentBlack);
+            strandDomSliders[i].setTooltip(sName
+                + " dominance — probability of snapping to field center at the cycle downbeat (0..1)");
+            addAndMakeVisible(strandDomSliders[i]);
             strandDomA[i] = std::make_unique<SA>(apvts, kDomPIDs[i], strandDomSliders[i]);
         }
     }
@@ -1169,10 +1183,11 @@ void SequencerPanel::resized()
         strandEnableBtns[i].setVisible(genModeActive);
         strandRoleBoxes[i].setVisible(genModeActive);
         strandDivBoxes[i].setVisible(genModeActive);
-        strandOctaveSliders[i].setVisible(genModeActive);
+        // strandOctaveSliders are intentionally hidden — only their bound
+        // toggle buttons (strandOctBtns) are shown.
+        for (int b = 0; b < kStrandOctBtns; ++b)
+            strandOctBtns[i][b].setVisible(genModeActive);
         strandDomSliders[i].setVisible(genModeActive);
-        strandDivLabels[i].setVisible(genModeActive);
-        strandOctLabels[i].setVisible(genModeActive);
         strandDomLabels[i].setVisible(genModeActive);
     }
 
@@ -1278,31 +1293,35 @@ void SequencerPanel::resized()
 
                     module.removeFromTop(intraGap);
 
-                    // Bottom row: [Div lbl + combo]  [Oct lbl + slider]  [Dom lbl + slider]
+                    // Bottom row: [Div▾]  [-2][-1][0][+1][+2]  [Dom lbl] [Dom slider]
+                    // Div and Oct values are self-explanatory; only Dom needs
+                    // a prefix label (a bare "0.50" wouldn't say what it is).
                     auto modBot = module;   // remaining height = genCtrlH
-                    const int lblW   = 28;
-                    const int divW   = 56;       // combo "1/4x" max
-                    const int gapPad = 6;        // between control groups
-                    const int gapInGroup = 2;    // between label and its control
-                    // Remaining for Oct + Dom sliders, split 1:2 (Dom benefits from more travel)
-                    const int remaining = modBot.getWidth()
-                                         - (lblW + gapInGroup + divW + gapPad
-                                            + lblW + gapInGroup + lblW + gapInGroup + gapPad);
-                    const int octSliderW = juce::jmax(50, remaining / 3);
-                    const int domSliderW = juce::jmax(70, remaining - octSliderW);
+                    const int divW    = 58;                 // "1/4x" max
+                    const int octBtnW = 22;
+                    const int octRowW = octBtnW * kStrandOctBtns;
+                    const int domLblW = 30;                 // "Dom"
+                    const int gapPad  = 6;                  // between control groups
+                    const int gapTiny = 2;                  // between label and its slider
 
-                    strandDivLabels[i].setBounds(modBot.removeFromLeft(lblW));
-                    modBot.removeFromLeft(gapInGroup);
                     strandDivBoxes[i].setBounds(modBot.removeFromLeft(divW));
                     modBot.removeFromLeft(gapPad);
 
-                    strandOctLabels[i].setBounds(modBot.removeFromLeft(lblW));
-                    modBot.removeFromLeft(gapInGroup);
-                    strandOctaveSliders[i].setBounds(modBot.removeFromLeft(octSliderW));
+                    {
+                        auto octRow = modBot.removeFromLeft(octRowW);
+                        for (int b = 0; b < kStrandOctBtns; ++b)
+                        {
+                            int edges = 0;
+                            if (b > 0) edges |= juce::Button::ConnectedOnLeft;
+                            if (b < kStrandOctBtns - 1) edges |= juce::Button::ConnectedOnRight;
+                            strandOctBtns[i][b].setConnectedEdges(edges);
+                            strandOctBtns[i][b].setBounds(octRow.removeFromLeft(octBtnW));
+                        }
+                    }
                     modBot.removeFromLeft(gapPad);
 
-                    strandDomLabels[i].setBounds(modBot.removeFromLeft(lblW));
-                    modBot.removeFromLeft(gapInGroup);
+                    strandDomLabels[i].setBounds(modBot.removeFromLeft(domLblW));
+                    modBot.removeFromLeft(gapTiny);
                     strandDomSliders[i].setBounds(modBot);
                 }
             }
