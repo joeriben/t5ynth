@@ -710,15 +710,19 @@ void SequencerPanel::timerCallback()
     bool seqRunning = processorRef.getValueTreeState()
         .getRawParameterValue(PID::seqRunning)->load() > 0.5f;
 
+    // Mode changes must update the layout even while audio is idle. Otherwise
+    // GEN-off stays visually in gen mode until PLAY wakes the timer path.
+    if (genRunning != genModeActive)
+    {
+        resized();
+        repaint();
+    }
+
     // Skip expensive updates when audio is idle and neither sequencer runs
     bool seqIdle = processorRef.audioIdle.load(std::memory_order_relaxed)
                    && !seqRunning && !genRunning;
     if (seqIdle)
         return;
-
-    // Mode change detection → relayout
-    if (genRunning != genModeActive)
-        resized();
 
     if (genRunning)
     {
