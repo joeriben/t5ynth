@@ -234,6 +234,21 @@ namespace PID {
     static constexpr const char* gen4FixPulses    = "gen4_fix_pulses";
     static constexpr const char* gen4FixRotation  = "gen4_fix_rotation";
     static constexpr const char* gen4FixMutation  = "gen4_fix_mutation";
+
+    // Strand 5
+    static constexpr const char* gen5Enable       = "gen5_enable";
+    static constexpr const char* gen5Role         = "gen5_role";
+    static constexpr const char* gen5Octave       = "gen5_octave";
+    static constexpr const char* gen5DivMult      = "gen5_div_mult";
+    static constexpr const char* gen5Dominance    = "gen5_dominance";
+    static constexpr const char* gen5Steps        = "gen5_steps";
+    static constexpr const char* gen5Pulses       = "gen5_pulses";
+    static constexpr const char* gen5Rotation     = "gen5_rotation";
+    static constexpr const char* gen5Mutation     = "gen5_mutation";
+    static constexpr const char* gen5FixSteps     = "gen5_fix_steps";
+    static constexpr const char* gen5FixPulses    = "gen5_fix_pulses";
+    static constexpr const char* gen5FixRotation  = "gen5_fix_rotation";
+    static constexpr const char* gen5FixMutation  = "gen5_fix_mutation";
 }
 
 // ── Modulation envelope targets ──

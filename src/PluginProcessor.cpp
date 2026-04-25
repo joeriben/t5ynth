@@ -645,7 +645,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::genCoordinationMode, 1}, "Coordination Mode",
         toChoices(CoordinationMode::kEntries), CoordinationMode::DensityBudget));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{PID::genCoordinationCap, 1}, "Coordination Cap", 1, 4, 3));
+        juce::ParameterID{PID::genCoordinationCap, 1}, "Coordination Cap", 1, 5, 3));
 
     // ── Strand 0 — role/octave/divMult/dominance (Euclidean params share legacy gen_* IDs) ──
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -755,6 +755,38 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::gen4FixRotation, 1}, "S4 Fix Rotation", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{PID::gen4FixMutation, 1}, "S4 Fix Mutation", true));
+
+    // ── Strand 5 ──
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen5Enable, 1}, "S5 Enable", false));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen5Role, 1}, "S5 Role",
+        toChoices(StrandRole::kEntries), StrandRole::Line));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen5Octave, 1}, "S5 Octave", -2, 2, 0));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::gen5DivMult, 1}, "S5 Div",
+        toChoices(StrandDivMult::kEntries), StrandDivMult::X));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen5Dominance, 1}, "S5 Dominance",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen5Steps, 1}, "S5 Steps", 2, 32, 16));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen5Pulses, 1}, "S5 Pulses", 1, 32, 5));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{PID::gen5Rotation, 1}, "S5 Rotation", 0, 31, 0));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{PID::gen5Mutation, 1}, "S5 Mutation",
+        juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.20f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen5FixSteps, 1}, "S5 Fix Steps", true));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen5FixPulses, 1}, "S5 Fix Pulses", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen5FixRotation, 1}, "S5 Fix Rotation", false));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{PID::gen5FixMutation, 1}, "S5 Fix Mutation", true));
 
     // Scale (shared between gen seq and future features)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -1206,7 +1238,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
         generativeSequencer.setCoordinationCap(static_cast<int>(
             parameters.getRawParameterValue(PID::genCoordinationCap)->load()));
 
-        // ── Per-strand setters (0..3) ──
+        // ── Per-strand setters (0..4) ──
         {
             struct StrandPIDs {
                 const char* enable;
@@ -1223,7 +1255,7 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                 const char* fixRotation;
                 const char* fixMutation;
             };
-            static const StrandPIDs kStrands[4] = {
+            static const StrandPIDs kStrands[5] = {
                 { nullptr,         PID::genRole,  PID::genOctave,  PID::genDivMult,  PID::genDominance,
                   PID::genSteps,   PID::genPulses, PID::genRotation, PID::genMutation,
                   PID::genFixSteps, PID::genFixPulses, PID::genFixRotation, PID::genFixMutation },
@@ -1235,10 +1267,13 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
                   PID::gen3FixSteps, PID::gen3FixPulses, PID::gen3FixRotation, PID::gen3FixMutation },
                 { PID::gen4Enable, PID::gen4Role, PID::gen4Octave, PID::gen4DivMult, PID::gen4Dominance,
                   PID::gen4Steps,  PID::gen4Pulses, PID::gen4Rotation, PID::gen4Mutation,
-                  PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation }
+                  PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation },
+                { PID::gen5Enable, PID::gen5Role, PID::gen5Octave, PID::gen5DivMult, PID::gen5Dominance,
+                  PID::gen5Steps,  PID::gen5Pulses, PID::gen5Rotation, PID::gen5Mutation,
+                  PID::gen5FixSteps, PID::gen5FixPulses, PID::gen5FixRotation, PID::gen5FixMutation }
             };
 
-            for (int i = 0; i < 4; ++i)
+            for (int i = 0; i < 5; ++i)
             {
                 const auto& ids = kStrands[i];
 
@@ -2841,13 +2876,13 @@ juce::String T5ynthProcessor::exportJsonPreset() const
     strand0->setProperty("dominance", get(PID::genDominance));
     genSeq->setProperty("strand0", strand0.get());
 
-    // Strands 2..4 full state
+    // Strands 2..5 full state
     struct StrandIds {
         const char* enable;  const char* role;    const char* octave;  const char* divMult;
         const char* dominance; const char* steps; const char* pulses;  const char* rotation;
         const char* mutation; const char* fS;     const char* fP;      const char* fR;      const char* fM;
     };
-    static const StrandIds kExtras[3] = {
+    static const StrandIds kExtras[4] = {
         { PID::gen2Enable, PID::gen2Role, PID::gen2Octave, PID::gen2DivMult,
           PID::gen2Dominance, PID::gen2Steps, PID::gen2Pulses, PID::gen2Rotation,
           PID::gen2Mutation, PID::gen2FixSteps, PID::gen2FixPulses, PID::gen2FixRotation, PID::gen2FixMutation },
@@ -2856,10 +2891,13 @@ juce::String T5ynthProcessor::exportJsonPreset() const
           PID::gen3Mutation, PID::gen3FixSteps, PID::gen3FixPulses, PID::gen3FixRotation, PID::gen3FixMutation },
         { PID::gen4Enable, PID::gen4Role, PID::gen4Octave, PID::gen4DivMult,
           PID::gen4Dominance, PID::gen4Steps, PID::gen4Pulses, PID::gen4Rotation,
-          PID::gen4Mutation, PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation }
+          PID::gen4Mutation, PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation },
+        { PID::gen5Enable, PID::gen5Role, PID::gen5Octave, PID::gen5DivMult,
+          PID::gen5Dominance, PID::gen5Steps, PID::gen5Pulses, PID::gen5Rotation,
+          PID::gen5Mutation, PID::gen5FixSteps, PID::gen5FixPulses, PID::gen5FixRotation, PID::gen5FixMutation }
     };
-    static const char* kExtraKeys[3] = { "strand2", "strand3", "strand4" };
-    for (int i = 0; i < 3; ++i)
+    static const char* kExtraKeys[4] = { "strand2", "strand3", "strand4", "strand5" };
+    for (int i = 0; i < 4; ++i)
     {
         const auto& ids = kExtras[i];
         juce::DynamicObject::Ptr sn = new juce::DynamicObject();
@@ -3184,13 +3222,15 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
             setParam(parameters, PID::genDominance, static_cast<float>(s0->getProperty("dominance")));
         }
 
-        // Strands 2..4 (optional — pre-polyphonic presets don't include them)
+        // Strands 2..5 (optional — pre-polyphonic presets and 4-strand
+        // presets simply skip the missing entries; the affected strand stays
+        // at its APVTS default).
         struct StrandImportIds {
             const char* enable;  const char* role;    const char* octave;  const char* divMult;
             const char* dominance; const char* steps; const char* pulses;  const char* rotation;
             const char* mutation; const char* fS;     const char* fP;      const char* fR;      const char* fM;
         };
-        static const StrandImportIds kExtrasImport[3] = {
+        static const StrandImportIds kExtrasImport[4] = {
             { PID::gen2Enable, PID::gen2Role, PID::gen2Octave, PID::gen2DivMult,
               PID::gen2Dominance, PID::gen2Steps, PID::gen2Pulses, PID::gen2Rotation,
               PID::gen2Mutation, PID::gen2FixSteps, PID::gen2FixPulses, PID::gen2FixRotation, PID::gen2FixMutation },
@@ -3199,10 +3239,13 @@ bool T5ynthProcessor::importJsonPreset(const juce::String& json)
               PID::gen3Mutation, PID::gen3FixSteps, PID::gen3FixPulses, PID::gen3FixRotation, PID::gen3FixMutation },
             { PID::gen4Enable, PID::gen4Role, PID::gen4Octave, PID::gen4DivMult,
               PID::gen4Dominance, PID::gen4Steps, PID::gen4Pulses, PID::gen4Rotation,
-              PID::gen4Mutation, PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation }
+              PID::gen4Mutation, PID::gen4FixSteps, PID::gen4FixPulses, PID::gen4FixRotation, PID::gen4FixMutation },
+            { PID::gen5Enable, PID::gen5Role, PID::gen5Octave, PID::gen5DivMult,
+              PID::gen5Dominance, PID::gen5Steps, PID::gen5Pulses, PID::gen5Rotation,
+              PID::gen5Mutation, PID::gen5FixSteps, PID::gen5FixPulses, PID::gen5FixRotation, PID::gen5FixMutation }
         };
-        static const char* kExtraKeysImport[3] = { "strand2", "strand3", "strand4" };
-        for (int i = 0; i < 3; ++i)
+        static const char* kExtraKeysImport[4] = { "strand2", "strand3", "strand4", "strand5" };
+        for (int i = 0; i < 4; ++i)
         {
             auto* sn = gs->getProperty(kExtraKeysImport[i]).getDynamicObject();
             if (!sn) continue;
