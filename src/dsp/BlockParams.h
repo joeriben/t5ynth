@@ -883,7 +883,10 @@ namespace CoordinationMode {
 
 // ── Strand division multiplier (speed factor relative to global division) ──
 namespace StrandDivMult {
-    enum : int { Q = 0, H = 1, X = 2, D = 3, F = 4 };  // 1/4x, 1/2x, 1x, 2x, 4x
+    // T (1/3) and X3 (3) are appended at the end so preset indices for the
+    // original five binary ratios stay stable. The dropdown shows the
+    // declaration order: 1/4x, 1/2x, 1x, 2x, 4x, 1/3x, 3x.
+    enum : int { Q = 0, H = 1, X = 2, D = 3, F = 4, T = 5, X3 = 6 };
     // Labels use plain ASCII "x" — the previous UTF-8 multiplication sign
     // (U+00D7) failed to render correctly through JUCE's ComboBox font on
     // Linux ("1Ã—" instead of "1×").
@@ -892,11 +895,15 @@ namespace StrandDivMult {
         { "half",    "1/2x" },
         { "x1",      "1x"   },
         { "x2",      "2x"   },
-        { "x4",      "4x"   }
+        { "x4",      "4x"   },
+        { "third",   "1/3x" },
+        { "x3",      "3x"   }
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
-    static_assert(F + 1 == kCount, "StrandDivMult out of sync.");
-    static constexpr float kFactor[kCount] = { 0.25f, 0.5f, 1.0f, 2.0f, 4.0f };
+    static_assert(X3 + 1 == kCount, "StrandDivMult out of sync.");
+    static constexpr float kFactor[kCount] = {
+        0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 1.0f / 3.0f, 3.0f
+    };
 }
 
 // ── Sequencer pattern preset ──
