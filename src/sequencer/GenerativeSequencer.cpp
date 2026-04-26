@@ -261,7 +261,7 @@ void T5ynthGenerativeSequencer::setStrandOctave(int idx, int shift)
 void T5ynthGenerativeSequencer::setStrandDivMult(int idx, float mult)
 {
     if (idx < 0 || idx >= MAX_STRANDS) return;
-    strands[static_cast<size_t>(idx)].divisionMultiplier = juce::jlimit(0.125f, 8.0f, mult);
+    strands[static_cast<size_t>(idx)].divisionMultiplier = juce::jlimit(1.0f / 16.0f, 16.0f, mult);
 }
 
 void T5ynthGenerativeSequencer::setStrandDominance(int idx, float d)

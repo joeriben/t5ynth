@@ -10,7 +10,7 @@ juce::String getStoredPresetName(const juce::var& parsed, const juce::File& file
     if (auto* root = parsed.getDynamicObject())
     {
         auto stored = root->getProperty("name").toString().trim();
-        if (stored.isNotEmpty())
+        if (stored.isNotEmpty() && stored != "T5ynth Export")
             return stored;
     }
 

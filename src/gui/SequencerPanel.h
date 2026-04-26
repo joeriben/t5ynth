@@ -114,7 +114,7 @@ private:
     juce::ComboBox   strandRoleBoxes[kNumExtraStrands];
     // Per-strand differentiators on the second GEN row, vertically aligned
     // beneath the [Sx][Role] cluster they belong to.
-    //   Div:  ComboBox showing "1/4x".."4x" — value is its own label
+    //   Div:  ComboBox showing sorted StrandDivMult values — value is its own label
     //   Oct:  5-switch-button row "-2 -1 0 +1 +2" mirroring SeqOctave's
     //         convention; the slider stays as a hidden APVTS bridge.
     //   Dom:  small Label "Dom" + slider 0..1

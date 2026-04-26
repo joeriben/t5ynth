@@ -246,7 +246,7 @@ private:
         bool  enabled            = false;   // strand 0 is enabled via ctor
         Role  role               = Role::Line;
         int   octaveShift        = 0;       // −2..+2
-        float divisionMultiplier = 1.0f;    // 0.25 / 0.5 / 1 / 2 / 4
+        float divisionMultiplier = 1.0f;    // StrandDivMult::kFactor
         float chordToneDominance = 0.0f;    // 0 = pure Turing, higher = snap to centerPc on strong beats
     };
 

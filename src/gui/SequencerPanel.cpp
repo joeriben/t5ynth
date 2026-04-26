@@ -505,7 +505,7 @@ SequencerPanel::SequencerPanel(T5ynthProcessor& p)
         {
             const juce::String sName = "Strand " + juce::String(i + 2);
 
-            // Div: ComboBox is its own label (values "1/4x".."4x")
+            // Div: ComboBox is its own label, sorted by multiplier.
             strandDivBoxes[i].addItemList(divItems, 1);
             strandDivBoxes[i].setColour(juce::ComboBox::backgroundColourId, kSurface);
             strandDivBoxes[i].setColour(juce::ComboBox::textColourId, kSeqCol);
@@ -1301,7 +1301,7 @@ void SequencerPanel::resized()
                     // Div and Oct values are self-explanatory; only Dom needs
                     // a prefix label (a bare "0.50" wouldn't say what it is).
                     auto modBot = module;   // remaining height = genCtrlH
-                    const int divW    = 58;                 // "1/4x" max
+                    const int divW    = 66;                 // "1/16x" max
                     const int octBtnW = 22;
                     const int octRowW = octBtnW * kStrandOctBtns;
                     const int domLblW = 30;                 // "Dom"

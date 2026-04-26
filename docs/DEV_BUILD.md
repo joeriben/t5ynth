@@ -201,20 +201,20 @@ pip install pyinstaller
 
 ### 5.3 Install PyTorch (platform-specific)
 
-This step is **before** `backend/requirements.txt`, because the requirements
-file pulls a generic `torch>=2.0.0` and you want the platform-correct wheel
-to win.
+This step is **before** `backend/requirements.txt`, because the native
+extension wheels (`torch`, `torchaudio`, `torchvision`) must be ABI-aligned and
+the platform-correct torch wheel must win.
 
 **Linux / Windows (CUDA 12.4):**
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install torch==2.7.1 torchaudio==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu124
 ```
 
 **macOS (Apple Silicon, MPS):**
 
 ```bash
-pip install torch
+pip install torch==2.7.1 torchaudio==2.7.1 torchvision==0.22.1
 ```
 
 The default PyPI wheel for `arm64` macOS already enables MPS. There is no

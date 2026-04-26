@@ -68,7 +68,7 @@ public:
         titleLabel.setFont(juce::FontOptions(15.0f, juce::Font::bold));
         addAndMakeVisible(titleLabel);
 
-        configureEditor(searchEditor, "Search name or prompt…");
+        configureEditor(searchEditor, "Search name or prompt...");
         searchEditor.setEscapeAndReturnKeysConsumed(false);
         searchEditor.addKeyListener(this);
         searchEditor.onTextChange = [this] { rebuildFiltered(); };
@@ -365,7 +365,8 @@ private:
         if (root == nullptr) return e;
 
         const auto storedName = root->getProperty("name").toString().trim();
-        if (storedName.isNotEmpty()) e.name = storedName;
+        if (storedName.isNotEmpty() && storedName != "T5ynth Export")
+            e.name = storedName;
 
         if (auto* synth = root->getProperty("synth").getDynamicObject())
         {

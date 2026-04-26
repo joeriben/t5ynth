@@ -56,7 +56,7 @@ Format detection happens in `backend/pipe_inference.py:255-275` in
 
 - If `model_index.json` exists and its `_class_name` contains `"AudioLDM2"`
   → `"audioldm2"`
-- Else if `model.safetensors`/`model.ckpt` **and** `model_config.json` both
+- Else if `model.safetensors` **and** `model_config.json` both
   exist → `"native"` (this branch wins even when `model_index.json` is also
   present — important for SA 1.0, whose HF repo ships both formats side by
   side)
@@ -377,10 +377,10 @@ At `src/gui/SetupWizard.cpp:13-32`. Two checks, both required:
    (`src/gui/SetupWizard.cpp:7`) must exist as a regular file in the
    directory. This distinguishes "diffusers/native model dir" from
    "random directory that happens to contain a .safetensors".
-2. **≥100 MB of weights**: recursively sum the sizes of every
-   `*.safetensors`, then `*.bin`, then `*.ckpt` file under the directory
-   until the total exceeds `kMinWeightBytes = 100 * 1024 * 1024`
-   (`src/gui/SetupWizard.cpp:11, 21-29`).
+2. **≥100 MB of Safetensors weights**: recursively sum the sizes of every
+   `*.safetensors` file under the directory until the total exceeds
+   `kMinWeightBytes = 100 * 1024 * 1024`. Checkpoint/pickle formats are not
+   accepted.
 
 The 100 MB floor exists because the HuggingFace cache routinely leaves
 stale metadata-only stubs after a failed / cancelled download; without
@@ -445,20 +445,17 @@ agree** — keep the lists in sync.
 users who installed via `huggingface-cli download` without
 `--local-dir` still get auto-detected.
 
-### 5.1 Downloads-folder walkthrough flow (`trySaSmallInstallFromFolder`)
+### 5.1 Downloads-folder walkthrough flow (`tryNativeStabilityInstallFromFolder`)
 
-The `trySaSmallInstallFromFolder` pattern at
-`src/gui/SetupWizard.cpp:309-457` is currently **hard-coded to
-stable-audio-open-small**, but it is a general-purpose shape worth
-reusing for any gated model whose HuggingFace file list is short
-and flat (≤ 5 files, all at the repo root, no nested subfolders).
+The `tryNativeStabilityInstallFromFolder` pattern is used for Stability
+native models whose HuggingFace file list is short and flat.
 
 The relevant constants:
 
-- `kSaSmallRequired[]` — `src/gui/SetupWizard.cpp:280-284`: the files
+- `kNativeStabilityRequired[]`: the files
   that must be present (`model.safetensors`, `model_config.json`,
-  `LICENSE`).
-- `kSaSmallWrongFiles[]` — `src/gui/SetupWizard.cpp:291-296`: files the
+  no `LICENSE` copy required).
+- `kNativeStabilityWrongFiles[]`: files the
   user may have fetched by mistake alongside the correct ones. When
   detected, the UI tells the user by name to delete them.
 
@@ -466,8 +463,8 @@ The flow:
 
 1. `performAutoScan()` (`src/gui/SetupWizard.cpp:459-534`) first probes
    the known on-disk paths via `scanForModel()`.
-2. If not found and the selected model is SA Small, it calls
-   `trySaSmallInstallFromFolder(downloads, /*reportIfMissing*/ false)`.
+2. If not found and the selected model is a native Stability model, it calls
+   `tryNativeStabilityInstallFromFolder(downloads, ...)`.
    On success, files are copied to the app-support dir.
 3. On failure, if *some* required files are present in Downloads, it
    re-runs with `reportIfMissing=true` to show the incomplete-download
@@ -476,10 +473,9 @@ The flow:
    (line 510-533) so users with non-default Downloads dirs can point
    at their save location.
 
-**To reuse for a new gated model**, refactor the three pieces
-(`kSaSmallRequired`, `kSaSmallWrongFiles`, `trySaSmallInstallFromFolder`)
-into a per-model-id dispatch, then drop the hard-coded id check at
-`src/gui/SetupWizard.cpp:476`. This refactor has not been done yet —
+**To reuse for a new gated model**, either add it to the native Stability
+model predicate if it uses the same two files, or split this helper into a
+per-model required-file dispatch.
 if you are the first to need it, you are on the hook for it.
 
 If you are adding an **ungated** model (the AudioLDM2 case), skip this
@@ -754,10 +750,9 @@ block a new engine, but fixing them would clean things up:
 
 - `hasModelMarker()` is global; per-model weight-size floor requires a
   signature change. See §4.
-- `trySaSmallInstallFromFolder` is hard-coded to
-  `stable-audio-open-small`. If a second gated model wants the
-  Downloads-folder flow, this needs to be generalised to a
-  per-model file-list lookup. See §5.1.
+- `tryNativeStabilityInstallFromFolder` currently covers the two Stability
+  native models. If a future gated model has a different required-file list,
+  split the helper into a per-model file-list lookup. See §5.1.
 - `downloadGhReleaseInThread()` has an inline file list. Only the
   release URL is parameterised — the actual files are hard-coded for
   the SA Small mirror. See `src/gui/SetupWizard.cpp:656-660`.

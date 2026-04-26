@@ -119,8 +119,9 @@ Every job:
 
 1. Checks out the repo (`submodules: true`).
 2. Installs system dependencies and Python 3.11.
-3. Installs `pyinstaller` plus `backend/requirements.txt`.
-   - On Windows and Linux, `torch` is pulled from the CUDA 12.4 wheel
+3. Installs `pyinstaller` plus a matching `torch` / `torchaudio` /
+   `torchvision` wheel set, then `backend/requirements.txt`.
+   - On Windows and Linux, that wheel set is pulled from the CUDA 12.4 wheel
      index (`https://download.pytorch.org/whl/cu124`).
 4. Runs `pyinstaller pipe_inference.spec --noconfirm` in `backend/` to
    bundle the Python inference backend.

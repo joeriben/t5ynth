@@ -18,16 +18,10 @@ static bool hasModelMarker(const juce::File& dir)
         if (dir.getChildFile(marker).existsAsFile()) { hasMetadata = true; break; }
     if (!hasMetadata) return false;
 
-    // Sum weight file sizes (recursive, covers both native and diffusers layouts).
+    // Sum safetensors only. Checkpoint/pickle formats are not accepted.
     int64_t weightBytes = 0;
     for (auto& f : dir.findChildFiles(juce::File::findFiles, true, "*.safetensors"))
         weightBytes += f.getSize();
-    if (weightBytes < kMinWeightBytes)
-        for (auto& f : dir.findChildFiles(juce::File::findFiles, true, "*.bin"))
-            weightBytes += f.getSize();
-    if (weightBytes < kMinWeightBytes)
-        for (auto& f : dir.findChildFiles(juce::File::findFiles, true, "*.ckpt"))
-            weightBytes += f.getSize();
 
     return weightBytes >= kMinWeightBytes;
 }
@@ -75,35 +69,17 @@ static bool shouldDownloadHfFile(const juce::String& remotePath,
     if (path.endsWith(".safetensors"))
         return true;
 
-    if (path.endsWith(".bin"))
-    {
-        auto slash = path.lastIndexOfChar('/');
-        auto dirPrefix = slash >= 0 ? path.substring(0, slash + 1) : juce::String();
-
-        // Prefer safetensors for the whole component directory, even when HF
-        // uses mixed naming like model.safetensors + pytorch_model.bin.
-        for (const auto& other : allPaths)
-        {
-            auto otherPath = juce::String(other).replaceCharacter('\\', '/');
-            if (otherPath.startsWith(dirPrefix) && otherPath.endsWith(".safetensors"))
-                return false;
-        }
-
-        // Fallback: same-basename pairing for repos that use matching names.
-        auto safetensorsAlt = path.upToLastOccurrenceOf(".bin", false, false) + ".safetensors";
-        return allPaths.find(safetensorsAlt.toStdString()) == allPaths.end();
-    }
-
     // Everything else is optional noise for the in-app downloader
-    // (README, .gitattributes, examples, duplicate formats, etc.).
+    // (README, .gitattributes, examples, pickle/bin/checkpoint formats, etc.).
+    juce::ignoreUnused(allPaths);
     return false;
 }
 
 // Known models — extend this list to add new engines.
 // downloadable: if false, show manual instructions only (no Download button).
 //   Both Stable Audio models are gated on HuggingFace and T5ynth never prompts
-//   for tokens, so users must fetch them via huggingface-cli once and point
-//   Browse… at the resulting folder. AudioLDM2 is the only ungated model and
+//   for tokens, so users manually fetch the two root files and Auto-Scan or
+//   Browse... imports them. AudioLDM2 is the only ungated model and
 //   the only one T5ynth downloads directly.
 struct KnownModel {
     const char* id;
@@ -464,34 +440,31 @@ void SettingsPage::browseForModel()
 }
 
 // ── Smart Auto-Scan ─────────────────────────────────────────────────────────
-// For SA Small the user follows a manual-download walkthrough (fetch 2 files
-// from HuggingFace to the system Downloads folder). Auto-Scan then hides all
-// path details: it looks there for the files and copies them to the correct
-// app-support location, or guides the user if something is missing / wrong.
-//
-// For SA 1.0 and AudioLDM2, Auto-Scan falls back to the existing known-paths
-// scan (scanForModel), because SA 1.0 is a huggingface-cli install (files go
-// straight into the target dir) and AudioLDM2 is downloaded in-app.
+// For native Stability models the user follows a manual-download walkthrough
+// (fetch 2 files from HuggingFace to the system Downloads folder). Auto-Scan
+// then hides all path details: it looks there for the files and copies them to
+// the correct app-support location, or guides the user if something is missing.
 
-// Files T5ynth cares about for an SA Small install.
-static const char* kSaSmallRequired[] = {
+// Files T5ynth cares about for a native Stability install.
+static const char* kNativeStabilityRequired[] = {
     "model.safetensors",
     "model_config.json",
 };
-static constexpr int kNumSaSmallRequired =
-    sizeof(kSaSmallRequired) / sizeof(kSaSmallRequired[0]);
+static constexpr int kNumNativeStabilityRequired =
+    sizeof(kNativeStabilityRequired) / sizeof(kNativeStabilityRequired[0]);
 
 // Files the user may have fetched by mistake alongside the correct ones.
 // When we see these in the source folder, we call them out by name so the
 // user can delete them. None of them are needed by T5ynth.
-static const char* kSaSmallWrongFiles[] = {
+static const char* kNativeStabilityWrongFiles[] = {
     "model.ckpt",
+    "vae_model.ckpt",
     "base_model.ckpt",
     "base_model.safetensors",
     "base_model_config.json",
 };
-static constexpr int kNumSaSmallWrongFiles =
-    sizeof(kSaSmallWrongFiles) / sizeof(kSaSmallWrongFiles[0]);
+static constexpr int kNumNativeStabilityWrongFiles =
+    sizeof(kNativeStabilityWrongFiles) / sizeof(kNativeStabilityWrongFiles[0]);
 
 static juce::File getDownloadsFolder()
 {
@@ -502,8 +475,11 @@ static juce::File getDownloadsFolder()
                .getChildFile("Downloads");
 }
 
-bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
-                                               bool reportIfMissing)
+bool SettingsPage::tryNativeStabilityInstallFromFolder(
+    const juce::File& sourceFolder,
+    const juce::String& modelId,
+    const juce::String& modelDisplayName,
+    bool reportIfMissing)
 {
     if (!sourceFolder.isDirectory())
     {
@@ -518,21 +494,21 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
     // Look at the contents.
     juce::Array<juce::File> foundRequired;
     juce::StringArray missingNames;
-    for (int i = 0; i < kNumSaSmallRequired; ++i)
+    for (int i = 0; i < kNumNativeStabilityRequired; ++i)
     {
-        auto candidate = sourceFolder.getChildFile(kSaSmallRequired[i]);
+        auto candidate = sourceFolder.getChildFile(kNativeStabilityRequired[i]);
         if (candidate.existsAsFile())
             foundRequired.add(candidate);
         else
-            missingNames.add(kSaSmallRequired[i]);
+            missingNames.add(kNativeStabilityRequired[i]);
     }
 
     juce::StringArray wrongFound;
-    for (int i = 0; i < kNumSaSmallWrongFiles; ++i)
+    for (int i = 0; i < kNumNativeStabilityWrongFiles; ++i)
     {
-        auto candidate = sourceFolder.getChildFile(kSaSmallWrongFiles[i]);
+        auto candidate = sourceFolder.getChildFile(kNativeStabilityWrongFiles[i]);
         if (candidate.existsAsFile())
-            wrongFound.add(kSaSmallWrongFiles[i]);
+            wrongFound.add(kNativeStabilityWrongFiles[i]);
     }
 
     const juce::String wrongNote = wrongFound.isEmpty()
@@ -544,9 +520,9 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
     // Scenario (d): both required files present — copy and done.
     if (missingNames.isEmpty())
     {
-        auto targetDir = getAppSupportModelDir("stable-audio-open-small");
+        auto targetDir = getAppSupportModelDir(modelId);
         setModelInstallBusy(true,
-            "Copying Stable Audio Open Small into T5ynth. This can take a moment...");
+            "Copying " + modelDisplayName + " into T5ynth. This can take a moment...");
 
         juce::Component::SafePointer<SettingsPage> safeThis(this);
         std::vector<juce::File> requiredFiles;
@@ -554,7 +530,7 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
         for (auto& f : foundRequired)
             requiredFiles.push_back(f);
 
-        std::thread([safeThis, sourceFolder, targetDir, requiredFiles, wrongNote]()
+        std::thread([safeThis, sourceFolder, targetDir, requiredFiles, wrongNote, modelDisplayName]()
         {
             juce::String errorTitle;
             juce::String errorBody;
@@ -595,7 +571,7 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
             }
 
             juce::MessageManager::callAsync(
-                [safeThis, sourceFolder, targetDir, wrongNote, errorTitle, errorBody]()
+                [safeThis, sourceFolder, targetDir, wrongNote, errorTitle, errorBody, modelDisplayName]()
                 {
                     auto* self = safeThis.getComponent();
                     if (self == nullptr) return;
@@ -622,7 +598,7 @@ bool SettingsPage::trySaSmallInstallFromFolder(const juce::File& sourceFolder,
 
                     juce::AlertWindow::showMessageBoxAsync(
                         juce::MessageBoxIconType::InfoIcon,
-                        "Stable Audio Open Small -- Installed",
+                        modelDisplayName + " -- Installed",
                         "T5ynth copied the model files from:\n  "
                             + sourceFolder.getFullPathName()
                             + "\n\nto:\n  " + targetDir.getFullPathName()
@@ -721,10 +697,11 @@ void SettingsPage::performAutoScan()
         return;
     }
 
-    // 2. Model-specific smart scan. Only SA Small is designed for the
-    //    "download 2 files to Downloads, click Auto-Scan" flow.
+    // 2. Model-specific smart scan for native Stability models.
     auto modelId = selectedModelId();
-    if (modelId != "stable-audio-open-small")
+    const bool isNativeStabilityModel =
+        modelId == "stable-audio-open-small" || modelId == "stable-audio-open-1.0";
+    if (!isNativeStabilityModel)
     {
         updateStatus();
         downloadStatusLabel.setText(
@@ -734,25 +711,30 @@ void SettingsPage::performAutoScan()
                                       juce::Colour(0xffef4444));
         return;
     }
+    const auto modelDisplayName = modelId == "stable-audio-open-1.0"
+        ? juce::String("Stable Audio Open 1.0")
+        : juce::String("Stable Audio Open Small");
 
     // 3. Look in the system Downloads folder first.
     auto downloads = getDownloadsFolder();
-    if (trySaSmallInstallFromFolder(downloads, /*reportIfMissing*/ false))
+    if (tryNativeStabilityInstallFromFolder(
+            downloads, modelId, modelDisplayName, /*reportIfMissing*/ false))
         return;  // success path already showed a dialog
 
     // Re-run the check to see *why* Downloads didn't work (missing / wrong /
     // nothing), so we can decide whether to nag or to open the picker.
     // We re-use the same helper with reportIfMissing=false to classify.
     int foundInDownloads = 0;
-    for (int i = 0; i < kNumSaSmallRequired; ++i)
-        if (downloads.getChildFile(kSaSmallRequired[i]).existsAsFile())
+    for (int i = 0; i < kNumNativeStabilityRequired; ++i)
+        if (downloads.getChildFile(kNativeStabilityRequired[i]).existsAsFile())
             ++foundInDownloads;
 
     // Scenario (a): some files present in Downloads — tell the user which
     // are still missing instead of opening a picker.
     if (foundInDownloads > 0)
     {
-        trySaSmallInstallFromFolder(downloads, /*reportIfMissing*/ true);
+        tryNativeStabilityInstallFromFolder(
+            downloads, modelId, modelDisplayName, /*reportIfMissing*/ true);
         return;
     }
 
@@ -768,8 +750,9 @@ void SettingsPage::performAutoScan()
     fileChooser->launchAsync(
         juce::FileBrowserComponent::openMode
             | juce::FileBrowserComponent::canSelectDirectories,
-        [safeThis, downloads](const juce::FileChooser& fc)
+        [safeThis, downloads, modelId, modelDisplayName](const juce::FileChooser& fc)
         {
+            juce::ignoreUnused(downloads);
             auto* self = safeThis.getComponent();
             if (self == nullptr) return;
             auto folder = fc.getResult();
@@ -783,7 +766,8 @@ void SettingsPage::performAutoScan()
                                                     juce::Colour(0xffef4444));
                 return;
             }
-            self->trySaSmallInstallFromFolder(folder, /*reportIfMissing*/ true);
+            self->tryNativeStabilityInstallFromFolder(
+                folder, modelId, modelDisplayName, /*reportIfMissing*/ true);
         });
 }
 
@@ -1323,8 +1307,8 @@ void SettingsPage::updateStatus()
         modelPathLabel.setText("", juce::dontSendNotification);
 
         // Per-model honest instructions. AudioLDM2 is the only model T5ynth
-        // can fetch itself; the two Stability models are both gated on HF
-        // and require a one-time manual install via huggingface-cli.
+        // can fetch itself; the two Stability models are gated on HF and use
+        // a two-file manual install.
         auto targetPath = targetDir.getFullPathName();
 
         if (id == "audioldm2") {
@@ -1396,13 +1380,16 @@ void SettingsPage::updateStatus()
                 "  1. Click 'Open Model Page' above, sign up or log in, and click\n"
                 "     'Agree and access repository' to accept the license.\n"
                 "  2. Open the 'Files and versions' tab.\n"
-                "  3. Download exactly these two files into a new empty folder:\n"
+                "  3. Download exactly these two files to your usual Downloads\n"
+                "     folder:\n"
                 "        model.safetensors  (~4.9 GB)\n"
                 "        model_config.json\n"
                 "     Do not download model.ckpt, vae_model.ckpt, or anything\n"
                 "     inside transformer/, vae/, text_encoder/, tokenizer/,\n"
-                "     scheduler/, or projection_model/ -- T5ynth ignores them.\n"
-                "  4. Click 'Browse...' above and select the folder you created.");
+                "     scheduler/, or projection_model/ -- T5ynth does not load them.\n"
+                "  4. Come back here and click 'Auto-Scan' above.\n\n"
+                "If you saved them somewhere other than Downloads, Auto-Scan will "
+                "open a folder picker and ask you to point at the folder.");
         }
     }
 }

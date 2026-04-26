@@ -152,7 +152,7 @@ then patched at `src/presets/PresetFormat.cpp:18-66`:
 | Key             | Source        | Description                                    |
 | --------------- | ------------- | ---------------------------------------------- |
 | `version`       | export        | Integer, currently `1`. This is the **JSON schema** version, not the container version. |
-| `name`          | export        | Always the literal `"T5ynth Export"`. Not user-editable. |
+| `name`          | save/export   | Preset display name when saved through `.t5p`; legacy raw exports may contain `"T5ynth Export"` and should fall back to the filename for UI display. |
 | `timestamp`     | export        | ISO-8601 UTC timestamp of the save. |
 | `synth`         | export+patch  | Core synth params + prompts + seed + device + model + randomSeed (see 3.2). |
 | `engine`        | export        | Engine mode, loop mode, crossfade, normalise, loop optimise, loop/start fractions. |

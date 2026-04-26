@@ -20,7 +20,6 @@ import struct
 import sys
 import time
 import logging
-import copy
 from pathlib import Path
 
 
@@ -254,10 +253,7 @@ def _validate_cuda_runtime_or_raise():
 
 def _model_format(model_dir):
     """Detect model format. Returns 'diffusers', 'audioldm2', 'native', or None."""
-    native_weights = any(
-        (model_dir / name).is_file()
-        for name in ("model.safetensors", "model.ckpt")
-    )
+    native_weights = (model_dir / "model.safetensors").is_file()
     model_index = model_dir / "model_index.json"
     if model_index.is_file():
         try:
@@ -305,122 +301,6 @@ def find_models():
                 models[child.name] = child
                 _model_formats[child.name] = fmt
     return models
-
-
-def _user_model_roots():
-    """Return known per-user model roots across supported platforms."""
-    return [
-        Path.home() / "Library" / "Application Support" / "T5ynth" / "models",
-        Path.home() / "Library" / "T5ynth" / "models",
-        Path.home() / ".config" / "share" / "T5ynth" / "models",
-        Path.home() / ".local" / "share" / "T5ynth" / "models",
-        Path.home() / "t5ynth" / "models",
-    ]
-
-
-def _is_local_transformers_model_dir(path):
-    """Return True if the directory looks like a self-contained HF model."""
-    if not path.is_dir():
-        return False
-
-    has_config = (path / "config.json").is_file()
-    has_weights = any(
-        (path / name).is_file()
-        for name in ("model.safetensors", "pytorch_model.bin", "pytorch_model.safetensors")
-    )
-    has_tokenizer = any(
-        (path / name).is_file()
-        for name in ("tokenizer.json", "tokenizer_config.json", "spiece.model")
-    )
-    return has_config and has_weights and has_tokenizer
-
-
-def _candidate_transformers_dirs(model_name, model_dir):
-    """Yield likely local locations for additional HF transformer assets."""
-    model_path = Path(model_name).expanduser()
-    short_name = model_name.rsplit("/", 1)[-1]
-    canonical_name = model_name.replace("/", "--")
-
-    roots = [model_dir, model_dir.parent]
-    roots.extend(_user_model_roots())
-
-    rel_candidates = [
-        model_path,
-        Path(short_name),
-        Path("_hf") / short_name,
-        Path("_hf") / canonical_name,
-        Path("transformers") / short_name,
-        Path("huggingface") / short_name,
-        Path("huggingface") / canonical_name,
-    ]
-
-    seen = set()
-    for root in roots:
-        for rel in rel_candidates:
-            candidate = rel if rel.is_absolute() else root / rel
-            resolved = candidate.expanduser()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            yield resolved
-
-
-def _resolve_local_transformers_model_dir(model_name, model_dir):
-    """Resolve a local HF model directory for a model id like ``t5-base``."""
-    for candidate in _candidate_transformers_dirs(model_name, model_dir):
-        if _is_local_transformers_model_dir(candidate):
-            return candidate
-    return None
-
-
-def _prepare_native_model_config(model_dir, model_config):
-    """Rewrite native model config to use local auxiliary HF assets only."""
-    patched = copy.deepcopy(model_config)
-    conditioning_cfg = patched.get("model", {}).get("conditioning", {})
-    configs = conditioning_cfg.get("configs", [])
-    resolved_t5_models = []
-
-    for cond in configs:
-        if cond.get("type") != "t5":
-            continue
-
-        cond_cfg = cond.setdefault("config", {})
-        model_name = cond_cfg.get("t5_model_name")
-        if not model_name:
-            continue
-
-        resolved = _resolve_local_transformers_model_dir(model_name, model_dir)
-        if resolved is None:
-            searched = [str(path) for path in _candidate_transformers_dirs(model_name, model_dir)]
-            raise RuntimeError(
-                "Native model requires local Hugging Face assets for "
-                f"'{model_name}'. Expected a self-contained transformers model directory "
-                f"(config + tokenizer + weights) in one of: {searched}"
-            )
-
-        cond_cfg["t5_model_name"] = str(resolved)
-        log.info("Resolved local transformers asset %s -> %s", model_name, resolved)
-        resolved_t5_models.append((model_name, str(resolved)))
-
-    return patched, resolved_t5_models
-
-
-def _patch_stable_audio_tools_t5_registry(resolved_t5_models):
-    """Allow stable-audio-tools to accept resolved local T5 model directories."""
-    if not resolved_t5_models:
-        return
-
-    from stable_audio_tools.models import conditioners as sat_conditioners
-
-    for original_name, resolved_path in resolved_t5_models:
-        if original_name not in sat_conditioners.T5Conditioner.T5_MODEL_DIMS:
-            continue
-
-        if resolved_path not in sat_conditioners.T5Conditioner.T5_MODELS:
-            sat_conditioners.T5Conditioner.T5_MODELS.append(resolved_path)
-        sat_conditioners.T5Conditioner.T5_MODEL_DIMS[resolved_path] = (
-            sat_conditioners.T5Conditioner.T5_MODEL_DIMS[original_name]
-        )
 
 
 # ─── Lazy pipeline cache ──────────────────────────────────────────────
@@ -522,6 +402,22 @@ def _mock_optional_deps():
 
     # Do not mock `dac`: the native stable-audio-open-small path imports
     # dac.nn / dac.model during model construction.
+    if 'soundfile' not in sys.modules:
+        soundfile = types.ModuleType('soundfile')
+        soundfile.__spec__ = importlib.machinery.ModuleSpec('soundfile', None)
+
+        def _soundfile_unavailable(*_args, **_kwargs):
+            raise RuntimeError("soundfile I/O is not available in the inference subprocess")
+
+        class _UnavailableSoundFile:
+            def __init__(self, *_args, **_kwargs):
+                _soundfile_unavailable()
+
+        soundfile.read = _soundfile_unavailable
+        soundfile.write = _soundfile_unavailable
+        soundfile.SoundFile = _UnavailableSoundFile
+        sys.modules['soundfile'] = soundfile
+
     mocks = ['skimage', 'skimage.transform', 'encodec', 'laion_clap',
              'pedalboard', 'pedalboard.io', 'pytorch_lightning', 'wandb',
              'v_diffusion_pytorch', 'gradio', 'jsonmerge', 'clean_fid', 'kornia']
@@ -619,7 +515,10 @@ def _load_native_pipeline(model_dir, device):
     config_path = model_dir / "model_config.json"
     weights_path = model_dir / "model.safetensors"
     if not weights_path.is_file():
-        weights_path = model_dir / "model.ckpt"
+        raise RuntimeError(
+            f"Native model at {model_dir} requires model.safetensors; "
+            "checkpoint formats such as model.ckpt are not accepted."
+        )
 
     log.info(f"Loading native pipeline from {model_dir} on {device}...")
 
@@ -628,9 +527,7 @@ def _load_native_pipeline(model_dir, device):
     sys.stdout = sys.stderr
     try:
         with open(config_path) as f:
-            model_config, resolved_t5_models = _prepare_native_model_config(model_dir, json.load(f))
-
-        _patch_stable_audio_tools_t5_registry(resolved_t5_models)
+            model_config = json.load(f)
 
         model = create_model_from_config(model_config)
         model.load_state_dict(load_ckpt_state_dict(str(weights_path)))

@@ -883,26 +883,33 @@ namespace CoordinationMode {
 
 // ── Strand division multiplier (speed factor relative to global division) ──
 namespace StrandDivMult {
-    // T (1/3) and X3 (3) are appended at the end so preset indices for the
-    // original five binary ratios stay stable. The dropdown shows the
-    // declaration order: 1/4x, 1/2x, 1x, 2x, 4x, 1/3x, 3x.
-    enum : int { Q = 0, H = 1, X = 2, D = 3, F = 4, T = 5, X3 = 6 };
+    enum : int {
+        Sixteenth = 0, Eighth = 1, Fifth = 2, Quarter = 3, Third = 4, Half = 5, X = 6,
+        X2 = 7, X3 = 8, X4 = 9, X5 = 10, X8 = 11, X16 = 12
+    };
     // Labels use plain ASCII "x" — the previous UTF-8 multiplication sign
     // (U+00D7) failed to render correctly through JUCE's ComboBox font on
     // Linux ("1Ã—" instead of "1×").
     static constexpr ChoiceEntry kEntries[] = {
-        { "quarter", "1/4x" },
-        { "half",    "1/2x" },
-        { "x1",      "1x"   },
-        { "x2",      "2x"   },
-        { "x4",      "4x"   },
-        { "third",   "1/3x" },
-        { "x3",      "3x"   }
+        { "sixteenth", "1/16x" },
+        { "eighth",    "1/8x"  },
+        { "fifth",     "1/5x"  },
+        { "quarter",   "1/4x"  },
+        { "third",     "1/3x"  },
+        { "half",      "1/2x"  },
+        { "x1",        "1x"    },
+        { "x2",        "2x"    },
+        { "x3",        "3x"    },
+        { "x4",        "4x"    },
+        { "x5",        "5x"    },
+        { "x8",        "8x"    },
+        { "x16",       "16x"   }
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
-    static_assert(X3 + 1 == kCount, "StrandDivMult out of sync.");
+    static_assert(X16 + 1 == kCount, "StrandDivMult out of sync.");
     static constexpr float kFactor[kCount] = {
-        0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 1.0f / 3.0f, 3.0f
+        1.0f / 16.0f, 1.0f / 8.0f, 1.0f / 5.0f, 1.0f / 4.0f,
+        1.0f / 3.0f, 0.5f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 8.0f, 16.0f
     };
 }
 

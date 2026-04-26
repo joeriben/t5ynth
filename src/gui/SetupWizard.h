@@ -53,17 +53,19 @@ private:
                                            bool replaceExistingTarget);
 
     // Smart Auto-Scan entry point: checks known install paths, and for
-    // SA Small walks the user's Downloads folder looking for the two
-    // files they were told to fetch manually from HuggingFace.
+    // native Stability models walks the user's Downloads folder looking for
+    // the two files they were told to fetch manually from HuggingFace.
     void performAutoScan();
 
-    // Try to install SA Small from the given source folder: checks for
+    // Try to install a native Stability model from the given source folder: checks for
     // the required files, reports missing / wrong / success, then copies to
     // the target app-support dir on success. Used for both the Downloads
     // folder (primary path) and any folder chosen via the picker fallback.
     // Returns true if the install completed.
-    bool trySaSmallInstallFromFolder(const juce::File& sourceFolder,
-                                     bool reportIfMissing);
+    bool tryNativeStabilityInstallFromFolder(const juce::File& sourceFolder,
+                                             const juce::String& modelId,
+                                             const juce::String& modelDisplayName,
+                                             bool reportIfMissing);
 
     void downloadAllFilesInThread();
     void downloadGhReleaseInThread();

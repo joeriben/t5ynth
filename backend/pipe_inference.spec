@@ -14,8 +14,9 @@ Output:
 """
 
 import sys
+import importlib.util
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
 
 # ── Hidden imports ──────────────────────────────────────────────────
 # PyInstaller's static analysis misses lazy imports and plugin-style loaders.
@@ -47,6 +48,10 @@ hidden += [
     'stable_audio_tools.models.utils',
 ]
 hidden += collect_submodules('dac')
+
+# torchaudio is imported by the native stable-audio-tools/DAC path. Its Python
+# package can be discovered without the companion dylibs, so include both.
+hidden += collect_submodules('torchaudio')
 
 # safetensors: used by diffusers/transformers for .safetensors loading
 hidden += ['safetensors', 'safetensors.torch']
@@ -118,6 +123,23 @@ datas = []
 datas += collect_data_files('diffusers', includes=['**/*.json'])
 datas += collect_data_files('transformers', includes=['**/*.json'])
 datas += collect_data_files('stable_audio_tools', includes=['**/*.json', '**/*.yaml'])
+datas += collect_data_files('audiotools', includes=['**/*.html', '**/*.css'])
+datas += collect_data_files('clip', includes=['**/*.gz'])
+datas += collect_data_files('open_clip', includes=['**/*.gz', '**/*.json'])
+
+_dac_spec = importlib.util.find_spec('dac')
+if _dac_spec and _dac_spec.submodule_search_locations:
+    _dac_root = Path(next(iter(_dac_spec.submodule_search_locations)))
+    datas += [
+        (str(path), str(Path('dac') / path.relative_to(_dac_root).parent))
+        for path in _dac_root.rglob('*.py')
+    ]
+
+_soundfile_spec = importlib.util.find_spec('soundfile')
+if _soundfile_spec and _soundfile_spec.origin:
+    _soundfile_data = Path(_soundfile_spec.origin).parent / '_soundfile_data'
+    if _soundfile_data.exists():
+        datas += [(str(path), '_soundfile_data') for path in _soundfile_data.iterdir() if path.is_file()]
 
 # ── Package metadata ──────────────────────────────────────────────
 # transformers checks dependency versions via importlib.metadata at import time
@@ -137,13 +159,21 @@ datas += copy_metadata('accelerate')
 datas += copy_metadata('diffusers')
 datas += copy_metadata('descript-audio-codec')
 datas += copy_metadata('descript-audiotools')
+datas += copy_metadata('torchaudio')
+datas += copy_metadata('torchvision')
+
+# ── Native extension binaries ─────────────────────────────────────────
+# PyInstaller's default hooks can miss these package-local dynamic libraries.
+binaries = []
+binaries += collect_dynamic_libs('torchaudio')
+binaries += collect_dynamic_libs('torchvision')
 
 # ── Analysis ────────────────────────────────────────────────────────
 
 a = Analysis(
     ['pipe_inference.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hidden,
     hookspath=[],
