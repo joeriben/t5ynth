@@ -121,12 +121,14 @@ void MainPanel::GenerateButton::paintButton(juce::Graphics& g, bool highlighted,
 
     const float fontSize = juce::jlimit(24.0f, 44.0f, bounds.getHeight() * 0.64f);
     const float letterAlpha = active ? (down ? 0.88f : 1.0f) : 0.55f;
+    const float horizontalInset = juce::jlimit(24.0f, 56.0f, fontSize * 0.85f);
 
     auto font = juce::Font(juce::FontOptions(fontSize, juce::Font::bold))
                     .withExtraKerningFactor(0.10f);
     g.setFont(font);
     g.setColour(juce::Colours::white.withAlpha(letterAlpha));
-    g.drawFittedText("GENERATE", body.toNearestInt(),
+    auto textArea = body.reduced(horizontalInset, 0.0f).toNearestInt();
+    g.drawFittedText("GENERATE", textArea,
                      juce::Justification::centred, 1, 0.5f);
 }
 
