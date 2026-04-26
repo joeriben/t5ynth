@@ -121,8 +121,8 @@ Every job:
 2. Installs system dependencies and Python 3.11.
 3. Installs `pyinstaller` plus a matching `torch` / `torchaudio` /
    `torchvision` wheel set, then `backend/requirements.txt`.
-   - On Windows and Linux, that wheel set is pulled from the CUDA 12.4 wheel
-     index (`https://download.pytorch.org/whl/cu124`).
+  - On Windows and Linux, that wheel set is pulled from the CUDA 12.8 wheel
+     index (`https://download.pytorch.org/whl/cu128`).
 4. Runs `pyinstaller pipe_inference.spec --noconfirm` in `backend/` to
    bundle the Python inference backend.
    - For Linux package-layer outputs such as the Fedora RPM and Ubuntu/Debian

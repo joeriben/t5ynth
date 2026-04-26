@@ -39,9 +39,9 @@ in `docs/IPC_PROTOCOL.md`.
 | Platform | Acceleration | Status |
 | --- | --- | --- |
 | macOS 14+ on Apple Silicon | MPS (Metal) | Primary development target. |
-| Linux x86_64 (Ubuntu 22.04 / 24.04) | CUDA 12.4 (NVIDIA) | CI target. |
-| Linux x86_64 (Fedora 42) | CUDA 12.4 (NVIDIA) | Not in CI; package list assembled from Ubuntu CI deps plus Fedora package naming conventions, not yet end-to-end verified. |
-| Windows 11 x86_64 | CUDA 12.4 (NVIDIA) | CI target. MSVC 2022. |
+| Linux x86_64 (Ubuntu 22.04 / 24.04) | CUDA 12.8 (NVIDIA) | CI target. |
+| Linux x86_64 (Fedora 42) | CUDA 12.8 (NVIDIA) | Not in CI; package list assembled from Ubuntu CI deps plus Fedora package naming conventions, not yet end-to-end verified. |
+| Windows 11 x86_64 | CUDA 12.8 (NVIDIA) | CI target. MSVC 2022. |
 
 CPU-only fallback works on all three platforms but is too slow for interactive
 use during development. A discrete NVIDIA GPU is strongly recommended on
@@ -205,10 +205,10 @@ This step is **before** `backend/requirements.txt`, because the native
 extension wheels (`torch`, `torchaudio`, `torchvision`) must be ABI-aligned and
 the platform-correct torch wheel must win.
 
-**Linux / Windows (CUDA 12.4):**
+**Linux / Windows (CUDA 12.8):**
 
 ```bash
-pip install torch==2.7.1 torchaudio==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu124
+pip install torch==2.7.1 torchaudio==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu128
 ```
 
 **macOS (Apple Silicon, MPS):**
