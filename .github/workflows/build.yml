@@ -268,6 +268,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p archives
+          export XZ_OPT="-T0 -1"
           cp LICENSE.txt THIRD_PARTY_LICENSES.txt build/T5ynth_artefacts/Release/VST3/
           tar -cJf archives/T5ynth-Windows-Standalone.tar.xz -C dist T5ynth
           tar -cJf archives/T5ynth-Windows-VST3.tar.xz \
@@ -389,6 +390,7 @@ jobs:
       - name: Create archives
         run: |
           mkdir -p archives
+          export XZ_OPT="-T0 -1"
           cp LICENSE.txt THIRD_PARTY_LICENSES.txt build/T5ynth_artefacts/Release/VST3/
           tar -cJf archives/T5ynth-Linux-Base-x86_64-Standalone.tar.xz -C dist T5ynth
           tar -cJf archives/T5ynth-Linux-Base-x86_64-VST3.tar.xz \

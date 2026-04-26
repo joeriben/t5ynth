@@ -219,12 +219,15 @@ without GitHub Actions.
 ## 5. Artifact layout
 
 Linux base archives and Windows archives are built with `tar -cJf`
-(xz-compressed tar)
+(xz-compressed tar, using the workflow's fast multithreaded `XZ_OPT`)
 **before** upload. This is deliberate: `actions/upload-artifact` strips
 Unix permission bits, which would break the executable bit on the
 `T5ynth` binary and on `backend/pipe_inference`. By tarring on the build
 machine, permissions survive the round-trip. macOS end-user releases are
-currently installer-only (`T5ynth-macOS-Installer.pkg`).
+currently installer-only (`T5ynth-macOS-Installer.pkg`). Windows installer
+builds use Inno Setup's normal `lzma2` compression; avoid `ultra64` presets
+in CI because the PyInstaller backend bundle is large and release validation
+should not spend most of its time recompressing already-bundled dependencies.
 
 Each archive contains the platform binary plus:
 
