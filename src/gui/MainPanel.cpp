@@ -57,10 +57,11 @@ MainPanel::GenerateButton::GenerateButton(const juce::String& label)
     setMouseCursor(juce::MouseCursor::PointingHandCursor);
 }
 
-void MainPanel::GenerateButton::setAnimationState(float phase, bool isGenerating)
+void MainPanel::GenerateButton::setAnimationState(float phase, bool isGenerating, bool isAuto)
 {
     animationPhase = phase;
     generating = isGenerating;
+    autoMode = isAuto;
     repaint();
 }
 
@@ -73,24 +74,6 @@ void MainPanel::GenerateButton::paintButton(juce::Graphics& g, bool highlighted,
     const bool active = isEnabled() || generating;
     bounds = bounds.translated(0.0f, down ? 1.0f : 0.0f);
     const auto body = bounds.reduced(2.0f);
-    const auto border = kDriftCol;
-    const float pulse = 0.5f + 0.5f * std::sin(animationPhase * 0.85f);
-    const float glowAlpha = active ? (generating ? 0.34f : 0.18f) + (generating ? 0.18f : 0.08f) * pulse : 0.06f;
-    const float frameAlpha = active ? (highlighted || generating ? 0.96f : 0.84f) : 0.40f;
-
-    auto base = juce::Colour(0xffeef2f7).brighter(highlighted ? 0.02f : 0.0f);
-    if (down)
-        base = base.darker(0.06f);
-
-    g.setColour(base.withAlpha(active ? 1.0f : 0.66f));
-    g.fillRect(body);
-
-    g.setColour(border.withAlpha(glowAlpha * 0.34f));
-    g.drawRect(body.expanded(4.0f), 3.5f);
-    g.setColour(border.withAlpha(glowAlpha * 0.58f));
-    g.drawRect(body.expanded(2.0f), 2.5f);
-    g.setColour(border.withAlpha(frameAlpha));
-    g.drawRect(body, 4.0f);
 
     static const juce::Colour palette[] = {
         juce::Colour(0xff667eea), juce::Colour(0xffe91e63),
@@ -98,61 +81,161 @@ void MainPanel::GenerateButton::paintButton(juce::Graphics& g, bool highlighted,
         juce::Colour(0xff4CAF50), juce::Colour(0xff00BCD4)
     };
     static constexpr int numColours = static_cast<int>(sizeof(palette) / sizeof(palette[0]));
-    static constexpr int numSymbols = 6;
+
+    {
+        const float w = body.getWidth();
+        const float twoPi = juce::MathConstants<float>::twoPi;
+        const float rawShift = animationPhase / twoPi;
+        const float shift = rawShift - std::floor(rawShift);
+        const float cy = body.getCentreY();
+
+        juce::ColourGradient grad(palette[0],
+                                  body.getX() - shift * w, cy,
+                                  palette[0],
+                                  body.getX() + (2.0f - shift) * w, cy,
+                                  false);
+        for (int k = 1; k <= 11; ++k)
+            grad.addColour(static_cast<double>(k) / 12.0, palette[k % numColours]);
+
+        g.setGradientFill(grad);
+        g.fillRect(body);
+
+        if (! active)
+        {
+            g.setColour(kBg.withAlpha(0.45f));
+            g.fillRect(body);
+        }
+        else if (down)
+        {
+            g.setColour(kBg.withAlpha(0.12f));
+            g.fillRect(body);
+        }
+        else if (highlighted)
+        {
+            g.setColour(juce::Colours::white.withAlpha(0.06f));
+            g.fillRect(body);
+        }
+
+        g.setColour(kBg.withAlpha(0.55f));
+        g.drawRect(body, 1.0f);
+    }
+
+    static constexpr const char* word = "GENERATE";
+    static constexpr int numLetters = 8;
 
     float fontSize = juce::jlimit(24.0f, 44.0f, bounds.getHeight() * 0.64f);
 
-    auto measureSymbolWidth = [](float fs)
+    auto measureWord = [](float fs)
     {
-        juce::GlyphArrangement glyphs;
-        glyphs.addLineOfText(juce::Font(juce::FontOptions(fs, juce::Font::bold)), ">", 0.0f, 0.0f);
-        return juce::roundToInt(std::ceil(glyphs.getBoundingBox(0, -1, true).getWidth()));
+        const int tracking = juce::roundToInt(fs * 0.10f);
+        int total = 0;
+        for (int i = 0; i < numLetters; ++i)
+        {
+            if (i > 0)
+                total += tracking;
+
+            char letterText[] = { word[i], 0 };
+            total += measureTextWidth(juce::String(letterText), fs);
+        }
+        return total;
     };
 
-    auto measureArrowRun = [&measureSymbolWidth](float fs)
-    {
-        const int tracking = juce::roundToInt(fs * 0.12f);
-        return measureSymbolWidth(fs) * numSymbols + tracking * (numSymbols - 1);
+    auto chevronBlockWidth = [](float fs) {
+        const float chevSize = fs * 0.55f;
+        const float chevAdvance = chevSize * 0.85f;
+        const float chevGap = chevSize * 0.40f;
+        return chevAdvance * 3.0f + chevGap * 2.0f;
+    };
+
+    auto wordChevronGap = [](float fs) { return fs * 0.55f; };
+
+    auto totalContentWidth = [&](float fs) {
+        return static_cast<float>(measureWord(fs)) + wordChevronGap(fs) + chevronBlockWidth(fs);
     };
 
     float horizontalInset = juce::jlimit(18.0f, 48.0f, fontSize);
-    float usableTextW = juce::jmax(12.0f, body.getWidth() - horizontalInset * 2.0f);
+    float usableContentW = juce::jmax(12.0f, body.getWidth() - horizontalInset * 2.0f);
 
-    int runW = measureArrowRun(fontSize);
-    if (runW > usableTextW)
+    int safety = 0;
+    while (totalContentWidth(fontSize) > usableContentW && fontSize > 16.0f && safety++ < 8)
     {
-        fontSize = juce::jmax(16.0f, fontSize * usableTextW / static_cast<float>(runW));
+        fontSize = juce::jmax(16.0f, fontSize * usableContentW / totalContentWidth(fontSize));
         horizontalInset = juce::jlimit(18.0f, 48.0f, fontSize);
-        usableTextW = juce::jmax(12.0f, body.getWidth() - horizontalInset * 2.0f);
-        runW = measureArrowRun(fontSize);
-        if (runW > usableTextW)
-        {
-            fontSize = juce::jmax(16.0f, fontSize * usableTextW / static_cast<float>(runW));
-            runW = measureArrowRun(fontSize);
-        }
+        usableContentW = juce::jmax(12.0f, body.getWidth() - horizontalInset * 2.0f);
     }
 
-    auto textArea = body.reduced(horizontalInset, 3.0f);
-    const int symbolW = measureSymbolWidth(fontSize);
-    const int tracking = juce::roundToInt(fontSize * 0.12f);
+    const int wordW = measureWord(fontSize);
+    const float chevW = chevronBlockWidth(fontSize);
+    const float gapWC = wordChevronGap(fontSize);
+    const float contentW = static_cast<float>(wordW) + gapWC + chevW;
+
+    const float startX = body.getCentreX() - contentW * 0.5f;
+    const float centerY = body.getCentreY();
+
+    const int tracking = juce::roundToInt(fontSize * 0.10f);
     const int textH = juce::roundToInt(fontSize * 1.25f);
-    int x = juce::roundToInt(textArea.getCentreX() - static_cast<float>(runW) * 0.5f);
-    const int y = juce::roundToInt(textArea.getCentreY() - static_cast<float>(textH) * 0.5f);
-    const int colourOffset = generating
-        ? static_cast<int>(std::floor((animationPhase / juce::MathConstants<float>::twoPi) * numColours)) % numColours
-        : 0;
+    const int textY = juce::roundToInt(centerY - static_cast<float>(textH) * 0.5f);
+
+    const float letterAlpha = active ? (down ? 0.88f : 1.0f) : 0.55f;
+    const auto whiteText = juce::Colours::white;
 
     g.setFont(juce::Font(juce::FontOptions(fontSize, juce::Font::bold)));
-    for (int i = 0; i < numSymbols; ++i)
+    int xCursor = juce::roundToInt(startX);
+    for (int i = 0; i < numLetters; ++i)
     {
         if (i > 0)
-            x += tracking;
+            xCursor += tracking;
 
-        auto colour = palette[(i + colourOffset) % numColours].darker(0.08f);
-        g.setColour(colour.withAlpha(active ? 0.96f : 0.45f));
-        g.drawText(">", x, y, symbolW + juce::roundToInt(fontSize * 0.25f), textH,
-                   juce::Justification::centredLeft);
-        x += symbolW;
+        char letterText[] = { word[i], 0 };
+        juce::String ch(letterText);
+        const int cw = measureTextWidth(ch, fontSize);
+        g.setColour(whiteText.withAlpha(letterAlpha));
+        g.drawText(ch, xCursor, textY, cw + 2, textH, juce::Justification::centredLeft);
+        xCursor += cw;
+    }
+
+    {
+        const float chevSize = fontSize * 0.55f;
+        const float chevAdvance = chevSize * 0.85f;
+        const float chevGap = chevSize * 0.40f;
+        const float chevStroke = juce::jmax(1.5f, fontSize * 0.10f);
+
+        float cx = startX + static_cast<float>(wordW) + gapWC + chevAdvance * 0.5f;
+
+        for (int i = 0; i < 3; ++i)
+        {
+            float a;
+            if (generating)
+            {
+                const float ph = animationPhase - static_cast<float>(i) * (juce::MathConstants<float>::twoPi / 3.0f);
+                a = 0.55f + 0.45f * (0.5f + 0.5f * std::cos(ph));
+            }
+            else if (autoMode)
+            {
+                const float ph = animationPhase - static_cast<float>(i) * 0.7f;
+                a = 0.65f + 0.30f * (0.5f + 0.5f * std::sin(ph));
+            }
+            else
+            {
+                a = 0.85f;
+            }
+            if (down)
+                a = juce::jmin(1.0f, a + 0.10f);
+            if (! active)
+                a *= 0.55f;
+
+            juce::Path chev;
+            const float half = chevSize * 0.5f;
+            chev.startNewSubPath(cx - half * 0.55f, centerY - half);
+            chev.lineTo(cx + half * 0.55f, centerY);
+            chev.lineTo(cx - half * 0.55f, centerY + half);
+            g.setColour(whiteText.withAlpha(a));
+            g.strokePath(chev, juce::PathStrokeType(chevStroke,
+                                                    juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+
+            cx += chevAdvance + chevGap;
+        }
     }
 }
 
@@ -419,7 +502,8 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
 
     promptPanel.onStatusChanged = [this](const juce::String& text, bool isGenerating) {
         glowGenerating = isGenerating;
-        mainGenerateBtn.setAnimationState(glowPhase, glowGenerating);
+        const bool isAuto = processorRef.driftRegenMode.load() != 0;
+        mainGenerateBtn.setAnimationState(glowPhase, glowGenerating, isAuto);
         if (isGenerating)
         {
             mainGenerateBtn.setButtonText("GENERATE");
@@ -1155,20 +1239,29 @@ void MainPanel::paint(juce::Graphics& g)
 
     if (glowGenerating)
     {
+        const float pulse = 0.5f + 0.5f * std::sin(glowPhase);
         auto gb = mainGenerateBtn.getBounds().toFloat().expanded(7.0f, 5.0f);
-        g.setColour(kOscCol.withAlpha(0.10f));
+        g.setColour(kOscCol.withAlpha(0.10f + 0.10f * pulse));
         g.fillRect(gb);
-        g.setColour(kOscCol.withAlpha(0.18f));
+        g.setColour(kOscCol.withAlpha(0.18f + 0.10f * pulse));
         g.drawRect(gb, 1.0f);
     }
 }
 
 void MainPanel::timerCallback()
 {
-    glowPhase += glowGenerating ? 0.25f : 0.08f;
+    const bool isAuto = processorRef.driftRegenMode.load() != 0;
+    const bool isHover = mainGenerateBtn.isMouseOver(false);
+    float increment;
+    if (glowGenerating)               increment = 0.209f;   // 1.00 Hz @ 30 fps
+    else if (isAuto && isHover)       increment = 0.209f;
+    else if (isAuto)                  increment = 0.157f;   // 0.75 Hz
+    else if (isHover)                 increment = 0.105f;   // 0.50 Hz
+    else                              increment = 0.0524f;  // 0.25 Hz manual idle
+    glowPhase += increment;
     if (glowPhase > juce::MathConstants<float>::twoPi)
         glowPhase -= juce::MathConstants<float>::twoPi;
-    mainGenerateBtn.setAnimationState(glowPhase, glowGenerating);
+    mainGenerateBtn.setAnimationState(glowPhase, glowGenerating, isAuto);
     repaint(mainGenerateBtn.getBounds().expanded(20));
 
     // Poll drift ghost offsets for AxesPanel (30Hz)
