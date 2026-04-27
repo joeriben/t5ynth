@@ -303,9 +303,12 @@ Release notes are assembled by the `release` job:
    fixed prefix. This file is evergreen — it should not reference a
    specific version number. It currently documents the macOS installer
    flow and the Linux `chmod +x` fallback.
-2. `gh api repos/joeriben/t5ynth/releases/generate-notes` is called with
-   the new tag and the previous tag; the `.body` field from the response
-   is appended to `release_notes.md`. This produces a "What's Changed" /
+2. The release job asks `gh release list` for the most recent published
+   GitHub Release tag, then calls
+   `gh api repos/joeriben/t5ynth/releases/generate-notes` with the new tag
+   and that previous published release tag. This avoids using failed,
+   unpublished tags as the comparison base. The `.body` field from the
+   response is appended to `release_notes.md`, producing a "What's Changed" /
    contributor list section automatically from commit history.
 3. The combined file is passed to `gh release create --notes-file
    release_notes.md`, together with the macOS and Windows installer assets.

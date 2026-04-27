@@ -478,8 +478,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp .github/release_notes_header.md release_notes.md
+          PREVIOUS_RELEASE_TAG="$(gh release list \
+            --repo "${{ github.repository }}" \
+            --limit 1 \
+            --json tagName \
+            --jq '.[0].tagName // ""')"
+          NOTES_ARGS=(-f tag_name="${{ github.ref_name }}")
+          if [[ -n "$PREVIOUS_RELEASE_TAG" ]]; then
+            NOTES_ARGS+=(-f previous_tag_name="$PREVIOUS_RELEASE_TAG")
+          fi
           gh api repos/${{ github.repository }}/releases/generate-notes \
-            -f tag_name="${{ github.ref_name }}" \
+            "${NOTES_ARGS[@]}" \
             --jq '.body' >> release_notes.md
 
       - name: Create GitHub Release
