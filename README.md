@@ -2,6 +2,8 @@
 
 > **For the full formatted user guide, open [`resources/T5ynth_Guide.html`](resources/T5ynth_Guide.html) in your browser.**
 
+° ** For a beginning Preset-Collection, open [`https://github.com/joeriben/T5ynth-Presets`] (https://github.com/joeriben/T5ynth-Presets), download, and use the Import function of the preset browser.**
+
 (note: this description has been written by the co-coding AI, Claude Opus 4.6)
 
 
