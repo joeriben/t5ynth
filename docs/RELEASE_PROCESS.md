@@ -225,9 +225,12 @@ Unix permission bits, which would break the executable bit on the
 `T5ynth` binary and on `backend/pipe_inference`. By tarring on the build
 machine, permissions survive the round-trip. macOS end-user releases are
 currently installer-only (`T5ynth-macOS-Installer.pkg`). Windows installer
-builds use Inno Setup's normal `lzma2` compression; avoid `ultra64` presets
-in CI because the PyInstaller backend bundle is large and release validation
-should not spend most of its time recompressing already-bundled dependencies.
+builds use Inno Setup's `lzma2/max` compression and disk spanning, so the
+large CUDA-enabled PyInstaller backend can be published as `Setup-*.bin`
+slices under GitHub's per-asset size limit. GitHub Release assets must be
+smaller than 2 GiB (`2147483648` bytes); the workflow checks every Windows
+installer part before uploading it. Avoid `ultra64` presets in CI because
+they spend too much time recompressing already-bundled dependencies.
 
 Each archive contains the platform binary plus:
 
@@ -261,25 +264,30 @@ as the Fedora RPM and Ubuntu/Debian `.deb` are separate deliverables built from
 the same app/backend layout contract.
 
 The `release` job downloads artifacts with `actions/download-artifact`,
-collects `.pkg` files plus `T5ynth-Windows-Setup.exe` into `release/`, and
-passes those files to `gh release create`.
+collects `.pkg` files plus `T5ynth-Windows-Setup.exe` and any
+`T5ynth-Windows-Setup-*.bin` companion slices into `release/`, and passes
+those files to `gh release create`.
 
-### Expected release assets for the current tagged release line (2 total)
+### Expected release asset families for the current tagged release line
 
 ```
 T5ynth-macOS-Installer.pkg
 T5ynth-Windows-Setup.exe
+T5ynth-Windows-Setup-*.bin
 ```
 
 For the current tagged release process, GitHub Releases publish the macOS
-installer plus the Windows installer. Windows standalone/VST3 `.tar.xz`
-artefacts, Linux base artefacts, Fedora RPMs, Ubuntu/Debian `.deb`, VST3 and
-AU remain outside the public stable release page until each distribution path
-has been validated and explicitly wired into CI release publication.
+installer plus the Windows installer. The Windows installer may be multipart:
+users must download `T5ynth-Windows-Setup.exe` and every
+`T5ynth-Windows-Setup-*.bin` file into the same directory before running the
+installer. Windows standalone/VST3 `.tar.xz` artefacts, Linux base artefacts,
+Fedora RPMs, Ubuntu/Debian `.deb`, VST3 and AU remain outside the public stable
+release page until each distribution path has been validated and explicitly
+wired into CI release publication.
 
 If the release page does not contain both `T5ynth-macOS-Installer.pkg` and
-`T5ynth-Windows-Setup.exe`, something went wrong — investigate before
-announcing the release.
+`T5ynth-Windows-Setup.exe`, or if it is missing any Windows `.bin` slice
+created by CI, something went wrong — investigate before announcing the release.
 
 Hard rule: if CI did not publish one of the expected installer assets, do not
 replace it by manually uploading a locally built installer. Fix CI first, then
@@ -447,7 +455,8 @@ Check:
 - **Title:** `T5ynth vX.Y.Z`.
 - **Prerelease flag:** set if and only if the tag matched `-rc*`, `-alpha*`,
   or `-beta*`.
-- **Asset count:** exactly 7 (§5). Any missing asset means a platform
+- **Asset families:** macOS `.pkg`, Windows setup `.exe`, and every Windows
+  setup `.bin` slice created by CI (§5). Any missing asset means a platform
   build silently skipped its upload step — investigate.
 - **Release notes:** begin with the content of
   `.github/release_notes_header.md`, followed by the auto-generated

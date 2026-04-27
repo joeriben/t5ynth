@@ -314,11 +314,28 @@ jobs:
                /O"archives" `
                installer\windows\t5ynth.iss
 
+      - name: Verify Windows installer release asset size
+        shell: powershell
+        run: |
+          $installerParts = Get-ChildItem "archives\T5ynth-Windows-Setup*"
+          if (-not $installerParts) {
+            Write-Host "::error::Windows installer output was not found."
+            exit 1
+          }
+          $releaseAssetLimit = [int64]2147483648
+          foreach ($part in $installerParts) {
+            Write-Host "Windows installer part $($part.Name): $($part.Length) bytes"
+            if ($part.Length -ge $releaseAssetLimit) {
+              Write-Host "::error::Windows installer part $($part.Name) is too large for GitHub Releases. Size must be less than $releaseAssetLimit bytes."
+              exit 1
+            }
+          }
+
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
           name: T5ynth-Windows-Installer
-          path: archives/T5ynth-Windows-Setup.exe
+          path: archives/T5ynth-Windows-Setup*
 
   # ── Linux Base Artifacts + Ubuntu DEB (Ubuntu x86_64) ──────────
   linux:
@@ -453,6 +470,7 @@ jobs:
           mkdir -p release
           find artifacts -name '*.pkg' -exec mv {} release/ \;
           find artifacts -name 'T5ynth-Windows-Setup.exe' -exec mv {} release/ \;
+          find artifacts -name 'T5ynth-Windows-Setup-*.bin' -exec mv {} release/ \;
           ls -lh release/
 
       - name: Generate release notes
@@ -474,7 +492,7 @@ jobs:
           esac
           gh release create "${{ github.ref_name }}" \
             release/*.pkg \
-            release/*.exe \
+            release/T5ynth-Windows-Setup* \
             --title "T5ynth ${{ github.ref_name }}" \
             --notes-file release_notes.md \
             $PRERELEASE
