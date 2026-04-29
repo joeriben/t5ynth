@@ -21,6 +21,7 @@ Files in this directory:
 - [`ADDING_A_MODULATION_TARGET.md`](ADDING_A_MODULATION_TARGET.md) — HOWTO for adding a new mod matrix destination.
 - [`INTERFACE_DESIGN_POLICY.md`](INTERFACE_DESIGN_POLICY.md) — UI text, contrast, and control-density rules for the synth interface.
 - [`PRESET_FORMAT.md`](PRESET_FORMAT.md) — `.t5p` binary preset format specification.
+- [`RESEARCH_IDEAS.md`](RESEARCH_IDEAS.md) — Forward-looking research notes, including fine-grained prompt/embedding injection strategies.
 - [`RELEASE_PROCESS.md`](RELEASE_PROCESS.md) — Tag-driven CI release flow.
 - [`TESTING.md`](TESTING.md) — Current testing state and conventions.
 - [`DEV_DOCS_STATUS.md`](DEV_DOCS_STATUS.md) — Meta: editor's working document tracking the dev-docs pass. Not a contributor reference.
