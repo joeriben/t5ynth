@@ -78,6 +78,7 @@ void configureInferenceCpuBudget()
     setEnvIfUnset("OMP_WAIT_POLICY", "PASSIVE");
     setEnvIfUnset("KMP_BLOCKTIME", "0");
     setEnvIfUnset("MKL_DYNAMIC", "TRUE");
+    setEnvIfUnset("PYTHONUNBUFFERED", "1");
 }
 
 #ifdef _WIN32
@@ -370,6 +371,8 @@ bool PipeInference::launch(const juce::File& backendDir)
     }
 
     configureInferenceCpuBudget();
+    auto stderrLog = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                         .getChildFile("T5ynth/Logs/backend_stderr.log");
 
 #ifdef _WIN32
     // ── Windows: CreatePipe + CreateProcess ──────────────────────────
@@ -382,11 +385,18 @@ bool PipeInference::launch(const juce::File& backendDir)
     HANDLE hChildStdinWr = INVALID_HANDLE_VALUE;
     HANDLE hChildStdoutRd = INVALID_HANDLE_VALUE;
     HANDLE hChildStdoutWr = INVALID_HANDLE_VALUE;
+    HANDLE hChildStderrWr = INVALID_HANDLE_VALUE;
 
     if (!CreatePipe(&hChildStdoutRd, &hChildStdoutWr, &sa, 0)
         || !CreatePipe(&hChildStdinRd, &hChildStdinWr, &sa, 0))
     {
-        juce::Logger::writeToLog("PipeInference: CreatePipe failed");
+        lastError_ = "CreatePipe failed (error " + juce::String((int)GetLastError()) + ")";
+        juce::Logger::writeToLog("PipeInference: " + lastError_);
+        if (hChildStdinRd != INVALID_HANDLE_VALUE) CloseHandle(hChildStdinRd);
+        if (hChildStdinWr != INVALID_HANDLE_VALUE) CloseHandle(hChildStdinWr);
+        if (hChildStdoutRd != INVALID_HANDLE_VALUE) CloseHandle(hChildStdoutRd);
+        if (hChildStdoutWr != INVALID_HANDLE_VALUE) CloseHandle(hChildStdoutWr);
+        launching_ = false;
         return false;
     }
 
@@ -394,11 +404,28 @@ bool PipeInference::launch(const juce::File& backendDir)
     SetHandleInformation(hChildStdoutRd, HANDLE_FLAG_INHERIT, 0);
     SetHandleInformation(hChildStdinWr, HANDLE_FLAG_INHERIT, 0);
 
+    stderrLog.getParentDirectory().createDirectory();
+    std::wstring stderrPath(stderrLog.getFullPathName().toWideCharPointer());
+    hChildStderrWr = CreateFileW(stderrPath.c_str(),
+                                 GENERIC_WRITE,
+                                 FILE_SHARE_READ,
+                                 &sa,
+                                 CREATE_ALWAYS,
+                                 FILE_ATTRIBUTE_NORMAL,
+                                 nullptr);
+    if (hChildStderrWr == INVALID_HANDLE_VALUE)
+    {
+        juce::Logger::writeToLog("PipeInference: could not open backend stderr log "
+                                  + stderrLog.getFullPathName()
+                                  + " (error " + juce::String((int)GetLastError()) + ")");
+    }
+
     STARTUPINFOW si = {};
     si.cb = sizeof(si);
     si.hStdInput = hChildStdinRd;
     si.hStdOutput = hChildStdoutWr;
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    si.hStdError = hChildStderrWr != INVALID_HANDLE_VALUE ? hChildStderrWr
+                                                          : GetStdHandle(STD_ERROR_HANDLE);
     si.dwFlags |= STARTF_USESTDHANDLES;
 
     PROCESS_INFORMATION pi = {};
@@ -418,18 +445,23 @@ bool PipeInference::launch(const juce::File& backendDir)
     if (!CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
                         creationFlags, nullptr, nullptr, &si, &pi))
     {
-        juce::Logger::writeToLog("PipeInference: CreateProcess failed (error "
-                                  + juce::String((int)GetLastError()) + ")");
+        lastError_ = "CreateProcess failed (error " + juce::String((int)GetLastError()) + ")";
+        if (hChildStderrWr != INVALID_HANDLE_VALUE)
+            lastError_ << "\nLog: " << stderrLog.getFullPathName();
+        juce::Logger::writeToLog("PipeInference: " + lastError_);
         CloseHandle(hChildStdinRd);
         CloseHandle(hChildStdinWr);
         CloseHandle(hChildStdoutRd);
         CloseHandle(hChildStdoutWr);
+        if (hChildStderrWr != INVALID_HANDLE_VALUE) CloseHandle(hChildStderrWr);
+        launching_ = false;
         return false;
     }
 
     // Close child-side handles (now owned by child process)
     CloseHandle(hChildStdinRd);
     CloseHandle(hChildStdoutWr);
+    if (hChildStderrWr != INVALID_HANDLE_VALUE) CloseHandle(hChildStderrWr);
     CloseHandle(pi.hThread);
 
     hChildStdinWr_ = hChildStdinWr;
@@ -503,20 +535,24 @@ bool PipeInference::launch(const juce::File& backendDir)
     if (!readExact(&readyByte, 1, 120000))
     {
         // Read stderr log for diagnosis
-        auto stderrLog = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
-                             .getChildFile("T5ynth/Logs/backend_stderr.log");
         juce::String stderrContent;
         if (stderrLog.existsAsFile())
             stderrContent = stderrLog.loadFileAsString().trimEnd();
 
         if (stderrContent.isNotEmpty())
+        {
             lastError_ = maybeAugmentMacStandaloneError(
                 backendDir,
                 stderrContent.fromLastOccurrenceOf("\n", false, false).trim());
+            lastError_ << "\nLog: " << stderrLog.getFullPathName();
+        }
         else if (!isChildAlive())
             lastError_ = "Backend process crashed on startup";
         else
             lastError_ = "Timeout waiting for backend (120s)";
+
+        if (!lastError_.contains("Log: "))
+            lastError_ << "\nLog: " << stderrLog.getFullPathName();
 
         juce::Logger::writeToLog("PipeInference: " + lastError_);
         shutdown();

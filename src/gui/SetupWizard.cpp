@@ -35,6 +35,20 @@ static void setInstructionsText(juce::TextEditor& editor, const juce::String& te
     editor.scrollEditorToPositionCaret(0, 0);
 }
 
+static juce::String backendStderrLogPath()
+{
+    return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+        .getChildFile("T5ynth/Logs/backend_stderr.log")
+        .getFullPathName();
+}
+
+static juce::String firstErrorLine(juce::String text)
+{
+    text = text.replace("\r\n", "\n").trim();
+    auto firstLine = text.upToFirstOccurrenceOf("\n", false, false).trim();
+    return firstLine.isNotEmpty() ? firstLine : "Unknown backend error";
+}
+
 static bool isEssentialDiffusersFile(const juce::String& remotePath)
 {
     auto path = remotePath.replaceCharacter('\\', '/');
@@ -1220,8 +1234,8 @@ void SettingsPage::onDownloadFinished(bool success, const juce::String& error)
             }
         }
 
-        downloadStatusLabel.setText("Download complete. Activating model...", juce::dontSendNotification);
-        downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
+        downloadStatusLabel.setText("Download complete. Starting backend...", juce::dontSendNotification);
+        downloadStatusLabel.setColour(juce::Label::textColourId, kDim);
         auto found = scanForModel();
         if (found.exists()) setModelPath(found);
     } else {
@@ -1241,6 +1255,12 @@ void SettingsPage::setBackendConnected(bool connected)
                               juce::dontSendNotification);
     backendStatusLabel.setColour(juce::Label::textColourId,
         connected ? juce::Colour(0xff4ade80) : juce::Colour(0xffef4444));
+    if (connected && modelPath.exists())
+    {
+        downloadStatusLabel.setText("Model active.", juce::dontSendNotification);
+        downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
+        progressBar.setVisible(false);
+    }
     updateStatus();
 }
 
@@ -1250,6 +1270,11 @@ void SettingsPage::setBackendStarting()
     backendFailReason = {};
     backendStatusLabel.setText("Backend: Starting...", juce::dontSendNotification);
     backendStatusLabel.setColour(juce::Label::textColourId, kDim);
+    if (!downloading.load() && modelPath.exists())
+    {
+        downloadStatusLabel.setText("Starting backend...", juce::dontSendNotification);
+        downloadStatusLabel.setColour(juce::Label::textColourId, kDim);
+    }
     updateStatus();
 }
 
@@ -1259,6 +1284,10 @@ void SettingsPage::setBackendFailed(const juce::String& reason)
     backendFailReason = reason;
     backendStatusLabel.setText("Backend: Start failed", juce::dontSendNotification);
     backendStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
+    progressBar.setVisible(false);
+    downloadStatusLabel.setText("Activation failed: " + firstErrorLine(reason),
+                                juce::dontSendNotification);
+    downloadStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xffef4444));
     updateStatus();
 }
 
@@ -1286,7 +1315,7 @@ void SettingsPage::updateStatus()
             modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
             setInstructionsText(instructionsLabel, "Ready to generate audio.");
         } else if (backendFailReason.isNotEmpty()) {
-            modelStatusLabel.setText(id + ": Files found -- backend startup failed", juce::dontSendNotification);
+            modelStatusLabel.setText(id + ": Files found, not active", juce::dontSendNotification);
             modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xfffbbf24));  // amber
             setInstructionsText(
                 instructionsLabel,
@@ -1295,7 +1324,7 @@ void SettingsPage::updateStatus()
                 "Backend error:\n  " + backendFailReason + "\n\n"
                 "This usually means the model download is incomplete, incompatible, or the app bundle "
                 "could not load one of its own libraries.\n\n"
-                "Application log:\n  ~/Library/T5ynth/Logs/backend_stderr.log");
+                "Backend log:\n  " + backendStderrLogPath());
         } else {
             modelStatusLabel.setText(id + ": Installed", juce::dontSendNotification);
             modelStatusLabel.setColour(juce::Label::textColourId, juce::Colour(0xff4ade80));
