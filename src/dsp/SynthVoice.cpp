@@ -51,6 +51,9 @@ void SynthVoice::prepare(double sampleRate, int samplesPerBlock)
     perVoiceLfo1.prepare(sampleRate);
     perVoiceLfo2.prepare(sampleRate);
     perVoiceLfo3.prepare(sampleRate);
+    perVoiceLfoBuf1_.resize(static_cast<size_t>(samplesPerBlock));
+    perVoiceLfoBuf2_.resize(static_cast<size_t>(samplesPerBlock));
+    perVoiceLfoBuf3_.resize(static_cast<size_t>(samplesPerBlock));
     filter.prepare(sampleRate, samplesPerBlock);
     filterLadder.prepare(sampleRate, samplesPerBlock);
     filterWarp.prepare(sampleRate, samplesPerBlock);
@@ -612,6 +615,22 @@ void SynthVoice::renderBlock(float* output, const BlockParams& p,
         std::memset(output, 0, sizeof(float) * static_cast<size_t>(numSamples));
         return;
     }
+
+    // Per-voice Trig-mode LFOs — sync rate/waveform from global, fill the
+    // voice's own buffer (reset at note-on by VoiceManager), then steer the
+    // function-local pointers so all downstream readers see the per-voice
+    // signal. Free mode leaves the parameters pointing at the shared global
+    // buffer.
+    auto fillPerVoice = [&](LFO& l, std::vector<float>& buf, float rate, int wave) {
+        l.setRate(rate);
+        l.setWaveform(wave);
+        l.setDepth(1.0f);
+        for (int i = 0; i < numSamples; ++i)
+            buf[static_cast<size_t>(i)] = l.processSample();
+    };
+    if (p.lfo1TrigMode) { fillPerVoice(perVoiceLfo1, perVoiceLfoBuf1_, p.lfo1Rate, p.lfo1Wave); lfo1Buf = perVoiceLfoBuf1_.data(); }
+    if (p.lfo2TrigMode) { fillPerVoice(perVoiceLfo2, perVoiceLfoBuf2_, p.lfo2Rate, p.lfo2Wave); lfo2Buf = perVoiceLfoBuf2_.data(); }
+    if (p.lfo3TrigMode) { fillPerVoice(perVoiceLfo3, perVoiceLfoBuf3_, p.lfo3Rate, p.lfo3Wave); lfo3Buf = perVoiceLfoBuf3_.data(); }
 
     bool samplerMode = (engineMode == EngineMode::Sampler) && sampler.hasAudio();
     bool oscReady = !samplerMode && osc.hasFrames();

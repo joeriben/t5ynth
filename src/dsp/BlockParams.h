@@ -1078,13 +1078,19 @@ struct BlockParams
     int   mod2ReleaseVelMode = EnvVelTimeMode::Off;
     bool  mod2Loop = false;
 
-    // LFOs (global rates/depths for cross-mod, targets for routing)
+    // LFOs (global rates/depths for cross-mod, targets for routing).
+    // `lfoNTrigMode` flips per-voice rendering to its own retriggered LFO
+    // (resets on note-on); when false, voices read the shared global LFO
+    // buffer and free-run.
     float lfo1Rate = 1.0f, lfo1Depth = 1.0f;
     int   lfo1Wave = 0, lfo1Target = 0; // LfoTarget::None
+    bool  lfo1TrigMode = false;
     float lfo2Rate = 1.0f, lfo2Depth = 1.0f;
     int   lfo2Wave = 0, lfo2Target = 0; // LfoTarget::None
+    bool  lfo2TrigMode = false;
     float lfo3Rate = 1.0f, lfo3Depth = 1.0f;
     int   lfo3Wave = 0, lfo3Target = 0; // LfoTarget::None
+    bool  lfo3TrigMode = false;
 
     // Filter
     bool  filterEnabled = false;

@@ -1049,9 +1049,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             : ClockSync::computeRate(syncBpm,
                 static_cast<int>(parameters.getRawParameterValue(PID::lfo1ClockDivision)->load()));
         bp.lfo1Depth = parameters.getRawParameterValue(PID::lfo1Depth)->load();
+        bp.lfo1Wave = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Wave)->load());
+        bp.lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Mode)->load()) == LfoMode::Trigger;
         lfo1.setRate(bp.lfo1Rate);
         lfo1.setDepth(1.0f);
-        lfo1.setWaveform(static_cast<int>(parameters.getRawParameterValue(PID::lfo1Wave)->load()));
+        lfo1.setWaveform(bp.lfo1Wave);
         bp.lfo1Target = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Target)->load());
     }
     {
@@ -1061,9 +1063,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             : ClockSync::computeRate(syncBpm,
                 static_cast<int>(parameters.getRawParameterValue(PID::lfo2ClockDivision)->load()));
         bp.lfo2Depth = parameters.getRawParameterValue(PID::lfo2Depth)->load();
+        bp.lfo2Wave = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Wave)->load());
+        bp.lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Mode)->load()) == LfoMode::Trigger;
         lfo2.setRate(bp.lfo2Rate);
         lfo2.setDepth(1.0f);
-        lfo2.setWaveform(static_cast<int>(parameters.getRawParameterValue(PID::lfo2Wave)->load()));
+        lfo2.setWaveform(bp.lfo2Wave);
         bp.lfo2Target = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Target)->load());
     }
     {
@@ -1073,9 +1077,11 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
             : ClockSync::computeRate(syncBpm,
                 static_cast<int>(parameters.getRawParameterValue(PID::lfo3ClockDivision)->load()));
         bp.lfo3Depth = parameters.getRawParameterValue(PID::lfo3Depth)->load();
+        bp.lfo3Wave = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Wave)->load());
+        bp.lfo3TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Mode)->load()) == LfoMode::Trigger;
         lfo3.setRate(bp.lfo3Rate);
         lfo3.setDepth(1.0f);
-        lfo3.setWaveform(static_cast<int>(parameters.getRawParameterValue(PID::lfo3Wave)->load()));
+        lfo3.setWaveform(bp.lfo3Wave);
         bp.lfo3Target = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Target)->load());
     }
 
@@ -1563,9 +1569,9 @@ void T5ynthProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiB
     // (barStartFlag consumed + forwarded to barBoundaryFlag above)
 
     // ── Sample-accurate MIDI + Voice rendering ──────────────────────────────
-    bool lfo1TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo1Mode)->load()) == 1;
-    bool lfo2TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo2Mode)->load()) == 1;
-    bool lfo3TrigMode = static_cast<int>(parameters.getRawParameterValue(PID::lfo3Mode)->load()) == 1;
+    const bool lfo1TrigMode = bp.lfo1TrigMode;
+    const bool lfo2TrigMode = bp.lfo2TrigMode;
+    const bool lfo3TrigMode = bp.lfo3TrigMode;
 
     // Re-check: seq/arp may have generated notes
     if (voiceManager.hasActiveVoices() || !midiMessages.isEmpty())

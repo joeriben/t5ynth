@@ -99,6 +99,12 @@ private:
     LFO perVoiceLfo1; // used when LFO mode == Trigger
     LFO perVoiceLfo2;
     LFO perVoiceLfo3;
+    // Per-voice LFO output buffers — only filled when the corresponding
+    // bp.lfoNTrigMode is true. In Free mode the global buffer is used and
+    // these stay untouched.
+    std::vector<float> perVoiceLfoBuf1_;
+    std::vector<float> perVoiceLfoBuf2_;
+    std::vector<float> perVoiceLfoBuf3_;
     T5ynthFilter       filter;       // linear TPT SVF (low-CPU default)
     MoogLadderFilter   filterLadder; // Huovilainen nonlinear ladder
     CutoffWarpFilter   filterWarp;   // Surge-XT-style ZDF ladder + style
