@@ -1,5 +1,103 @@
 # T5ynth Development Log
 
+## 2026-04-30 — Prompt-injection modes (v1.6.0-beta.1)
+
+Shipped six prompt-injection modes — *Linear*, *Fine*, *Layer*,
+*Kombi 1*, *Kombi 2*, *Kombi 3* — accessible via a six-button row
+above the Alpha slider. Linear is the historical crossfade (bit-
+identical to v1.5.x); the five new modes operate on diffusion sampler
+steps and on individual DiT block cross-attention layers.
+
+### Mechanics
+
+The non-linear modes exploit two manipulation points in the loaded
+`stable-audio-open-small` pipeline, both implemented as Python-level
+monkey-patches that are applied per-request and torn down at the end
+of generation:
+
+1. **A `DiTWrapper.forward` patch** that increments a closure-captured
+   `state["calls"]` counter once per sampler step. Late-step modes
+   compare against `transition_step = max(1, round(steps · injection_transition_at))`
+   to decide whether the early or late conditioning is active.
+2. **`forward_pre_hook`s on every `block.cross_attn`** that override
+   the runtime cross-attention `context` kwarg with a precomputed,
+   per-block tensor. The replacement is pre-projected through
+   `dit.to_cond_embed` once at request start, so the hook bypasses
+   projection and just swaps the post-projection context.
+
+Mode dispatch:
+
+- **Linear / Delta** — no hooks, no patches. Manipulate the wrapper-
+  level conditioning once.
+- **Fine (`late_step`)** — wrapper patch; on late steps replaces
+  `kwargs["cross_attn_cond"]` with a Fine-controlled blend of A and
+  B. No per-block hooks.
+- **Layer (`layer_split`)** — per-block hooks; sigmoid top-hat over
+  `[split_start, split_end]` with smoothness=2 (4-layer ramps at
+  edges). No wrapper patch.
+- **Kombi 1/2/3** — wrapper patch *and* per-block hooks together.
+  The hook reads the step counter and switches between an "early"
+  per-block tensor (uniform `proj_a`) and a "late" per-block tensor
+  (hard-mask blend of `proj_a` and the projected `late_blend`).
+
+### Empirical findings
+
+- **Hard mask vs sigmoid top-hat.** `layer_split`'s sigmoid edges
+  cause a 4-block-wide band to peak at w≈0.534 in the centre and
+  drop to w≈0.441 at the edges. Even at slider=1 (`late_blend = pure
+  B`), per-block B contribution is bounded around 50 %. For Kombi
+  modes, where the band is fixed by the preset and the slider only
+  controls intensity, replaced with a hard mask (w=1 inside, 0
+  outside) so slider=1 is genuinely 100 % `late_blend` in the
+  band's blocks.
+- **High DiT blocks (12..15) have low conditioning leverage.** The
+  original plan put Kombi 2 at blocks 12..16 to mirror Kombi 1's
+  surface band (0..4) at the top of the stack. In listening, that
+  band was nearly inaudible — the top 4 SA Open Small blocks are
+  dominated by refinement work, not prompt-following. Moved Kombi 2
+  to **[4, 12] (broad mid)**, where the diffusion does most of its
+  conditioning work; the change turned Kombi 2 from "sounds like A"
+  into the most distinct of the three Kombis.
+- **Kombi 1 (surface, blocks 0..3) is structurally subtle by
+  design.** Four narrow surface blocks, all twelve other blocks
+  seeing pure A through every step, produces an A-dominant result.
+  This is the "B as surface skin" intent. If too subtle in practice,
+  candidate widenings are [0, 6] or [2, 6].
+- **Kombi 3 = narrow center [6, 10]** was added as an empirical
+  probe: same band width as Kombi 1, different vertical position,
+  inside the high-leverage mid region. Hypothesis is that K3 may
+  turn out the most aggressive of the three despite the narrowest
+  band.
+
+### UX changes
+
+- **Per-mode slider memory.** Fine and the three Kombi modes each
+  remember their own intensity-slider value, so A/B-ing modes by
+  clicking buttons does not destroy the last-used position of any
+  individual mode. Linear (APVTS) and Layer (own state fields)
+  already had independent state.
+- **Mode buttons trigger regeneration** to match the existing
+  slider/drift auto-regen UX.
+- **Slider scale**: the Fine/Kombi intensity slider now displays
+  0–1 (was 0.5–1.0). The internal mapping onto the audible region
+  of `injection_transition_at` / `late_phase_alpha` is unchanged —
+  it just no longer shifts the displayed numbers. Old presets
+  reload their stored value into the corresponding mode slot, but
+  the rendered output may differ since the slider value is no
+  longer remapped before being sent to the backend.
+
+### Files
+
+- Backend: `backend/pipe_inference.py` (mode validation, kombi
+  payload, kombi install/teardown block).
+- IPC: `src/inference/PipeInference.h` (`Request` fields), serialised
+  via existing path in `src/inference/PipeInference.cpp:774-778`.
+- UI: `src/gui/PromptPanel.h/.cpp` — six radio buttons,
+  `applyModeToSlider`, mode-aware ghost / drift mapping,
+  per-mode lateMix slots via `lateMixForMode` helper.
+- Plan & background: `docs/INJECTION_RECTANGLE_PLAN.md`,
+  `ARCHITECTURE.md` §6.5, in-app manual §1 + §17.
+
 ## 2026-04-25 — Aftertouch Deferred
 
 Aftertouch is explicitly **not a near-term priority**. The feature remains a

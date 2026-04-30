@@ -42,7 +42,7 @@ public:
 
     /** Read current injection-mode state (for preset save). */
     juce::String getInjectionMode()  const { return injectionMode_; }
-    float        getLateMixAmount()  const { return lateMixAmount_; }
+    float        getLateMixAmount()  const { return lateMixForMode(injectionMode_); }
     float        getSplitStart()     const { return splitLayerStart_; }
     float        getSplitEnd()       const { return splitLayerEnd_; }
 
@@ -138,18 +138,33 @@ private:
     juce::Label infoLabel;
 
     // ── Temporary injection-mode test UI (research; not in APVTS). ──
-    // Three toggle buttons + the existing alphaSlider whose label/range/state
-    // shift with the active mode (linear=A↔B, fine=step-transition, layer=split).
+    // Five toggle buttons + the existing alphaSlider whose label/range/state
+    // shift with the active mode (linear=A↔B, fine=step-transition, layer=split,
+    // kombi1/2=Fine-style slider with hardcoded layer band).
     juce::TextButton injModeLinear { "Linear" };
     juce::TextButton injModeFine   { "Fine" };    // = "late_step" — operates on sampler refinement steps
     juce::TextButton injModeLayer  { "Layer" };   // = "layer_split"
-    juce::String     injectionMode_         = "linear";  // "linear" | "late_step" | "layer_split"
-    // Fine slider's user-facing value: 0.5 = minimum perceptible effect,
-    // 1.0 = maximum effect. (Slider range tuned to the audible region per
-    // listening test — below 0.5 the late-blend was inaudible.)
-    // The backend's `injection_transition_at` is the *early-phase fraction*;
-    // we send (1 - lateMixAmount_) clamped to backend's [0.05, 0.95].
-    float            lateMixAmount_         = 0.75f;      // 0.5–1.0, slider value
+    juce::TextButton injModeKombi1 { "Kombi 1" }; // = late × low-layer band [0..4]
+    juce::TextButton injModeKombi2 { "Kombi 2" }; // = late × broad-mid band [4..12]
+    juce::TextButton injModeKombi3 { "Kombi 3" }; // = late × narrow-center band [6..10]
+    juce::String     injectionMode_         = "linear";  // "linear" | "late_step" | "layer_split" | "kombi1"/"kombi2"/"kombi3"
+    // Fine and the three Kombi modes each remember their own slider position
+    // (0–1, intensity), so a user A/B-ing the modes by clicking buttons
+    // doesn't lose the last-used value of any individual mode. Layer mode
+    // uses splitLayerStart_/splitLayerEnd_ instead. The backend's
+    // `injection_transition_at` is the early-phase fraction; we send
+    // 0.5 - 0.45·t (so t=0 → transition halfway, t=1 → almost immediate),
+    // and `late_phase_alpha` = t directly (0 → 50/50 late blend, 1 → pure B).
+    float            lateMixFine_           = 0.5f;
+    float            lateMixKombi1_         = 0.5f;
+    float            lateMixKombi2_         = 0.5f;
+    float            lateMixKombi3_         = 0.5f;
+    /** Returns a reference to the slot that owns the slider value for the
+     *  active mode. Falls back to the Fine slot for "linear" and "layer_split"
+     *  (those modes use other state, but a non-null reference simplifies
+     *  the call sites). */
+    float&       lateMixForMode(const juce::String& mode);
+    float        lateMixForMode(const juce::String& mode) const;
     // Layer mode: two-thumb range slider defining the B-zone [start, end]
     // along the 16 DiT block indices. Both thumbs at extremes → full B;
     // start == end → no B (pure A); narrow range → B injected only into

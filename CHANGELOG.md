@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.0-beta.1 — 2026-04-30
+
+- **New: prompt-injection modes.** The Generation panel grows a six-button mode row above the Alpha slider. The classical A↔B crossfade is now one of six modes — *Linear*, *Fine*, *Layer*, *Kombi 1*, *Kombi 2*, *Kombi 3* — that select different ways prompt B is mixed into prompt A inside the diffusion pipeline. Linear preserves bit-for-bit compatibility with prior versions; the other five modes operate on the diffusion sampler steps and on individual DiT block cross-attention layers. See the in-app Manual §1 for the user-facing description and ARCHITECTURE.md §6.5 for the mechanics.
+- **Fine mode** — early sampler steps see prompt A only; after a transition step the cross-attention conditioning swaps to a Fine-controlled blend of A and B. Drives a single intensity slider (0–1) coupled to both the transition point and the late-phase blend amount. Implemented as a `DiTWrapper.forward` kwargs swap on the inner sampler.
+- **Layer mode** — a two-thumb range slider defines a B-zone over the 16 DiT blocks. Per-block forward_pre_hooks override each block's cross-attention context with a sigmoid top-hat blend of A and B. Useful for surgical "this prompt only on these layers" experiments.
+- **Kombi 1 / 2 / 3** — preset combinations of step phase × layer band, each with a hardcoded layer range and a Fine-style intensity slider. Kombi 1 = surface (blocks 0..4), Kombi 2 = broad mid (blocks 4..12), Kombi 3 = narrow center (blocks 6..10). Hard layer mask (no edge softening) so slider=1 is genuinely 100 % B in the band's blocks.
+- **Per-mode slider memory.** Fine and the three Kombi modes each remember their own intensity-slider value, so A/B-ing them by clicking buttons does not destroy the last-used position of any individual mode. Linear and Layer already had independent state.
+- **Mode buttons trigger regeneration.** Clicking any of the six mode buttons fires a fresh inference with the newly selected mode, matching the existing slider/drift auto-regen UX.
+- **Slider-scale fix.** The Fine/Kombi intensity slider now displays 0–1 (was 0.5–1.0) — internal mapping onto the audible region of `injection_transition_at` / `late_phase_alpha` is unchanged. Old presets reload their stored value into the corresponding mode slot, but their effective rendering may differ since the slider value is no longer remapped before being sent to the backend.
+
 ## v1.3.0-beta.1 - 2026-04-24
 
 - Expanded the instrument from an early beta into a fuller text-to-sound workflow with independent wavetable extraction regions, shared P1/P2/P3 traversal controls, and a clearer wavetable start-point model.

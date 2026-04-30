@@ -112,10 +112,13 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
             else
                 alphaValue.setText("B " + juce::String(v, 3), juce::dontSendNotification);
         }
-        else if (injectionMode_ == "late_step")
+        else if (injectionMode_ == "late_step"
+              || injectionMode_ == "kombi1"
+              || injectionMode_ == "kombi2"
+              || injectionMode_ == "kombi3")
         {
             float v = static_cast<float>(alphaSlider.getValue());
-            lateMixAmount_ = v;
+            lateMixForMode(injectionMode_) = v;
             alphaValue.setText(juce::String(v, 2), juce::dontSendNotification);
         }
         else  // layer_split — TwoValueHorizontal: read both thumbs
@@ -145,13 +148,25 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     styleModeBtn(injModeLinear);
     styleModeBtn(injModeFine);
     styleModeBtn(injModeLayer);
+    styleModeBtn(injModeKombi1);
+    styleModeBtn(injModeKombi2);
+    styleModeBtn(injModeKombi3);
     injModeLinear.setConnectedEdges(juce::Button::ConnectedOnRight);
     injModeFine  .setConnectedEdges(juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
-    injModeLayer .setConnectedEdges(juce::Button::ConnectedOnLeft);
+    injModeLayer .setConnectedEdges(juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    injModeKombi1.setConnectedEdges(juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    injModeKombi2.setConnectedEdges(juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    injModeKombi3.setConnectedEdges(juce::Button::ConnectedOnLeft);
     injModeLinear.setToggleState(true, juce::dontSendNotification);
-    injModeLinear.onClick = [this] { if (injModeLinear.getToggleState()) { injectionMode_ = "linear";      applyModeToSlider(); } };
-    injModeFine  .onClick = [this] { if (injModeFine  .getToggleState()) { injectionMode_ = "late_step";   applyModeToSlider(); } };
-    injModeLayer .onClick = [this] { if (injModeLayer .getToggleState()) { injectionMode_ = "layer_split"; applyModeToSlider(); } };
+    // Mode-button onClick handlers also trigger an immediate regeneration so
+    // the user can A/B modes by clicking — same UX affordance as drift /
+    // slider auto-regen, but for the discrete mode dimension.
+    injModeLinear.onClick = [this] { if (injModeLinear.getToggleState()) { injectionMode_ = "linear";      applyModeToSlider(); triggerGeneration(); } };
+    injModeFine  .onClick = [this] { if (injModeFine  .getToggleState()) { injectionMode_ = "late_step";   applyModeToSlider(); triggerGeneration(); } };
+    injModeLayer .onClick = [this] { if (injModeLayer .getToggleState()) { injectionMode_ = "layer_split"; applyModeToSlider(); triggerGeneration(); } };
+    injModeKombi1.onClick = [this] { if (injModeKombi1.getToggleState()) { injectionMode_ = "kombi1";      applyModeToSlider(); triggerGeneration(); } };
+    injModeKombi2.onClick = [this] { if (injModeKombi2.getToggleState()) { injectionMode_ = "kombi2";      applyModeToSlider(); triggerGeneration(); } };
+    injModeKombi3.onClick = [this] { if (injModeKombi3.getToggleState()) { injectionMode_ = "kombi3";      applyModeToSlider(); triggerGeneration(); } };
 
     // Magnitude
     makeSlider(magnitudeSlider, this);
@@ -358,9 +373,13 @@ void PromptPanel::timerCallback()
                                      .getRawParameterValue(PID::genAlpha)->load();
         const float alphaOff = std::isnan(alphaGhostValue_) ? 0.0f
                                                             : (alphaGhostValue_ - baseAlpha0);
-        if (injectionMode_ == "late_step" && std::abs(alphaOff) > 0.001f)
+        const bool fineLike = (injectionMode_ == "late_step"
+                            || injectionMode_ == "kombi1"
+                            || injectionMode_ == "kombi2"
+                            || injectionMode_ == "kombi3");
+        if (fineLike && std::abs(alphaOff) > 0.001f)
         {
-            lateMixGhostValue_ = juce::jlimit(0.5f, 1.0f, lateMixAmount_ + alphaOff * 0.25f);
+            lateMixGhostValue_ = juce::jlimit(0.0f, 1.0f, lateMixForMode(injectionMode_) + alphaOff * 0.25f);
             splitStartGhostValue_ = std::numeric_limits<float>::quiet_NaN();
             splitEndGhostValue_   = std::numeric_limits<float>::quiet_NaN();
         }
@@ -417,7 +436,10 @@ void PromptPanel::paintOverChildren(juce::Graphics& g)
     // same physical slider but at the mode-specific value position.
     if (injectionMode_ == "linear")
         drawGhost(alphaSlider, alphaGhostValue_);
-    else if (injectionMode_ == "late_step")
+    else if (injectionMode_ == "late_step"
+          || injectionMode_ == "kombi1"
+          || injectionMode_ == "kombi2"
+          || injectionMode_ == "kombi3")
         drawGhost(alphaSlider, lateMixGhostValue_);
     else if (injectionMode_ == "layer_split")
     {
@@ -497,12 +519,16 @@ void PromptPanel::resized()
     // mode (see applyModeToSlider()): Linear=A↔B, Fine=transition, Layer=split.
     {
         auto btnRow = area.removeFromTop(compactCtrlH);
-        // 3 buttons fill ~half the row width; remainder is breathing room.
-        int btnTotalW = juce::jmax(120, btnRow.getWidth() / 2);
-        int btnW = btnTotalW / 3;
+        // 6 buttons in the radio row. "Kombi N" labels are wider than the
+        // original three, so the row claims most of the available width.
+        int btnTotalW = juce::jmax(280, btnRow.getWidth() * 4 / 5);
+        int btnW = btnTotalW / 6;
         injModeLinear.setBounds(btnRow.removeFromLeft(btnW));
         injModeFine  .setBounds(btnRow.removeFromLeft(btnW));
         injModeLayer .setBounds(btnRow.removeFromLeft(btnW));
+        injModeKombi1.setBounds(btnRow.removeFromLeft(btnW));
+        injModeKombi2.setBounds(btnRow.removeFromLeft(btnW));
+        injModeKombi3.setBounds(btnRow.removeFromLeft(btnW));
         area.removeFromTop(gap);
     }
 
@@ -618,10 +644,17 @@ void PromptPanel::loadPresetData(const juce::String& promptA, const juce::String
         injModeLinear.setToggleState(injectionMode == "linear",      juce::dontSendNotification);
         injModeFine  .setToggleState(injectionMode == "late_step",   juce::dontSendNotification);
         injModeLayer .setToggleState(injectionMode == "layer_split", juce::dontSendNotification);
+        injModeKombi1.setToggleState(injectionMode == "kombi1",      juce::dontSendNotification);
+        injModeKombi2.setToggleState(injectionMode == "kombi2",      juce::dontSendNotification);
+        injModeKombi3.setToggleState(injectionMode == "kombi3",      juce::dontSendNotification);
     }
     if (!std::isnan(lateMixAmount))
     {
-        lateMixAmount_ = juce::jlimit(0.5f, 1.0f, lateMixAmount);
+        // The preset stores a single lateMixAmount. Restore it to the slot
+        // that matches the preset's injectionMode (when present); otherwise
+        // restore to the currently active mode's slot.
+        const juce::String slotMode = injectionMode.isNotEmpty() ? injectionMode : injectionMode_;
+        lateMixForMode(slotMode) = juce::jlimit(0.0f, 1.0f, lateMixAmount);
         injectionDirty = true;
     }
     if (!std::isnan(splitStart))
@@ -791,6 +824,23 @@ void PromptPanel::triggerGenerationWithOffsets(std::vector<std::pair<int, float>
     triggerGeneration();
 }
 
+// ── Per-mode slider memory ───────────────────────────────────────────────────
+float& PromptPanel::lateMixForMode(const juce::String& mode)
+{
+    if (mode == "kombi1") return lateMixKombi1_;
+    if (mode == "kombi2") return lateMixKombi2_;
+    if (mode == "kombi3") return lateMixKombi3_;
+    return lateMixFine_;  // late_step + fallback for linear/layer_split
+}
+
+float PromptPanel::lateMixForMode(const juce::String& mode) const
+{
+    if (mode == "kombi1") return lateMixKombi1_;
+    if (mode == "kombi2") return lateMixKombi2_;
+    if (mode == "kombi3") return lateMixKombi3_;
+    return lateMixFine_;
+}
+
 // ── Reconfigure alphaSlider for the active injection mode ────────────────────
 // Linear: APVTS-attached, range −1..+1, label "A ↔ B".
 // Fine  : detached, range 0.05..0.95, label "Fine: Step Transition".
@@ -816,18 +866,27 @@ void PromptPanel::applyModeToSlider()
         // Onchange handler will populate alphaValue from current slider value.
         alphaSlider.setValue(alphaSlider.getValue(), juce::sendNotificationSync);
     }
-    else if (injectionMode_ == "late_step")
+    else if (injectionMode_ == "late_step"
+          || injectionMode_ == "kombi1"
+          || injectionMode_ == "kombi2"
+          || injectionMode_ == "kombi3")
     {
         alphaA.reset();  // detach from APVTS so the slider drives local state only
         alphaSlider.setSliderStyle(juce::Slider::LinearHorizontal);
-        // Slider range tuned to the audible region (listening test): below
-        // ~0.5 the late-blend was inaudible. Full slider span = 0.5..1.0.
+        // Slider is the intensity 0..1: 0 = minimum perceptible effect, 1 =
+        // maximum. Internal mapping (in buildInferenceRequest) shifts this
+        // onto the audible region of injection_transition_at / late_phase_alpha.
         // setRange() may clamp the current value and fire onValueChange,
         // which would overwrite the saved state — capture and restore.
-        const float saved = juce::jlimit(0.5f, 1.0f, lateMixAmount_);
-        alphaSlider.setRange(0.5, 1.0, 0.01);
-        lateMixAmount_ = saved;
-        alphaLabel.setText("Fine: A " + juce::String(juce::CharPointer_UTF8("\xe2\x86\x92")) + " mix", juce::dontSendNotification);
+        const float saved = juce::jlimit(0.0f, 1.0f, lateMixForMode(injectionMode_));
+        alphaSlider.setRange(0.0, 1.0, 0.01);
+        lateMixForMode(injectionMode_) = saved;
+        const juce::String prefix = (injectionMode_ == "kombi1") ? "Kombi 1: A "
+                                  : (injectionMode_ == "kombi2") ? "Kombi 2: A "
+                                  : (injectionMode_ == "kombi3") ? "Kombi 3: A "
+                                  :                                "Fine: A ";
+        alphaLabel.setText(prefix + juce::String(juce::CharPointer_UTF8("\xe2\x86\x92")) + " mix",
+                           juce::dontSendNotification);
         alphaSlider.setValue(saved, juce::sendNotificationSync);
     }
     else  // layer_split — two-thumb range slider [b_start, b_end]
@@ -872,7 +931,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
 
     // Mode-specific parameter resolution: drift-driven overrides win when
     // present, otherwise fall back to the panel's slider state.
-    const float effLateMix    = std::isnan(lateMixOverride)    ? lateMixAmount_     : lateMixOverride;
+    const float effLateMix    = std::isnan(lateMixOverride)    ? lateMixForMode(injectionMode_) : lateMixOverride;
     const float effSplitStart = std::isnan(splitStartOverride) ? splitLayerStart_   : splitStartOverride;
     const float effSplitEnd   = std::isnan(splitEndOverride)   ? splitLayerEnd_     : splitEndOverride;
 
@@ -898,7 +957,7 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
     //   transition_at: 0.5 (halfway swap) → 0.05 (almost immediate)
     //   late_α       : 0   (50/50 mix)    → 1   (pure B)
     {
-        const float t = juce::jlimit(0.0f, 1.0f, (effLateMix - 0.5f) / 0.5f);
+        const float t = juce::jlimit(0.0f, 1.0f, effLateMix);
         req.injectionTransitionAt = juce::jlimit(0.05f, 0.95f, 0.5f - 0.45f * t);
         req.latePhaseAlpha        = t;  // 0 → 50/50, 1 → pure B
     }
@@ -908,6 +967,13 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
     // backend's b_start / b_end fields.
     req.splitStart = juce::jlimit(0.0f, 16.0f, effSplitStart);
     req.splitEnd   = juce::jlimit(0.0f, 16.0f, effSplitEnd);
+    // Kombi modes overwrite the layer range with their per-mode hardcoded
+    // band so drift / preset / slider state can never desync the geometry.
+    // Kombi 1 = "B as surface skin" (low DiT blocks);
+    // Kombi 2 = "B as gestalt filter" (high DiT blocks).
+    if (injectionMode_ == "kombi1") { req.splitStart = 0.0f; req.splitEnd = 4.0f;  }
+    if (injectionMode_ == "kombi2") { req.splitStart = 4.0f; req.splitEnd = 12.0f; }
+    if (injectionMode_ == "kombi3") { req.splitStart = 6.0f; req.splitEnd = 10.0f; }
     return req;
 }
 
@@ -1142,12 +1208,16 @@ void PromptPanel::pollDriftRegen()
     const float baseAlphaForOff = apvts.getRawParameterValue(PID::genAlpha)->load();
     const float alphaOff = std::isnan(effAlpha) ? 0.0f : (effAlpha - baseAlphaForOff);
 
-    float effectiveLateMix    = lateMixAmount_;
+    float effectiveLateMix    = lateMixForMode(injectionMode_);
     float effectiveSplitStart = splitLayerStart_;
     float effectiveSplitEnd   = splitLayerEnd_;
-    if (injectionMode_ == "late_step" && std::abs(alphaOff) > 0.001f)
+    const bool fineLikeMode = (injectionMode_ == "late_step"
+                            || injectionMode_ == "kombi1"
+                            || injectionMode_ == "kombi2"
+                            || injectionMode_ == "kombi3");
+    if (fineLikeMode && std::abs(alphaOff) > 0.001f)
     {
-        effectiveLateMix = juce::jlimit(0.5f, 1.0f, lateMixAmount_ + alphaOff * 0.25f);
+        effectiveLateMix = juce::jlimit(0.0f, 1.0f, lateMixForMode(injectionMode_) + alphaOff * 0.25f);
     }
     else if (injectionMode_ == "layer_split" && std::abs(alphaOff) > 0.001f)
     {
@@ -1165,7 +1235,7 @@ void PromptPanel::pollDriftRegen()
         alphaChanged = !std::isnan(effAlpha)
             && (std::isnan(lastGenAlpha_) || std::abs(effAlpha - lastGenAlpha_) > DRIFT_THRESHOLD);
     }
-    else if (injectionMode_ == "late_step")
+    else if (fineLikeMode)
     {
         alphaChanged = std::isnan(lastGenLateMix_)
             || std::abs(effectiveLateMix - lastGenLateMix_) > DRIFT_THRESHOLD;

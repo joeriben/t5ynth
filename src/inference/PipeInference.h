@@ -64,12 +64,12 @@ public:
         std::map<juce::String, float> semanticAxes;           // SemanticAxes key→value
 
         // Research-mode injection (A↔B mixing): "linear" reproduces v1.2 byte-identically.
-        // "late_step" / "layer_split" only implemented for the native SA Open path.
-        juce::String injectionMode = "linear";          // "linear" | "late_step" | "layer_split"
-        float        injectionTransitionAt = 0.6f;       // 0.05–0.95, only used by "late_step"
-        float        latePhaseAlpha        = 0.0f;       // -1..+1, only used by "late_step": late blend α (0 = 50/50, +1 = pure B)
-        float        splitStart            = 4.0f;       // 0–16, only used by "layer_split": B-zone low edge
-        float        splitEnd              = 16.0f;      // 0–16, only used by "layer_split": B-zone high edge
+        // Non-linear modes are only implemented on the native SA Open path.
+        juce::String injectionMode = "linear";          // "linear" | "late_step" | "layer_split" | "kombi1"/"kombi2"/"kombi3"
+        float        injectionTransitionAt = 0.6f;       // 0.05–0.95, used by "late_step" and the Kombi modes
+        float        latePhaseAlpha        = 0.0f;       // -1..+1, used by "late_step" and the Kombi modes: late blend α (0 = 50/50, +1 = pure B)
+        float        splitStart            = 4.0f;       // 0–16, used by "layer_split"; Kombi modes send the per-mode hardcoded value (backend re-asserts)
+        float        splitEnd              = 16.0f;      // 0–16, used by "layer_split"; Kombi modes send the per-mode hardcoded value (backend re-asserts)
     };
 
     struct Result

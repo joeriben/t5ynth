@@ -376,6 +376,86 @@ embeddings.
 documented separately in `docs/IPC_PROTOCOL.md`.** This file intentionally
 does not duplicate the protocol spec.
 
+### 6.5 Prompt-injection modes
+
+The `Request` carries an `injectionMode` string and four numeric
+fields (`injectionTransitionAt`, `latePhaseAlpha`, `splitStart`,
+`splitEnd`) that select how prompt B is mixed into prompt A inside
+the diffusion pipeline. The non-linear modes are only implemented on
+the SA Open *native* path (`_generate_native` in
+`backend/pipe_inference.py`) and exploit two mechanisms in the inner
+DiT (`stable_audio_tools.models.dit.DiffusionTransformer`):
+
+1. A **sampler-step counter** ticked by patching
+   `pipe.model.model.forward` (the `DiTWrapper` that wraps the inner
+   DiT). The wrapper is invoked exactly once per sampler step; the
+   patch increments a closure-captured `state["calls"]` counter and
+   forwards the call.
+2. **Per-block forward_pre_hooks** on each
+   `block.cross_attn` (16 blocks for SA Open). The hook receives the
+   runtime `context` kwarg (the `to_cond_embed`-projected conditioning
+   tensor, doubled for CFG) and returns a replacement tensor — either
+   a single per-block context that replaces the cond half (CFG=1) or
+   `cat([cond_half, uncond_half], dim=0)` when the runtime context is
+   batch-doubled.
+
+Modes:
+
+- **`"linear"`** — Classical crossfade.
+  `manipulated = (0.5 − 0.5·α)·A + (0.5 + 0.5·α)·B`, applied at
+  `cond_a["prompt"]` once before sampling. No hooks, no patches.
+  Reproduces v1.5.x byte-for-byte.
+
+- **`"delta"`** — `manipulated = A + α·(B − null)`. Preserves A more
+  strongly. No hooks.
+
+- **`"late_step"` (UI: *Fine*)** — Patches `DiTWrapper.forward` to
+  read the step counter; for steps `>= transition_step`, replaces
+  `kwargs["cross_attn_cond"]` with a precomputed
+  `late_blend = (0.5 − 0.5·αlate)·A + (0.5 + 0.5·αlate)·B` and
+  `kwargs["cross_attn_mask"]` with the union mask. Early steps see
+  pure A; late steps see the blend uniformly across all blocks.
+  `transition_step = max(1, round(steps · injection_transition_at))`.
+
+- **`"layer_split"` (UI: *Layer*)** — Pre-projects A, B, and a zero
+  null embedding through `dit.to_cond_embed` once, then for every
+  block computes a per-block context
+  `(1 − w_i)·proj_a + w_i·proj_b` where the weight is a sigmoid
+  top-hat over `[split_start, split_end]` with `smoothness = 2`
+  (so each edge ramps over ~2 layers). The per-block tensors are
+  bound into individual forward_pre_hooks. Hooks fire on every
+  sampler step; the wrapper-level cross-attention conditioning is
+  ignored.
+
+- **`"kombi1"` / `"kombi2"` / `"kombi3"` (UI: *Kombi 1/2/3*)** — Step
+  phase × layer band combined into a single preset. Each Kombi
+  hardcodes its own layer range (Kombi 1 = [0, 4), Kombi 2 = [4, 12),
+  Kombi 3 = [6, 10)) and uses a **hard layer mask** (`w = 1` inside,
+  `0` outside) — sharper than `layer_split`'s sigmoid because the
+  band is fixed by preset, not user-dragged. The hook reads the
+  shared step counter and switches between two contexts:
+  - early-phase (`state["calls"] < transition_step`): the hook
+    returns `proj_a` for every block — pure A everywhere.
+  - late-phase: the hook returns the per-block hard-mask blend of
+    `proj_a` and the projected `late_blend`. Blocks inside the band
+    see 100 % `late_blend`; blocks outside see 100 % A.
+
+  Both the late-step counter patch *and* the per-block hooks are
+  installed simultaneously; the `restore_forward` cleanup removes
+  hooks first then deletes the wrapper monkey-patch.
+
+The C++ side stores the active mode and slider values in
+`PromptPanel` as research-mode local state (not in APVTS):
+`injectionMode_`, `lateMixFine_/Kombi1_/Kombi2_/Kombi3_` for
+per-mode slider memory, and `splitLayerStart_`/`splitLayerEnd_` for
+Layer mode. The Kombi modes share the Fine slider's coupled mapping
+`transition_at = 0.5 − 0.45·t`, `late_α = t`, with `t` taken from
+the active mode's stored slider value. When the active mode is a
+Kombi, `buildInferenceRequest` overwrites `splitStart`/`splitEnd`
+with the per-mode hardcoded band so drift / preset / slider state
+can never desync the geometry — the backend re-asserts the same
+band as a defense-in-depth measure.
+
 ---
 
 ## 7. APVTS parameters and non-APVTS state

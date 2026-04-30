@@ -1006,11 +1006,22 @@ def _generate_native(pipe, request):
     split_start = max(0.0, min(16.0, float(request.get("split_start", 4.0))))
     split_end   = max(0.0, min(16.0, float(request.get("split_end",  16.0))))
     layer_split_smoothness = 2.0  # sigmoid scale; ±2 layers ramp at each edge
-    if injection_mode not in ("linear", "delta", "late_step", "layer_split"):
+    if injection_mode not in ("linear", "delta", "late_step", "layer_split",
+                              "kombi1", "kombi2", "kombi3"):
         raise ValueError(
             f"Unknown injection_mode '{injection_mode}'. "
-            "Expected one of: linear, delta, late_step, layer_split."
+            "Expected one of: linear, delta, late_step, layer_split, kombi1, kombi2, kombi3."
         )
+
+    # Kombi 1/2/3: late-step blend × layer-split, with hardcoded layer range.
+    # Frontend sends the same range; backend re-asserts it as a safety net so
+    # the per-mode geometry can't drift via stale presets or drift overrides.
+    if injection_mode == "kombi1":
+        split_start, split_end = 0.0, 4.0   # surface (low layers)
+    elif injection_mode == "kombi2":
+        split_start, split_end = 4.0, 12.0  # broad mid
+    elif injection_mode == "kombi3":
+        split_start, split_end = 6.0, 10.0  # narrow center
 
     if seed < 0:
         import random
@@ -1109,6 +1120,7 @@ def _generate_native(pipe, request):
         # listening tests; revisit if a mode ships into the UI.
         late_step_payload = None
         layer_split_payload = None  # (proj_a, proj_b, proj_null, blocks, num_layers)
+        kombi_payload = None        # (proj_a, proj_late, proj_null, blocks)
         if injection_mode == "linear":
             manipulated = (0.5 - 0.5 * alpha) * prompt_emb_a + (0.5 + 0.5 * alpha) * prompt_emb_b
             if alpha < -1.0 or alpha > 1.0:
@@ -1131,7 +1143,7 @@ def _generate_native(pipe, request):
                 late_emb_zeroed = late_blend
             manipulated = prompt_emb_a  # early-phase conditioning
             late_step_payload = (late_emb_zeroed, combined_mask)
-        else:  # layer_split
+        elif injection_mode == "layer_split":
             # Per-block context override via forward_pre_hook on each
             # block.cross_attn. Pre-project A, B, null through to_cond_embed
             # so the hook bypasses the DiT's projection step cleanly. CFG
@@ -1156,6 +1168,31 @@ def _generate_native(pipe, request):
                 proj_null = torch.zeros_like(proj_a)
             blocks = dit.transformer.layers
             layer_split_payload = (proj_a, proj_b, proj_null, blocks)
+            manipulated = prompt_emb_a  # un-hooked fallback / global cond path
+        else:  # kombi1 / kombi2 / kombi3 — late-step × layer-split.
+            # Kombi semantics: early sampler steps see pure A on every block.
+            # After the transition step, each block sees a per-layer A↔late-blend
+            # mix where the layer weight is the same sigmoid top-hat as
+            # layer_split, but over the per-Kombi hardcoded [split_start, split_end]
+            # range. The "B side" of the blend is the Fine-style late_blend
+            # (driven by late_phase_alpha), so the slider's right end is
+            # effectively pure B in the active layer band.
+            la = late_phase_alpha
+            late_blend = (0.5 - 0.5 * la) * prompt_emb_a + (0.5 + 0.5 * la) * prompt_emb_b
+            if combined_mask is not None:
+                emb_a_masked = prompt_emb_a * combined_mask.unsqueeze(-1).float()
+                late_blend_masked = late_blend * combined_mask.unsqueeze(-1).float()
+            else:
+                emb_a_masked = prompt_emb_a
+                late_blend_masked = late_blend
+            dit = pipe.model.model.model
+            param_dtype = next(dit.to_cond_embed.parameters()).dtype
+            with torch.no_grad():
+                proj_a    = dit.to_cond_embed(emb_a_masked.to(param_dtype))
+                proj_late = dit.to_cond_embed(late_blend_masked.to(param_dtype))
+                proj_null = torch.zeros_like(proj_a)
+            blocks = dit.transformer.layers
+            kombi_payload = (proj_a, proj_late, proj_null, blocks)
             manipulated = prompt_emb_a  # un-hooked fallback / global cond path
 
         # Magnitude scaling
@@ -1303,6 +1340,84 @@ def _generate_native(pipe, request):
         def restore_forward():
             for h in hook_handles:
                 h.remove()
+
+    elif injection_mode in ("kombi1", "kombi2", "kombi3") and kombi_payload is not None:
+        # Kombi: late-step × layer-split. Per-block hooks override cross_attn
+        # context every step, but switch between an "early" and "late" tensor
+        # based on a sampler-step counter ticked by a DiTWrapper.forward patch.
+        #   early: pure A on every block (uniform across layers).
+        #   late : per-layer (1-w)·A + w·late_blend, sigmoid top-hat over the
+        #          per-Kombi hardcoded [split_start, split_end] range.
+        proj_a, proj_late, proj_null, blocks = kombi_payload
+        num_layers = len(blocks)
+        # Hard layer mask (no sigmoid softening): w = 1 inside [start, end),
+        # 0 outside. Different from layer_split's sigmoid top-hat, which
+        # softens edges to ~0.5 at the boundary. The Kombis are preset
+        # geometry — the user's intensity slider controls the late-phase
+        # blend, NOT the band shape — so a hard mask makes "slider=1" mean
+        # "100% late_blend on every block in the band", matching the user's
+        # mental model of a preset's full strength.
+        late_per_block = []
+        for i in range(num_layers):
+            w = 1.0 if (i >= split_start and i < split_end) else 0.0
+            late_per_block.append((1.0 - w) * proj_a + w * proj_late)
+
+        transition_step = max(1, int(round(effective_steps * injection_transition_at)))
+        state = {"calls": 0}
+
+        # Patch DiTWrapper.forward to tick the step counter once per sampler
+        # step (it's the unique entry-point per step; the inner DiT calls all
+        # 16 blocks within a single forward). Increment AFTER original_forward
+        # so all hooks within one step see the same `calls` value.
+        dit_wrapper = pipe.model.model
+        original_forward = dit_wrapper.forward
+
+        def patched_forward(x, t, **kwargs):
+            result = original_forward(x, t, **kwargs)
+            state["calls"] += 1
+            return result
+
+        dit_wrapper.forward = patched_forward
+
+        hook_handles = []
+        for i, block in enumerate(blocks):
+            ctx_early_local  = proj_a
+            ctx_late_local   = late_per_block[i]
+            ctx_uncond_local = proj_null
+
+            def make_hook(early, late, uncond):
+                def pre_hook(module, args, kwargs):
+                    runtime_ctx = kwargs.get("context")
+                    if runtime_ctx is None and len(args) >= 2:
+                        runtime_ctx = args[1]
+                    if runtime_ctx is None:
+                        return None
+                    ctx_cond = late if state["calls"] >= transition_step else early
+                    b_runtime = runtime_ctx.shape[0]
+                    b_cond = ctx_cond.shape[0]
+                    if b_runtime == b_cond:
+                        new_ctx = ctx_cond
+                    elif b_runtime == 2 * b_cond:
+                        new_ctx = torch.cat([ctx_cond, uncond], dim=0)
+                    else:
+                        return None
+                    new_ctx = new_ctx.to(runtime_ctx.dtype).to(runtime_ctx.device)
+                    new_kwargs = dict(kwargs)
+                    new_kwargs["context"] = new_ctx
+                    return args, new_kwargs
+                return pre_hook
+
+            handle = block.cross_attn.register_forward_pre_hook(
+                make_hook(ctx_early_local, ctx_late_local, ctx_uncond_local),
+                with_kwargs=True,
+            )
+            hook_handles.append(handle)
+
+        def restore_forward():
+            for h in hook_handles:
+                h.remove()
+            if dit_wrapper.forward is patched_forward:
+                del dit_wrapper.forward
 
     # stable_audio_tools prints seed + tqdm progress to stdout, which would
     # corrupt the binary IPC pipe to JUCE. Redirect stdout → stderr temporarily.
