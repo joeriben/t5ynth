@@ -2,12 +2,13 @@
 #include <JuceHeader.h>
 
 /**
- * Delay effect — port of useEffects.ts delay subsystem.
+ * Delay effect.
  *
  * Stereo delay with time, feedback, dry/wet mix, and feedback damping LP filter.
  * Damping: LP filter in feedback loop with exponential mapping
  *   0 = bright (20kHz), 1 = dark (500Hz): freq = 20000 * pow(500/20000, d).
- * Dry compensation: dryGain = 1 - mix * 0.3 (when enabled).
+ * Mix is a true crossfade: out = dry*(1-mix) + wet*mix; at mix=1 the dry
+ * path vanishes (matches the reverb behaviour).
  */
 class T5ynthDelayLine
 {
@@ -24,7 +25,7 @@ public:
     /** Set feedback amount (0-0.95, smoothed per-sample). */
     void setFeedback(float fb);
 
-    /** Set dry/wet mix (0=dry, 1=wet). Send amount, not crossfade. */
+    /** Set dry/wet mix (0=dry, 1=wet). True crossfade: at mix=1 dry vanishes. */
     void setMix(float mix);
 
     /** Set feedback damping (0=bright 20kHz, 1=dark 500Hz). */

@@ -36,10 +36,12 @@ void T5ynthDelayLine::processBlock(juce::AudioBuffer<float>& buffer)
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
-    // Parallel send-bus (reference: useEffects.ts).
-    // dryGain = 1 - mix * 0.3: at mix=1.0 dry=0.7, wet=1.0 → peak sum ~1.7x.
-    // Limiter at end of chain is the final safety net.
-    const float dryGain = 1.0f - wetMix * 0.3f;
+    // True crossfade insert: out = dry*(1-mix) + wet*mix. At mix=1 the dry
+    // path vanishes entirely (industry-standard plugin behaviour, identical
+    // to T5ynth's reverb). Feedback path is unaffected — delay-line input
+    // always receives the un-attenuated dry plus damped feedback, so the
+    // tail keeps growing predictably across the full mix range.
+    const float dryGain = 1.0f - wetMix;
 
     // Per-sample smoothing coefficient (~5ms ramp at current SR)
     const float smoothCoeff = 1.0f - std::exp(-1.0f / static_cast<float>(sr * 0.005));
@@ -66,7 +68,7 @@ void T5ynthDelayLine::processBlock(juce::AudioBuffer<float>& buffer)
             float dampedFb = dampFilter.processSample(fbSample);
             delayLine.pushSample(ch, drySample + dampedFb);
 
-            // Parallel mix: dry (compensated) + wet (delayed)
+            // Crossfade insert: dry vanishes as mix → 1.
             data[i] = drySample * dryGain + delayed * wetMix;
         }
     }

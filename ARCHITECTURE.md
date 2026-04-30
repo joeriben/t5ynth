@@ -333,6 +333,34 @@ relevant `*_target` choice array in `createParameterLayout`, then handle
 the new target index in the `processBlock` dispatch and (if it is a
 "continuous" target) add a matching atomic to `ModulatedValues`.
 
+### BPM-sync for LFO / Drift / Delay
+
+Each of the three LFOs, three Drift LFOs, and the Delay carries a pair of
+APVTS choice params: `*_clock_mode` (Off / Sync) and `*_clock_division`
+(`1/1` … `1/32`, including triplet `T` and quintuplet `Q` variants). The
+canonical division → factor table lives in `ClockDivision::kFactor[]`
+(`src/dsp/BlockParams.h`); never duplicate it elsewhere.
+
+`T5ynthProcessor::resolveSyncBpm()` is the single source of truth for the
+sync BPM, with priority: live host transport > running in-app sequencer
+(step or generative) > frozen `hostBpmLastSeen` > `seq_bpm` fallback. The
+host transport is snapshotted at the top of `processBlock` into the
+`hostBpmLastSeen` / `hostPlayingNow` atomics; both are written and read
+exclusively from the audio thread, so relaxed ordering is sufficient.
+
+Effective values are derived by `ClockSync::computeRate(bpm, divIdx)`
+(LFO/Drift Hz) and `ClockSync::computeDelayMs(bpm, divIdx)`
+(delay milliseconds). When the corresponding `*_clock_mode` is Sync, the
+synced value is written back into `BlockParams` (LFO) or fed directly to
+the DSP setter (Drift, Delay), so downstream modulation that scales the
+"base rate" (e.g. envelope → LFO rate mod) operates relative to the
+synced rate naturally.
+
+The UI mirrors this shape: each LFO/Drift/Delay row carries a clock-icon
+toggle that swaps the rate/time slider for a division stepper. The
+visibility swap is a `GUI`-side `onChange` on the hidden mode parameter,
+not a separate visibility flag.
+
 ---
 
 ## 6. Inference IPC

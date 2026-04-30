@@ -715,10 +715,12 @@ Three identical ADSR envelopes, each with a <strong>Target dropdown</strong> to 
 <h3>LFOs (LFO 1 &amp; LFO 2)</h3>
 <table>
   <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
-  <tr><td><strong>Rate</strong></td><td>0.01 – 30 Hz</td><td></td></tr>
+  <tr><td><strong>Rate</strong></td><td>0.01 – 30 Hz</td><td>Active when Clock is Off</td></tr>
+  <tr><td><strong>Clock</strong></td><td>Off / Sync</td><td>Toggle (clock-icon button). When Sync is on, the Rate slider is replaced by a Division stepper.</td></tr>
+  <tr><td><strong>Division</strong></td><td>1/1 … 1/32 (incl. T &amp; Q)</td><td>Active when Clock is Sync. Effective Hz = factor × (BPM/60) / 4. Sync source resolves as: live host transport &gt; running in-app sequencer &gt; last-seen host BPM &gt; the Seq BPM field as fallback.</td></tr>
   <tr><td><strong>Depth</strong></td><td>0.0 – 1.0</td><td></td></tr>
   <tr><td><strong>Waveform</strong></td><td>Sine / Tri / Saw / Square</td><td></td></tr>
-  <tr><td><strong>Mode</strong></td><td>Free / Trigger</td><td>Free runs continuously; Trigger resets on note-on</td></tr>
+  <tr><td><strong>Mode</strong></td><td>Free / Trigger</td><td>Free runs continuously; Trigger resets on note-on (per-voice phase)</td></tr>
   <tr><td><strong>Target</strong></td><td>Dropdown</td><td>Filter, Scan, Pitch, Dly Time/FB/Mix, Rev Mix, ENV1–3 Amt</td></tr>
 </table>
 
@@ -760,7 +762,9 @@ The Drift section provides three slow LFOs (0.001–2.0 Hz) designed for organic
 <table>
   <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
   <tr><td><strong>Drift Enable</strong></td><td>on / off</td><td>Master on/off for all three drift LFOs</td></tr>
-  <tr><td><strong>Rate</strong></td><td>0.001 – 2.0 Hz</td><td>Very slow by design — think minutes, not seconds</td></tr>
+  <tr><td><strong>Rate</strong></td><td>0.001 – 2.0 Hz</td><td>Very slow by design — think minutes, not seconds. Active when Clock is Off.</td></tr>
+  <tr><td><strong>Clock</strong></td><td>Off / Sync</td><td>Toggle (clock-icon button). When Sync is on, the Rate slider is replaced by a Division stepper. Same BPM resolution as the LFO Clock above.</td></tr>
+  <tr><td><strong>Division</strong></td><td>1/1 … 1/32 (incl. T &amp; Q)</td><td>Active when Clock is Sync. For drift the slow-end musical divisions (1/1, 1/2) are typically the useful range.</td></tr>
   <tr><td><strong>Depth</strong></td><td>0.0 – 1.0</td><td>How far the LFO pushes the target parameter</td></tr>
   <tr><td><strong>Waveform</strong></td><td>Sine / Tri / Saw / Square</td><td></td></tr>
   <tr><td><strong>Target</strong></td><td>Dropdown</td><td>Alpha, Axis 1/2/3, WT Scan, Filter, Pitch, Dly Time/FB/Mix, Rev Mix, ENV1–3 Amt, Noise, Magnitude</td></tr>
@@ -797,7 +801,9 @@ Drift modulation of generation parameters only changes the <em>embedding</em> �
 <table>
   <tr><th>Parameter</th><th>Range</th><th>Notes</th></tr>
   <tr><td><strong>Type</strong></td><td>Off / Stereo</td><td>Stereo dual-tap delay</td></tr>
-  <tr><td><strong>Time</strong></td><td>1 – 2000 ms</td><td>Logarithmic scaling. Can be modulated.</td></tr>
+  <tr><td><strong>Time</strong></td><td>1 – 2000 ms</td><td>Logarithmic scaling. Active when Clock is Off. Can be modulated.</td></tr>
+  <tr><td><strong>Clock</strong></td><td>Off / Sync</td><td>Toggle (clock-icon button). When Sync is on, the Time slider is replaced by a Division stepper. Same BPM resolution as the LFO/Drift Clock.</td></tr>
+  <tr><td><strong>Division</strong></td><td>1/1 … 1/32 (incl. T &amp; Q)</td><td>Active when Clock is Sync. Effective ms = (60000/BPM) × (4/factor).</td></tr>
   <tr><td><strong>Feedback</strong></td><td>0.0 – 0.95</td><td>Capped to prevent runaway</td></tr>
   <tr><td><strong>Damping</strong></td><td>0.0 – 1.0</td><td>LP filter in feedback path. 0 = bright (20 kHz), 1 = dark (500 Hz)</td></tr>
   <tr><td><strong>Mix</strong></td><td>0.0 – 1.0</td><td>Send amount (dry is preserved)</td></tr>
