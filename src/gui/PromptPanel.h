@@ -118,6 +118,24 @@ private:
     juce::TextButton generateButton { "Generate" };
     juce::Label infoLabel;
 
+    // ── Temporary injection-mode test UI (research; not in APVTS). ──
+    // Three toggle buttons + the existing alphaSlider whose label/range/state
+    // shift with the active mode (linear=A↔B, fine=step-transition, layer=split).
+    juce::TextButton injModeLinear { "Linear" };
+    juce::TextButton injModeFine   { "Fine" };    // = "late_step" — operates on sampler refinement steps
+    juce::TextButton injModeLayer  { "Layer" };   // = "layer_split"
+    juce::String     injectionMode_         = "linear";  // "linear" | "late_step" | "layer_split"
+    // Fine slider's user-facing value: 0.5 = minimum perceptible effect,
+    // 1.0 = maximum effect. (Slider range tuned to the audible region per
+    // listening test — below 0.5 the late-blend was inaudible.)
+    // The backend's `injection_transition_at` is the *early-phase fraction*;
+    // we send (1 - lateMixAmount_) clamped to backend's [0.05, 0.95].
+    float            lateMixAmount_         = 0.75f;      // 0.5–1.0, slider value
+    float            splitLayer_            = 8.0f;       // 0–16
+
+    /** Reconfigure alphaSlider (range, label, value, attachment) for the active mode. */
+    void applyModeToSlider();
+
     bool generating = false;
     std::vector<std::pair<int, float>> pendingOffsets_;  // for DimensionExplorer
     std::map<juce::String, float> pendingAxes_;          // for SemanticAxes

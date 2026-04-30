@@ -794,6 +794,12 @@ def _generate_audioldm2(wrapper, request):
     cfg_scale = request.get("cfg_scale", 3.5)
     seed = request.get("seed", -1)
     dim_offsets = _sanitize_dimension_offsets(request.get("dimension_offsets"))
+    injection_mode = request.get("injection_mode", "linear")
+    if injection_mode != "linear":
+        raise ValueError(
+            f"injection_mode='{injection_mode}' is only implemented on the "
+            "native pipeline; AudioLDM2 only supports 'linear'."
+        )
 
     if seed < 0:
         import random
@@ -966,6 +972,9 @@ def _generate_native(pipe, request):
 
     Supports the same embedding manipulations as the diffusers path:
     alpha interpolation, magnitude, noise injection, dimension offsets.
+
+    Optional research-mode field "injection_mode" selects how prompt B is mixed
+    into prompt A. Default "linear" reproduces the historical crossfade exactly.
     """
     from stable_audio_tools.inference.generation import generate_diffusion_cond
 
@@ -980,6 +989,27 @@ def _generate_native(pipe, request):
     cfg_scale = request.get("cfg_scale", 4.0)
     seed = request.get("seed", -1)
     dim_offsets = _sanitize_dimension_offsets(request.get("dimension_offsets"))
+    injection_mode = request.get("injection_mode", "linear")
+    injection_transition_at = max(
+        0.05, min(0.95, float(request.get("injection_transition_at", 0.6)))
+    )
+    # late_phase_alpha drives the late-phase blend formula:
+    #   late_blend = (0.5 - 0.5α)·A + (0.5 + 0.5α)·B
+    # 0  → 50/50 mix  (subtle texture mixing)
+    # +1 → pure B      (full A→B at the transition step)
+    # The plugin couples this with transition_at so the Fine slider's right
+    # end produces effectively pure B (very early transition + pure-B late).
+    late_phase_alpha = max(-1.0, min(1.0, float(request.get("late_phase_alpha", 0.0))))
+    # split_layer is a float so the UI can drive a continuous sigmoid ramp
+    # (e.g. split=8.5 puts the half-mark between blocks 8 and 9). Range 0..16
+    # is clamped here; the backend treats out-of-range gracefully.
+    split_layer = max(0.0, min(16.0, float(request.get("split_layer", 8.0))))
+    layer_split_smoothness = 2.0  # sigmoid scale; ±2 layers around the split
+    if injection_mode not in ("linear", "delta", "late_step", "layer_split"):
+        raise ValueError(
+            f"Unknown injection_mode '{injection_mode}'. "
+            "Expected one of: linear, delta, late_step, layer_split."
+        )
 
     if seed < 0:
         import random
@@ -1053,8 +1083,6 @@ def _generate_native(pipe, request):
         emb_a_pooled = prompt_emb_a.squeeze(0).mean(dim=0).cpu().float().numpy()
         emb_b_pooled = prompt_emb_b.squeeze(0).mean(dim=0).cpu().float().numpy()
 
-        # Alpha interpolation: 0 = midpoint, -1 = pure A, +1 = pure B
-        manipulated = (0.5 - 0.5 * alpha) * prompt_emb_a + (0.5 + 0.5 * alpha) * prompt_emb_b
         combined_mask = None
         if mask_a is not None and mask_b is not None:
             combined_mask = (mask_a | mask_b)
@@ -1063,11 +1091,71 @@ def _generate_native(pipe, request):
         else:
             combined_mask = mask_b
 
-        if alpha < -1.0 or alpha > 1.0:
-            ref_norm = prompt_emb_a.norm() if alpha < 0.0 else prompt_emb_b.norm()
-            res_norm = manipulated.norm()
-            if res_norm > 1e-8:
-                manipulated = manipulated * (ref_norm / res_norm)
+        # ── Injection mode dispatch ──
+        # "linear"     : historical crossfade (default; byte-identical to v1.2).
+        # "delta"      : A + alpha · (B − null), preserves A more strongly.
+        # "late_step"  : early sampler steps see A only; after the transition
+        #                point the DiTWrapper.forward swap (installed below the
+        #                manipulation pipeline) injects pure B.
+        # "layer_split": every DiT block sees a different A/B blend, sigmoid-
+        #                ramped around split_layer along the depth axis.
+        #                Per-block forward_pre_hooks override block.cross_attn
+        #                context. The α slider is unused in this mode.
+        # Magnitude/noise/axes/offsets that follow act on the "manipulated"
+        # tensor as defined here. For late_step / layer_split that means they
+        # apply to the early-phase / un-hooked conditioning only — the per-block
+        # injected tensors are the bare blend. Acceptable for the first
+        # listening tests; revisit if a mode ships into the UI.
+        late_step_payload = None
+        layer_split_payload = None  # (proj_a, proj_b, proj_null, blocks, num_layers)
+        if injection_mode == "linear":
+            manipulated = (0.5 - 0.5 * alpha) * prompt_emb_a + (0.5 + 0.5 * alpha) * prompt_emb_b
+            if alpha < -1.0 or alpha > 1.0:
+                ref_norm = prompt_emb_a.norm() if alpha < 0.0 else prompt_emb_b.norm()
+                res_norm = manipulated.norm()
+                if res_norm > 1e-8:
+                    manipulated = manipulated * (ref_norm / res_norm)
+        elif injection_mode == "delta":
+            manipulated = prompt_emb_a + alpha * (prompt_emb_b - null_pe)
+        elif injection_mode == "late_step":
+            # Late-phase blend driven by late_phase_alpha (set by the Fine slider).
+            # α=0 → 50/50 mix (subtle); α=+1 → pure B (slider's right end).
+            # The slider couples transition_at + α so the right end is effectively
+            # pure B; the global α (linear A↔B) is intentionally NOT used here.
+            la = late_phase_alpha
+            late_blend = (0.5 - 0.5 * la) * prompt_emb_a + (0.5 + 0.5 * la) * prompt_emb_b
+            if combined_mask is not None:
+                late_emb_zeroed = late_blend * combined_mask.unsqueeze(-1).float()
+            else:
+                late_emb_zeroed = late_blend
+            manipulated = prompt_emb_a  # early-phase conditioning
+            late_step_payload = (late_emb_zeroed, combined_mask)
+        else:  # layer_split
+            # Per-block context override via forward_pre_hook on each
+            # block.cross_attn. Pre-project A, B, null through to_cond_embed
+            # so the hook bypasses the DiT's projection step cleanly. CFG
+            # doubling is applied at hook fire time (see install below).
+            # Mask the raw embeddings before projection so padding stays zero
+            # in projection space — same convention as the linear/late paths.
+            if combined_mask is not None:
+                emb_a_masked = prompt_emb_a * combined_mask.unsqueeze(-1).float()
+                emb_b_masked = prompt_emb_b * combined_mask.unsqueeze(-1).float()
+            else:
+                emb_a_masked = prompt_emb_a
+                emb_b_masked = prompt_emb_b
+            dit = pipe.model.model.model  # DiffusionTransformer
+            param_dtype = next(dit.to_cond_embed.parameters()).dtype
+            with torch.no_grad():
+                proj_a    = dit.to_cond_embed(emb_a_masked.to(param_dtype))
+                proj_b    = dit.to_cond_embed(emb_b_masked.to(param_dtype))
+                # CFG-uncond half: the model uses `torch.zeros_like(cross_attn_cond)`
+                # AFTER `to_cond_embed` (dit.py:141 projects, then dit.py:346 builds
+                # null_embed at the projected level). Match that exactly — projecting
+                # an encoded "" string would NOT match what the unhooked path does.
+                proj_null = torch.zeros_like(proj_a)
+            blocks = dit.transformer.layers
+            layer_split_payload = (proj_a, proj_b, proj_null, blocks)
+            manipulated = prompt_emb_a  # un-hooked fallback / global cond path
 
         # Magnitude scaling
         if abs(magnitude - 1.0) > 1e-6:
@@ -1109,9 +1197,99 @@ def _generate_native(pipe, request):
         cond_a["prompt"] = [manipulated, combined_mask]
 
     offsets_str = f", {len(dim_offsets)} offsets" if dim_offsets else ""
+    mode_str = f", mode={injection_mode}" if injection_mode != "linear" else ""
     log.info(f"Generating (native) on {device}: '{prompt_a[:60]}' ({duration}s, {effective_steps} steps, "
-             f"CFG={cfg_scale}, mag={magnitude}, noise={noise_sigma}, seed={seed}{offsets_str})")
+             f"CFG={cfg_scale}, mag={magnitude}, noise={noise_sigma}, seed={seed}{offsets_str}{mode_str})")
     t0 = time.time()
+
+    # late_step: install a forward swap on DiTWrapper so the cross-attn
+    # conditioning flips from "early" (= manipulated stored in cond_a) to
+    # "late" (= late_step_payload[0]) after a fraction of the sampler steps.
+    # ConditionedDiffusionModelWrapper.forward (diffusion.py:216) passes
+    # cross_attn_cond / cross_attn_mask as kwargs to DiTWrapper, so kwargs
+    # swap suffices. DiTWrapper.forward asserts batch_cfg=True, so the hook
+    # fires exactly once per sampler step.
+    restore_forward = None
+    if injection_mode == "late_step" and late_step_payload is not None:
+        late_emb_zeroed, late_mask = late_step_payload
+        transition_step = max(1, int(round(effective_steps * injection_transition_at)))
+        dit_wrapper = pipe.model.model
+        original_forward = dit_wrapper.forward
+        state = {"calls": 0}
+
+        def patched_forward(x, t, **kwargs):
+            if state["calls"] >= transition_step:
+                kwargs["cross_attn_cond"] = late_emb_zeroed
+                # Use DiTWrapper's parameter name `cross_attn_mask` (NOT the
+                # inner DiffusionTransformer's `cross_attn_cond_mask`).
+                # DiTWrapper.forward takes `cross_attn_mask=...` and internally
+                # forwards it as `cross_attn_cond_mask` to the inner DiT
+                # (diffusion.py:547). Setting `cross_attn_cond_mask` here would
+                # collide with that forwarding and TypeError-out.
+                kwargs["cross_attn_mask"] = late_mask
+            state["calls"] += 1
+            return original_forward(x, t, **kwargs)
+
+        dit_wrapper.forward = patched_forward
+
+        def restore_forward():
+            if dit_wrapper.forward is patched_forward:
+                del dit_wrapper.forward
+
+    elif injection_mode == "layer_split" and layer_split_payload is not None:
+        # Register a forward_pre_hook on every block.cross_attn that overrides
+        # the `context` kwarg with a per-block A↔B blend. Sigmoid ramp around
+        # split_layer with width = layer_split_smoothness.
+        proj_a, proj_b, proj_null, blocks = layer_split_payload
+        num_layers = len(blocks)
+        per_block_ctx = []  # one tensor per block; CFG-doubling at hook fire time
+        for i in range(num_layers):
+            # w in [0, 1]: 0 = pure A, 1 = pure B
+            w = 1.0 / (1.0 + math.exp(-(i - split_layer) / layer_split_smoothness))
+            blended = (1.0 - w) * proj_a + w * proj_b
+            per_block_ctx.append(blended)
+
+        hook_handles = []
+        for i, block in enumerate(blocks):
+            ctx_cond = per_block_ctx[i]            # [B, seq, embed]
+            ctx_uncond = proj_null                  # [B_null, seq, embed]
+
+            def make_hook(ctx_cond_local, ctx_uncond_local):
+                def pre_hook(module, args, kwargs):
+                    # The DiT calls block.cross_attn(x, context=context, ...).
+                    # When CFG is active the runtime context has batch=2*B
+                    # (cond half + uncond half). We reconstruct the same
+                    # batching from our pre-projected per-block tensors,
+                    # repeating to match the runtime context's batch dim if
+                    # needed (covers cfg=1 and cfg>1 uniformly).
+                    runtime_ctx = kwargs.get("context")
+                    if runtime_ctx is None and len(args) >= 2:
+                        runtime_ctx = args[1]
+                    if runtime_ctx is None:
+                        return None  # nothing to override
+                    b_runtime = runtime_ctx.shape[0]
+                    b_cond = ctx_cond_local.shape[0]
+                    if b_runtime == b_cond:
+                        new_ctx = ctx_cond_local
+                    elif b_runtime == 2 * b_cond:
+                        new_ctx = torch.cat([ctx_cond_local, ctx_uncond_local], dim=0)
+                    else:
+                        # Unexpected batching — let the original through.
+                        return None
+                    new_ctx = new_ctx.to(runtime_ctx.dtype).to(runtime_ctx.device)
+                    new_kwargs = dict(kwargs)
+                    new_kwargs["context"] = new_ctx
+                    return args, new_kwargs
+                return pre_hook
+
+            handle = block.cross_attn.register_forward_pre_hook(
+                make_hook(ctx_cond, ctx_uncond), with_kwargs=True
+            )
+            hook_handles.append(handle)
+
+        def restore_forward():
+            for h in hook_handles:
+                h.remove()
 
     # stable_audio_tools prints seed + tqdm progress to stdout, which would
     # corrupt the binary IPC pipe to JUCE. Redirect stdout → stderr temporarily.
@@ -1129,6 +1307,8 @@ def _generate_native(pipe, request):
         )
     finally:
         sys.stdout = real_stdout
+        if restore_forward is not None:
+            restore_forward()
 
     elapsed = time.time() - t0
     audio_np = output.squeeze(0).cpu().float().numpy()  # [channels, samples]
@@ -1166,6 +1346,13 @@ def generate(pipe, request):
     seed = request.get("seed", -1)
     cache_as = request.get("cache_as")  # optional: cache latent under this name
     dim_offsets = _sanitize_dimension_offsets(request.get("dimension_offsets"))  # optional: [[idx, val], ...]
+    injection_mode = request.get("injection_mode", "linear")
+    if injection_mode != "linear":
+        raise ValueError(
+            f"injection_mode='{injection_mode}' is only implemented on the "
+            "native pipeline (e.g. stable-audio-open-small); diffusers SAO "
+            "currently only supports 'linear'."
+        )
 
     if seed < 0:
         import random

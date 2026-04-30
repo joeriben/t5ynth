@@ -62,6 +62,13 @@ public:
         juce::String model;        // model ID (e.g. "stable-audio-open-1.0"), or empty for default
         std::vector<std::pair<int, float>> dimensionOffsets;  // DimensionExplorer offsets
         std::map<juce::String, float> semanticAxes;           // SemanticAxes key→value
+
+        // Research-mode injection (A↔B mixing): "linear" reproduces v1.2 byte-identically.
+        // "late_step" / "layer_split" only implemented for the native SA Open path.
+        juce::String injectionMode = "linear";          // "linear" | "late_step" | "layer_split"
+        float        injectionTransitionAt = 0.6f;       // 0.05–0.95, only used by "late_step"
+        float        latePhaseAlpha        = 0.0f;       // -1..+1, only used by "late_step": late blend α (0 = 50/50, +1 = pure B)
+        float        splitLayer            = 8.0f;       // 0–16, only used by "layer_split"
     };
 
     struct Result

@@ -16,7 +16,7 @@ constexpr float kPromptCompactRow  = 1.15f;
 constexpr float kPromptCompactCtrl = 0.9f;
 constexpr float kPromptSeedCtrl    = 1.75f;
 constexpr float kPromptGap         = 0.28f;
-constexpr float kPromptContentUnits = 20.9f;
+constexpr float kPromptContentUnits = 22.08f;  // bumped by 1.18 for temporary mode-buttons row (0.9 + 0.28)
 
 float preferredPromptFontForWidth(int width)
 {
@@ -103,13 +103,51 @@ PromptPanel::PromptPanel(T5ynthProcessor& processor)
     makeLabel(alphaValue, "0", kOscCol, juce::Justification::centredRight, this);
     alphaSlider.onValueChange = [this] {
         float v = static_cast<float>(alphaSlider.getValue());
-        if (std::abs(v) < 0.001f)
-            alphaValue.setText("0", juce::dontSendNotification);
-        else if (v < 0.0f)
-            alphaValue.setText("A " + juce::String(-v, 3), juce::dontSendNotification);
-        else
-            alphaValue.setText("B " + juce::String(v, 3), juce::dontSendNotification);
+        if (injectionMode_ == "linear")
+        {
+            if (std::abs(v) < 0.001f)
+                alphaValue.setText("0", juce::dontSendNotification);
+            else if (v < 0.0f)
+                alphaValue.setText("A " + juce::String(-v, 3), juce::dontSendNotification);
+            else
+                alphaValue.setText("B " + juce::String(v, 3), juce::dontSendNotification);
+        }
+        else if (injectionMode_ == "late_step")
+        {
+            lateMixAmount_ = v;
+            alphaValue.setText(juce::String(v, 2), juce::dontSendNotification);
+        }
+        else  // layer_split
+        {
+            splitLayer_ = v;
+            alphaValue.setText(juce::String(static_cast<int>(std::round(v))) + "/16",
+                               juce::dontSendNotification);
+        }
     };
+
+    // ── Injection-mode test row (TEMPORARY, research; not persisted) ──
+    // Three radio-group buttons; the existing alphaSlider's range/label/state
+    // shifts with the active mode (see applyModeToSlider()).
+    auto styleModeBtn = [this](juce::TextButton& b)
+    {
+        b.setColour(juce::TextButton::buttonColourId, kSurface);
+        b.setColour(juce::TextButton::buttonOnColourId, kOscCol);
+        b.setColour(juce::TextButton::textColourOffId, kDim);
+        b.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        b.setClickingTogglesState(true);
+        b.setRadioGroupId(2027);  // unique id, distinct from model switchbox (1004)
+        addAndMakeVisible(b);
+    };
+    styleModeBtn(injModeLinear);
+    styleModeBtn(injModeFine);
+    styleModeBtn(injModeLayer);
+    injModeLinear.setConnectedEdges(juce::Button::ConnectedOnRight);
+    injModeFine  .setConnectedEdges(juce::Button::ConnectedOnLeft | juce::Button::ConnectedOnRight);
+    injModeLayer .setConnectedEdges(juce::Button::ConnectedOnLeft);
+    injModeLinear.setToggleState(true, juce::dontSendNotification);
+    injModeLinear.onClick = [this] { if (injModeLinear.getToggleState()) { injectionMode_ = "linear";      applyModeToSlider(); } };
+    injModeFine  .onClick = [this] { if (injModeFine  .getToggleState()) { injectionMode_ = "late_step";   applyModeToSlider(); } };
+    injModeLayer .onClick = [this] { if (injModeLayer .getToggleState()) { injectionMode_ = "layer_split"; applyModeToSlider(); } };
 
     // Magnitude
     makeSlider(magnitudeSlider, this);
@@ -287,6 +325,7 @@ int PromptPanel::getPreferredHeightForWidth(int width) const
     return (compactRowH + 2) + gap
          + rowH + multiInputH + gap
          + rowH + multiInputH + gap * 2
+         + (compactCtrlH + gap)                       // TEMPORARY injection-mode buttons row
          + rowH + sliderH + gap
          + (compactRowH + compactCtrlH + gap) * 2
          + compactRowH + seedCtrlH + gap
@@ -337,7 +376,12 @@ void PromptPanel::paintOverChildren(juce::Graphics& g)
         g.fillEllipse(gx - r, gy - r, r * 2.0f, r * 2.0f);
     };
 
-    drawGhost(alphaSlider, alphaGhostValue_);
+    // Alpha ghost only makes sense when the slider actually drives α (linear).
+    // In Fine/Layer modes the same physical slider drives a different parameter
+    // (lateMixAmount_ / splitLayer_) that has no drift modulation, so painting
+    // the αGhost there would land in a meaningless screen position.
+    if (injectionMode_ == "linear")
+        drawGhost(alphaSlider, alphaGhostValue_);
     drawGhost(magnitudeSlider, magGhostValue_);
     drawGhost(noiseSlider, noiseGhostValue_);
 }
@@ -405,7 +449,21 @@ void PromptPanel::resized()
     promptBEditor.setBounds(area.removeFromTop(multiInputH));
     area.removeFromTop(gap * 2);
 
-    // Alpha
+    // --- Injection-mode test row (TEMPORARY): three radio buttons left-aligned ---
+    // The alphaSlider above this row repurposes itself based on the active
+    // mode (see applyModeToSlider()): Linear=A↔B, Fine=transition, Layer=split.
+    {
+        auto btnRow = area.removeFromTop(compactCtrlH);
+        // 3 buttons fill ~half the row width; remainder is breathing room.
+        int btnTotalW = juce::jmax(120, btnRow.getWidth() / 2);
+        int btnW = btnTotalW / 3;
+        injModeLinear.setBounds(btnRow.removeFromLeft(btnW));
+        injModeFine  .setBounds(btnRow.removeFromLeft(btnW));
+        injModeLayer .setBounds(btnRow.removeFromLeft(btnW));
+        area.removeFromTop(gap);
+    }
+
+    // Alpha (dynamic: meaning depends on current injection mode)
     layoutSlider(alphaLabel, alphaSlider, alphaValue);
 
     // --- Compact params: 2 columns ---
@@ -655,6 +713,53 @@ void PromptPanel::triggerGenerationWithOffsets(std::vector<std::pair<int, float>
     triggerGeneration();
 }
 
+// ── Reconfigure alphaSlider for the active injection mode ────────────────────
+// Linear: APVTS-attached, range −1..+1, label "A ↔ B".
+// Fine  : detached, range 0.05..0.95, label "Fine: Step Transition".
+// Layer : detached, range 0..16 (snap=1), label "Layer Split".
+// The alphaSlider's onValueChange dispatches on injectionMode_ to update both
+// the value formatter and (for non-linear) the local state.
+void PromptPanel::applyModeToSlider()
+{
+    auto& apvts = processorRef.getValueTreeState();
+    if (injectionMode_ == "linear")
+    {
+        // Set range BEFORE creating the SliderAttachment so the attachment's
+        // value-push (from APVTS alpha) lands inside the proper [-1, +1] range.
+        // Otherwise the previous mode's range (e.g. 0..16 for layer) clamps
+        // APVTS alpha at construction time and we'd lose the stored value.
+        alphaSlider.setRange(-1.0, 1.0, 0.001);
+        if (alphaA == nullptr)
+            alphaA = std::make_unique<Attachment>(apvts, PID::genAlpha, alphaSlider);
+        alphaLabel.setText("A " + juce::String(juce::CharPointer_UTF8("\xe2\x86\x94")) + " B",
+                           juce::dontSendNotification);
+        // Onchange handler will populate alphaValue from current slider value.
+        alphaSlider.setValue(alphaSlider.getValue(), juce::sendNotificationSync);
+    }
+    else if (injectionMode_ == "late_step")
+    {
+        alphaA.reset();  // detach from APVTS so the slider drives local state only
+        // Slider range tuned to the audible region (listening test): below
+        // ~0.5 the late-blend was inaudible. Full slider span = 0.5..1.0.
+        // setRange() may clamp the current value and fire onValueChange,
+        // which would overwrite the saved state — capture and restore.
+        const float saved = juce::jlimit(0.5f, 1.0f, lateMixAmount_);
+        alphaSlider.setRange(0.5, 1.0, 0.01);
+        lateMixAmount_ = saved;
+        alphaLabel.setText("Fine: A " + juce::String(juce::CharPointer_UTF8("\xe2\x86\x92")) + " mix", juce::dontSendNotification);
+        alphaSlider.setValue(saved, juce::sendNotificationSync);
+    }
+    else  // layer_split
+    {
+        alphaA.reset();
+        const float saved = splitLayer_;
+        alphaSlider.setRange(0.0, 16.0, 1.0);
+        splitLayer_ = saved;
+        alphaLabel.setText("Layer: A " + juce::String(juce::CharPointer_UTF8("\xe2\x86\x92")) + " B at split", juce::dontSendNotification);
+        alphaSlider.setValue(saved, juce::sendNotificationSync);
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared request builder
 // ──────────────────────────────────────────────────────────────────────────────
@@ -692,6 +797,20 @@ PipeInference::Request PromptPanel::buildInferenceRequest(
     req.model = getSelectedModel();
     req.dimensionOffsets = std::move(pendingOffsets_);
     req.semanticAxes = axesOverride.empty() ? std::move(pendingAxes_) : std::move(axesOverride);
+    req.injectionMode = injectionMode_;
+    // Fine slider drives BOTH transition_at AND late-phase α together so that
+    // slider=0.5 → minimum effect (A-dominant), slider=1.0 → pure B.
+    //   t = (slider - 0.5) / 0.5  ∈ [0, 1]
+    //   transition_at: 0.5 (halfway swap) → 0.05 (almost immediate)
+    //   late_α       : 0   (50/50 mix)    → 1   (pure B)
+    {
+        const float t = juce::jlimit(0.0f, 1.0f, (lateMixAmount_ - 0.5f) / 0.5f);
+        req.injectionTransitionAt = juce::jlimit(0.05f, 0.95f, 0.5f - 0.45f * t);
+        req.latePhaseAlpha        = t;  // 0 → 50/50, 1 → pure B
+    }
+    // Layer slider: visual 0=A (left), 16=B (right). Backend's split_layer
+    // semantic is the inverse (split=0 → all blocks see B). Invert here.
+    req.splitLayer = juce::jlimit(0.0f, 16.0f, 16.0f - splitLayer_);
     return req;
 }
 
@@ -910,8 +1029,12 @@ void PromptPanel::pollDriftRegen()
 
     // Check if values changed enough from last generation
     constexpr float DRIFT_THRESHOLD = 0.005f;
-    bool alphaChanged = !std::isnan(effAlpha) &&
-        (std::isnan(lastGenAlpha_) || std::abs(effAlpha - lastGenAlpha_) > DRIFT_THRESHOLD);
+    // Alpha-driven auto-regen only fires in linear mode — Fine and Layer
+    // ignore alpha at the backend level, so drift modulation of alpha would
+    // burn GPU cycles without changing the output.
+    bool alphaChanged = injectionMode_ == "linear"
+        && !std::isnan(effAlpha)
+        && (std::isnan(lastGenAlpha_) || std::abs(effAlpha - lastGenAlpha_) > DRIFT_THRESHOLD);
 
     bool noiseChanged = !std::isnan(effNoise) &&
         (std::isnan(lastGenNoise_) || std::abs(effNoise - lastGenNoise_) > DRIFT_THRESHOLD);

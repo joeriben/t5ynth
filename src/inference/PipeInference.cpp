@@ -769,6 +769,13 @@ PipeInference::Result PipeInference::generate(const Request& request)
     if (request.model.isNotEmpty())
         json->setProperty("model", request.model);
 
+    // Research-mode prompt-injection fields. Always serialised so that the bundled
+    // backend sees them; older backends ignore unknown fields.
+    json->setProperty("injection_mode", request.injectionMode);
+    json->setProperty("injection_transition_at", request.injectionTransitionAt);
+    json->setProperty("late_phase_alpha", request.latePhaseAlpha);
+    json->setProperty("split_layer", request.splitLayer);
+
     // Serialize dimension offsets from DimensionExplorer
     if (!request.dimensionOffsets.empty())
     {
