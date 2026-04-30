@@ -249,6 +249,22 @@ namespace PID {
     static constexpr const char* gen5FixPulses    = "gen5_fix_pulses";
     static constexpr const char* gen5FixRotation  = "gen5_fix_rotation";
     static constexpr const char* gen5FixMutation  = "gen5_fix_mutation";
+
+    // ── BPM-sync per LFO/Drift/Delay ──
+    static constexpr const char* lfo1ClockMode      = "lfo1_clock_mode";
+    static constexpr const char* lfo1ClockDivision  = "lfo1_clock_division";
+    static constexpr const char* lfo2ClockMode      = "lfo2_clock_mode";
+    static constexpr const char* lfo2ClockDivision  = "lfo2_clock_division";
+    static constexpr const char* lfo3ClockMode      = "lfo3_clock_mode";
+    static constexpr const char* lfo3ClockDivision  = "lfo3_clock_division";
+    static constexpr const char* drift1ClockMode    = "drift1_clock_mode";
+    static constexpr const char* drift1ClockDivision= "drift1_clock_division";
+    static constexpr const char* drift2ClockMode    = "drift2_clock_mode";
+    static constexpr const char* drift2ClockDivision= "drift2_clock_division";
+    static constexpr const char* drift3ClockMode    = "drift3_clock_mode";
+    static constexpr const char* drift3ClockDivision= "drift3_clock_division";
+    static constexpr const char* delayClockMode     = "delay_clock_mode";
+    static constexpr const char* delayClockDivision = "delay_clock_division";
 }
 
 // ── Modulation envelope targets ──
@@ -552,6 +568,65 @@ namespace LfoMode {
     };
     static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
     static_assert(Trigger + 1 == kCount, "LfoMode out of sync.");
+}
+
+// ── BPM-sync clock state ─ Off / Sync; clock source auto-resolved
+//    (host transport when playing, in-app sequencer when running, last-
+//    seen host BPM as freeze, seqBpm as standalone fallback).
+namespace ClockMode {
+    enum : int { Off = 0, Sync = 1 };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "off",  "Off"  },
+        { "sync", "Sync" }
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(Sync + 1 == kCount, "ClockMode out of sync.");
+}
+
+// ── BPM-sync musical divisions ─ monotonic in rate (slow → fast) so the
+//    UI renders as a coherent stepped slider. kFactor[i] = events per
+//    whole note. Triplet = 3-in-2 (×1.5 vs straight); quintuplet = 5-in-4
+//    (×1.25 vs straight).
+namespace ClockDivision {
+    enum : int {
+        D1_1   = 0,
+        D1_2   = 1,
+        D1_2T  = 2,
+        D1_4   = 3,
+        D1_4Q  = 4,
+        D1_4T  = 5,
+        D1_8   = 6,
+        D1_8Q  = 7,
+        D1_8T  = 8,
+        D1_16  = 9,
+        D1_16Q = 10,
+        D1_16T = 11,
+        D1_32  = 12
+    };
+    static constexpr ChoiceEntry kEntries[] = {
+        { "1_1",   "1/1"   },
+        { "1_2",   "1/2"   },
+        { "1_2t",  "1/2T"  },
+        { "1_4",   "1/4"   },
+        { "1_4q",  "1/4Q"  },
+        { "1_4t",  "1/4T"  },
+        { "1_8",   "1/8"   },
+        { "1_8q",  "1/8Q"  },
+        { "1_8t",  "1/8T"  },
+        { "1_16",  "1/16"  },
+        { "1_16q", "1/16Q" },
+        { "1_16t", "1/16T" },
+        { "1_32",  "1/32"  }
+    };
+    static constexpr float kFactor[] = {
+        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+        8.0f, 10.0f, 12.0f, 16.0f, 20.0f, 24.0f, 32.0f
+    };
+    static constexpr int kCount = sizeof(kEntries) / sizeof(kEntries[0]);
+    static_assert(D1_32 + 1 == kCount,
+                  "ClockDivision enum and kEntries out of sync.");
+    static_assert(sizeof(kFactor) / sizeof(kFactor[0]) == kCount,
+                  "ClockDivision kFactor and kEntries out of sync.");
 }
 
 // ── Drift LFO waveform (label "Sq" differs from LfoWave "Square"!) ──

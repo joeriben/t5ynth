@@ -148,6 +148,7 @@ void SynthPanel::initEnv(EnvSection& env, const juce::String& name, int defaultT
 void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
                           const juce::String& rateId, const juce::String& depthId,
                           const juce::String& waveId, const juce::String& modeId,
+                          const juce::String& clockModeId, const juce::String& divisionId,
                           juce::AudioProcessorValueTreeState& apvts)
 {
     lfo.header.setText(name, juce::dontSendNotification);
@@ -168,23 +169,85 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
     lfo.waveBox.addItemList(lfoWaveItems, 1);
     addAndMakeVisible(lfo.waveBox);
 
+    // Free/Trig: hidden ComboBox holds the APVTS state; visible TextButton
+    // cycles between F and T on click. Replaces the old inline "Free⌄"
+    // dropdown which was visually too wide for the row.
     juce::StringArray lfoModeItems;
     for (const auto& e : LfoMode::kEntries) lfoModeItems.add(e.label);
-    lfo.modeBox.addItemList(lfoModeItems, 1);
-    addAndMakeVisible(lfo.modeBox);
+    lfo.modeHidden.addItemList(lfoModeItems, 1);
+    lfo.modeBtn.setColour(juce::TextButton::buttonColourId, kSurface);
+    lfo.modeBtn.setColour(juce::TextButton::textColourOffId, kDim);
+    lfo.modeBtn.setClickingTogglesState(false);
+    lfo.modeBtn.onClick = [&lfo] {
+        const int cur = lfo.modeHidden.getSelectedId();
+        lfo.modeHidden.setSelectedId(cur == 1 ? 2 : 1);
+    };
+    lfo.modeHidden.onChange = [&lfo] {
+        const bool trig = lfo.modeHidden.getSelectedId() == 2;
+        lfo.modeBtn.setButtonText(trig ? "T" : "F");
+    };
+    addAndMakeVisible(lfo.modeBtn);
 
-    lfo.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF1, kLfoCol);
-    lfo.depthRow = std::make_unique<SliderRow>("Depth", fmtPctFine, kLfoCol);
+    // BPM-sync clock: hidden ComboBox holds APVTS state, visible icon
+    // button drives it. ClockMode change swaps which row is visible
+    // (Hz rateRow vs musical-division divisionRow).
+    juce::StringArray clockItems;
+    for (const auto& e : ClockMode::kEntries) clockItems.add(e.label);
+    lfo.clockModeHidden.addItemList(clockItems, 1);
+    lfo.clockBtn.setLookAndFeel(&lfoClockLnf);
+    lfo.clockBtn.setClickingTogglesState(false);
+    lfo.clockBtn.onClick = [&lfo] {
+        const int cur = lfo.clockModeHidden.getSelectedId();
+        lfo.clockModeHidden.setSelectedId(cur == 1 ? 2 : 1);
+    };
+    addAndMakeVisible(lfo.clockBtn);
+
+    // Hz row + Division row occupy the same on-screen rect; visibility
+    // swaps based on ClockMode (Off → rate, Sync → division).
+    lfo.rateRow     = std::make_unique<SliderRow>("Rate", fmtHzF1, kLfoCol);
+    lfo.depthRow    = std::make_unique<SliderRow>("Depth", fmtPctFine, kLfoCol);
+    lfo.divisionRow = std::make_unique<SliderRow>("Rate",
+        [](double v) {
+            const int idx = juce::jlimit(0, ClockDivision::kCount - 1,
+                                          juce::roundToInt(v));
+            return juce::String(ClockDivision::kEntries[idx].label);
+        }, kLfoCol);
+    lfo.divisionRow->getSlider().setRange(
+        0.0, static_cast<double>(ClockDivision::kCount - 1), 1.0);
+    // Lock the value column to a fixed pixel width so the slider track's
+    // RIGHT edge stays put when ClockMode swaps "1.5 Hz" ↔ "1/16T". The
+    // label column is forced from SynthPanel::resized() to the
+    // modulation-section-wide left column width — do NOT force it here.
+    lfo.rateRow->setForcedValueWidth(56);
+    lfo.divisionRow->setForcedValueWidth(56);
     addAndMakeVisible(*lfo.rateRow);
     addAndMakeVisible(*lfo.depthRow);
+    addAndMakeVisible(*lfo.divisionRow);
 
-    lfo.rateA  = std::make_unique<SA>(apvts, rateId,  lfo.rateRow->getSlider());
-    lfo.depthA = std::make_unique<SA>(apvts, depthId, lfo.depthRow->getSlider());
-    lfo.waveA  = std::make_unique<CA>(apvts, waveId,  lfo.waveBox);
-    lfo.modeA  = std::make_unique<CA>(apvts, modeId,  lfo.modeBox);
+    lfo.rateA      = std::make_unique<SA>(apvts, rateId,      lfo.rateRow->getSlider());
+    lfo.depthA     = std::make_unique<SA>(apvts, depthId,     lfo.depthRow->getSlider());
+    lfo.waveA      = std::make_unique<CA>(apvts, waveId,      lfo.waveBox);
+    lfo.modeA      = std::make_unique<CA>(apvts, modeId,      lfo.modeHidden);
+    lfo.divisionA  = std::make_unique<SA>(apvts, divisionId,  lfo.divisionRow->getSlider());
+    lfo.clockModeA = std::make_unique<CA>(apvts, clockModeId, lfo.clockModeHidden);
+
+    // The CA was attached above; its initial setSelectedId fired before
+    // this lambda existed, so we set the lambda now and invoke it
+    // explicitly below to sync the visible state.
+    lfo.clockModeHidden.onChange = [&lfo] {
+        const bool sync = lfo.clockModeHidden.getSelectedId() == 2;
+        lfo.clockBtn.setToggleState(sync, juce::dontSendNotification);
+        lfo.clockBtn.repaint();
+        if (lfo.rateRow)     lfo.rateRow->setVisible(!sync);
+        if (lfo.divisionRow) lfo.divisionRow->setVisible(sync);
+    };
+    // Sync initial state from the loaded APVTS values.
+    lfo.modeHidden.onChange();
+    lfo.clockModeHidden.onChange();
 
     lfo.rateRow->updateValue();
     lfo.depthRow->updateValue();
+    lfo.divisionRow->updateValue();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -193,6 +256,7 @@ void SynthPanel::initLfo(LfoSection& lfo, const juce::String& name,
 void SynthPanel::initDrift(DriftSection& drift, const juce::String& name,
                             const juce::String& rateId, const juce::String& depthId,
                             const juce::String& targetId, const juce::String& waveId,
+                            const juce::String& clockModeId, const juce::String& divisionId,
                             juce::AudioProcessorValueTreeState& apvts)
 {
     drift.header.setText(name, juce::dontSendNotification);
@@ -210,18 +274,59 @@ void SynthPanel::initDrift(DriftSection& drift, const juce::String& name,
     drift.waveBox.addItemList(driftWaveItems, 1);
     addAndMakeVisible(drift.waveBox);
 
-    drift.rateRow  = std::make_unique<SliderRow>("Rate",  fmtHzF3, kDriftCol);
-    drift.depthRow = std::make_unique<SliderRow>("Depth", fmtPctFine, kDriftCol);
+    // BPM-sync clock — same pattern as LFO; Drift has no Free/Trig so no
+    // mode button.
+    juce::StringArray clockItems;
+    for (const auto& e : ClockMode::kEntries) clockItems.add(e.label);
+    drift.clockModeHidden.addItemList(clockItems, 1);
+    drift.clockBtn.setLookAndFeel(&driftClockLnf);
+    drift.clockBtn.setClickingTogglesState(false);
+    drift.clockBtn.onClick = [&drift] {
+        const int cur = drift.clockModeHidden.getSelectedId();
+        drift.clockModeHidden.setSelectedId(cur == 1 ? 2 : 1);
+    };
+    addAndMakeVisible(drift.clockBtn);
+
+    drift.rateRow     = std::make_unique<SliderRow>("Rate", fmtHzF3, kDriftCol);
+    drift.depthRow    = std::make_unique<SliderRow>("Depth", fmtPctFine, kDriftCol);
+    drift.divisionRow = std::make_unique<SliderRow>("Rate",
+        [](double v) {
+            const int idx = juce::jlimit(0, ClockDivision::kCount - 1,
+                                          juce::roundToInt(v));
+            return juce::String(ClockDivision::kEntries[idx].label);
+        }, kDriftCol);
+    drift.divisionRow->getSlider().setRange(
+        0.0, static_cast<double>(ClockDivision::kCount - 1), 1.0);
+    // Lock the value column to a fixed pixel width so the slider track's
+    // RIGHT edge stays put when ClockMode swaps. Drift's "0.001 Hz" is
+    // wider than LFO's by ~8 px, hence 64 vs 56. The label column is
+    // forced from SynthPanel::resized() to the modulation-section-wide
+    // left column width — do NOT force it here.
+    drift.rateRow->setForcedValueWidth(64);
+    drift.divisionRow->setForcedValueWidth(64);
     addAndMakeVisible(*drift.rateRow);
     addAndMakeVisible(*drift.depthRow);
+    addAndMakeVisible(*drift.divisionRow);
 
-    drift.rateA  = std::make_unique<SA>(apvts, rateId,   drift.rateRow->getSlider());
-    drift.depthA = std::make_unique<SA>(apvts, depthId,  drift.depthRow->getSlider());
-    drift.targetA = std::make_unique<CA>(apvts, targetId, drift.targetBox);
-    drift.waveA   = std::make_unique<CA>(apvts, waveId,   drift.waveBox);
+    drift.rateA      = std::make_unique<SA>(apvts, rateId,      drift.rateRow->getSlider());
+    drift.depthA     = std::make_unique<SA>(apvts, depthId,     drift.depthRow->getSlider());
+    drift.targetA    = std::make_unique<CA>(apvts, targetId,    drift.targetBox);
+    drift.waveA      = std::make_unique<CA>(apvts, waveId,      drift.waveBox);
+    drift.divisionA  = std::make_unique<SA>(apvts, divisionId,  drift.divisionRow->getSlider());
+    drift.clockModeA = std::make_unique<CA>(apvts, clockModeId, drift.clockModeHidden);
+
+    drift.clockModeHidden.onChange = [&drift] {
+        const bool sync = drift.clockModeHidden.getSelectedId() == 2;
+        drift.clockBtn.setToggleState(sync, juce::dontSendNotification);
+        drift.clockBtn.repaint();
+        if (drift.rateRow)     drift.rateRow->setVisible(!sync);
+        if (drift.divisionRow) drift.divisionRow->setVisible(sync);
+    };
+    drift.clockModeHidden.onChange();
 
     drift.rateRow->updateValue();
     drift.depthRow->updateValue();
+    drift.divisionRow->updateValue();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -787,14 +892,26 @@ SynthPanel::SynthPanel(T5ynthProcessor& processor)
             PID::mod2Amount, PID::mod2VelSens, PID::mod2Loop, apvts);
 
     // ── LFOs ──
-    initLfo(lfo1, "LFO 1", PID::lfo1Rate, PID::lfo1Depth, PID::lfo1Wave, PID::lfo1Mode, apvts);
-    initLfo(lfo2, "LFO 2", PID::lfo2Rate, PID::lfo2Depth, PID::lfo2Wave, PID::lfo2Mode, apvts);
-    initLfo(lfo3, "LFO 3", PID::lfo3Rate, PID::lfo3Depth, PID::lfo3Wave, PID::lfo3Mode, apvts);
+    initLfo(lfo1, "LFO 1",
+            PID::lfo1Rate, PID::lfo1Depth, PID::lfo1Wave, PID::lfo1Mode,
+            PID::lfo1ClockMode, PID::lfo1ClockDivision, apvts);
+    initLfo(lfo2, "LFO 2",
+            PID::lfo2Rate, PID::lfo2Depth, PID::lfo2Wave, PID::lfo2Mode,
+            PID::lfo2ClockMode, PID::lfo2ClockDivision, apvts);
+    initLfo(lfo3, "LFO 3",
+            PID::lfo3Rate, PID::lfo3Depth, PID::lfo3Wave, PID::lfo3Mode,
+            PID::lfo3ClockMode, PID::lfo3ClockDivision, apvts);
 
     // ── Drift ──
-    initDrift(drift1, "D1", PID::drift1Rate, PID::drift1Depth, PID::drift1Target, PID::drift1Wave, apvts);
-    initDrift(drift2, "D2", PID::drift2Rate, PID::drift2Depth, PID::drift2Target, PID::drift2Wave, apvts);
-    initDrift(drift3, "D3", PID::drift3Rate, PID::drift3Depth, PID::drift3Target, PID::drift3Wave, apvts);
+    initDrift(drift1, "D1",
+              PID::drift1Rate, PID::drift1Depth, PID::drift1Target, PID::drift1Wave,
+              PID::drift1ClockMode, PID::drift1ClockDivision, apvts);
+    initDrift(drift2, "D2",
+              PID::drift2Rate, PID::drift2Depth, PID::drift2Target, PID::drift2Wave,
+              PID::drift2ClockMode, PID::drift2ClockDivision, apvts);
+    initDrift(drift3, "D3",
+              PID::drift3Rate, PID::drift3Depth, PID::drift3Target, PID::drift3Wave,
+              PID::drift3ClockMode, PID::drift3ClockDivision, apvts);
 
     paintSectionHeader(lfoHeader, "LFO", kLfoCol);
     addAndMakeVisible(lfoHeader);
@@ -1040,9 +1157,11 @@ void SynthPanel::updateVisibility()
         bool active = lfo.targetBox.getSelectedId() != 1; // 1 = "---"
         float alpha = active ? 1.0f : dimAlpha;
         lfo.waveBox.setAlpha(alpha);
-        lfo.modeBox.setAlpha(alpha);
-        if (lfo.rateRow)  lfo.rateRow->setAlpha(alpha);
-        if (lfo.depthRow) lfo.depthRow->setAlpha(alpha);
+        lfo.modeBtn.setAlpha(alpha);
+        lfo.clockBtn.setAlpha(alpha);
+        if (lfo.rateRow)     lfo.rateRow->setAlpha(alpha);
+        if (lfo.depthRow)    lfo.depthRow->setAlpha(alpha);
+        if (lfo.divisionRow) lfo.divisionRow->setAlpha(alpha);
     };
     setLfoDimmed(lfo1);
     setLfoDimmed(lfo2);
@@ -1052,8 +1171,10 @@ void SynthPanel::updateVisibility()
         bool active = drift.targetBox.getSelectedId() != 1; // 1 = "---"
         float alpha = active ? 1.0f : dimAlpha;
         drift.waveBox.setAlpha(alpha);
-        if (drift.rateRow)  drift.rateRow->setAlpha(alpha);
-        if (drift.depthRow) drift.depthRow->setAlpha(alpha);
+        drift.clockBtn.setAlpha(alpha);
+        if (drift.rateRow)     drift.rateRow->setAlpha(alpha);
+        if (drift.depthRow)    drift.depthRow->setAlpha(alpha);
+        if (drift.divisionRow) drift.divisionRow->setAlpha(alpha);
     };
     setDriftDimmed(drift1);
     setDriftDimmed(drift2);
@@ -1131,14 +1252,18 @@ void SynthPanel::layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float f,
 
 void SynthPanel::layoutLfo(LfoSection& lfo, juce::Rectangle<int>& area, float f, int rowH, int gap)
 {
-    // Single-row layout: [Label] [Target] [Wave] [Mode] [Rate slider] [Depth slider]
+    // Single-row layout:
+    //   [Label] [Target] [Wave] [F/T] [⏱] [Rate|Division slider] [Depth]
+    // F/T and Clock are smaller than the old "Free⌄" ComboBox they share
+    // the slot of, so the sliders keep roughly the same horizontal extent.
     lfo.header.setFont(juce::FontOptions(f));
     auto row = area.removeFromTop(rowH);
 
     int headerW = juce::roundToInt(f * 4.0f);   // "LFO 1"
     int targetW = juce::roundToInt(f * 7.0f);
     int waveW   = juce::roundToInt(f * 4.5f);
-    int modeW   = juce::roundToInt(f * 4.5f);
+    int modeW   = juce::roundToInt(f * 2.0f);   // 1-char F/T cycling button
+    int clockW  = juce::roundToInt(f * 2.0f);   // 1-icon clock button
     int boxGap  = 4;
 
     lfo.header.setBounds(row.removeFromLeft(headerW));
@@ -1146,36 +1271,44 @@ void SynthPanel::layoutLfo(LfoSection& lfo, juce::Rectangle<int>& area, float f,
     row.removeFromLeft(boxGap);
     lfo.waveBox.setBounds(row.removeFromLeft(waveW));
     row.removeFromLeft(boxGap);
-    lfo.modeBox.setBounds(row.removeFromLeft(modeW));
+    lfo.modeBtn.setBounds(row.removeFromLeft(modeW));
+    row.removeFromLeft(boxGap);
+    lfo.clockBtn.setBounds(row.removeFromLeft(clockW));
     row.removeFromLeft(boxGap * 2);
 
     auto bounds = layoutSliderRowPairBounds(row, *lfo.rateRow, *lfo.depthRow, boxGap);
     lfo.rateRow->setBounds(bounds[0]);
     lfo.depthRow->setBounds(bounds[1]);
+    if (lfo.divisionRow) lfo.divisionRow->setBounds(bounds[0]);
 
     area.removeFromTop(gap);
 }
 
 void SynthPanel::layoutDrift(DriftSection& drift, juce::Rectangle<int>& area, float f, int rowH, int gap)
 {
-    // Single-row layout: [Label] [Target] [Wave] [Rate slider] [Depth slider]
+    // Single-row layout:
+    //   [Label] [Target] [Wave] [⏱] [Rate|Division slider] [Depth]
     drift.header.setFont(juce::FontOptions(f));
     auto row = area.removeFromTop(rowH);
 
     int headerW = juce::roundToInt(f * 2.5f);   // "D1"
     int targetW = juce::roundToInt(f * 7.5f);
     int waveW   = juce::roundToInt(f * 4.5f);
+    int clockW  = juce::roundToInt(f * 2.0f);
     int boxGap  = 4;
 
     drift.header.setBounds(row.removeFromLeft(headerW));
     drift.targetBox.setBounds(row.removeFromLeft(targetW));
     row.removeFromLeft(boxGap);
     drift.waveBox.setBounds(row.removeFromLeft(waveW));
+    row.removeFromLeft(boxGap);
+    drift.clockBtn.setBounds(row.removeFromLeft(clockW));
     row.removeFromLeft(boxGap * 2);
 
     auto bounds = layoutSliderRowPairBounds(row, *drift.rateRow, *drift.depthRow, boxGap);
     drift.rateRow->setBounds(bounds[0]);
     drift.depthRow->setBounds(bounds[1]);
+    if (drift.divisionRow) drift.divisionRow->setBounds(bounds[0]);
 
     area.removeFromTop(gap);
 }
@@ -1608,7 +1741,9 @@ void SynthPanel::resized()
             modulationForcedLabelWidthFor(*ampEnv.sRow, modColumnWidth),
             modulationForcedLabelWidthFor(*ampEnv.amtRow, modColumnWidth),
             modulationForcedLabelWidthFor(*lfo1.rateRow, modColumnWidth),
-            modulationForcedLabelWidthFor(*drift1.rateRow, modColumnWidth)
+            modulationForcedLabelWidthFor(*lfo1.divisionRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*drift1.rateRow, modColumnWidth),
+            modulationForcedLabelWidthFor(*drift1.divisionRow, modColumnWidth)
         });
 
         const int rightLabelWidth = std::max({
@@ -1624,7 +1759,9 @@ void SynthPanel::resized()
                  mod1Env.aRow.get(), mod1Env.sRow.get(), mod1Env.amtRow.get(),
                  mod2Env.aRow.get(), mod2Env.sRow.get(), mod2Env.amtRow.get(),
                  lfo1.rateRow.get(), lfo2.rateRow.get(), lfo3.rateRow.get(),
-                 drift1.rateRow.get(), drift2.rateRow.get(), drift3.rateRow.get() })
+                 lfo1.divisionRow.get(), lfo2.divisionRow.get(), lfo3.divisionRow.get(),
+                 drift1.rateRow.get(), drift2.rateRow.get(), drift3.rateRow.get(),
+                 drift1.divisionRow.get(), drift2.divisionRow.get(), drift3.divisionRow.get() })
             row->setForcedLabelWidth(leftLabelWidth);
 
         for (auto* row : {

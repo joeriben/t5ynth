@@ -31,13 +31,21 @@ private:
     void updateVisibility();
     T5ynthProcessor& processorRef;
 
+    // Clock-button LnF — declared BEFORE the button using it so destruction
+    // order is button-first, LnF-second. Never call setLookAndFeel(nullptr)
+    // on the button during teardown.
+    ClockButtonLnF delayClockLnf;
+
     // Delay section
     juce::Label delayHeader;
     static constexpr int kNumDelayBtns = 2;
     juce::TextButton delayTypeBtns[kNumDelayBtns]; // [OFF][Stereo]
     juce::ComboBox delayTypeHidden;
     juce::Rectangle<int> delayTypeSwitchBounds;
+    juce::TextButton delayClockBtn;            // BPM-sync clock button
+    juce::ComboBox   delayClockModeHidden;     // hidden, APVTS-attached
     std::unique_ptr<SliderRow> delayTimeRow, delayFbRow, delayDampRow, delayMixRow;
+    std::unique_ptr<SliderRow> delayDivisionRow; // same rect as delayTimeRow when sync
 
     // Reverb section
     juce::Label reverbHeader;
@@ -52,8 +60,9 @@ private:
     using CA = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
 
     std::unique_ptr<SA> delayTimeA, delayFbA, delayDampA, delayMixA;
+    std::unique_ptr<SA> delayDivisionA;
     std::unique_ptr<SA> reverbMixA, algoRoomA, algoDampA, algoWidthA;
-    std::unique_ptr<CA> delayTypeA, reverbTypeA;
+    std::unique_ptr<CA> delayTypeA, reverbTypeA, delayClockModeA;
 
     WordmarkComponent wordmark;
 

@@ -130,25 +130,45 @@ private:
     };
     EnvSection ampEnv, mod1Env, mod2Env;
 
+    // ── Clock-button LnFs (shared across the section's clock buttons) ──
+    //   Declared BEFORE LfoSection/DriftSection so destruction order is
+    //   button-first, LnF-second. Never call setLookAndFeel(nullptr) on
+    //   the buttons during teardown.
+    ClockButtonLnF lfoClockLnf, driftClockLnf;
+
     // ── LFO sections ──
+    //   modeHidden + clockModeHidden are APVTS-attached (not addAndMakeVisible'd);
+    //   modeBtn + clockBtn are the visible 1-cycle controls that drive them.
+    //   divisionRow occupies the same screen rect as rateRow — visibility
+    //   swaps based on ClockMode.
     struct LfoSection
     {
         juce::Label header;
-        juce::ComboBox targetBox, waveBox, modeBox;
-        std::unique_ptr<SliderRow> rateRow, depthRow;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> rateA, depthA;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> waveA, modeA;
+        juce::ComboBox targetBox, waveBox;
+        juce::ComboBox modeHidden, clockModeHidden;
+        juce::TextButton modeBtn, clockBtn;
+        std::unique_ptr<SliderRow> rateRow, depthRow, divisionRow;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
+            rateA, depthA, divisionA;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
+            waveA, modeA, clockModeA;
     };
     LfoSection lfo1, lfo2, lfo3;
 
     // ── Drift ──
+    //   Same dual-control pattern as LFO, minus the F/T mode (Drift has
+    //   no Free/Trig).
     struct DriftSection
     {
         juce::Label header;
         juce::ComboBox targetBox, waveBox;
-        std::unique_ptr<SliderRow> rateRow, depthRow;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> rateA, depthA;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> targetA, waveA;
+        juce::ComboBox clockModeHidden;
+        juce::TextButton clockBtn;
+        std::unique_ptr<SliderRow> rateRow, depthRow, divisionRow;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>
+            rateA, depthA, divisionA;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>
+            targetA, waveA, clockModeA;
     };
     DriftSection drift1, drift2, drift3;
     // Regenerate mode switchbox: Manual / Auto / max 1♩ / max 4♩ / max 16♩
@@ -192,10 +212,12 @@ private:
     void initLfo(LfoSection& lfo, const juce::String& name,
                  const juce::String& rateId, const juce::String& depthId,
                  const juce::String& waveId, const juce::String& modeId,
+                 const juce::String& clockModeId, const juce::String& divisionId,
                  juce::AudioProcessorValueTreeState& apvts);
     void initDrift(DriftSection& drift, const juce::String& name,
                    const juce::String& rateId, const juce::String& depthId,
                    const juce::String& targetId, const juce::String& waveId,
+                   const juce::String& clockModeId, const juce::String& divisionId,
                    juce::AudioProcessorValueTreeState& apvts);
 
     void layoutEnv(EnvSection& env, juce::Rectangle<int>& area, float f, int rowH, int gap);

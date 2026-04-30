@@ -521,6 +521,53 @@ juce::AudioProcessorValueTreeState::ParameterLayout T5ynthProcessor::createParam
         juce::ParameterID{PID::lfo3Mode, 1}, "LFO3 Mode",
         toChoices(LfoMode::kEntries), 0));
 
+    // BPM-sync clock mode + division for LFO 1/2/3, Drift 1/2/3, Delay.
+    // ClockMode default Off; Division default 1/4 (= ClockDivision::D1_4).
+    // No DSP behaviour yet — wired up here so presets save/load and the UI
+    // can attach. Sync rate computation lands in a later step.
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo1ClockMode, 1}, "LFO1 Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo1ClockDivision, 1}, "LFO1 Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo2ClockMode, 1}, "LFO2 Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo2ClockDivision, 1}, "LFO2 Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo3ClockMode, 1}, "LFO3 Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::lfo3ClockDivision, 1}, "LFO3 Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::drift1ClockMode, 1}, "Drift1 Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::drift1ClockDivision, 1}, "Drift1 Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::drift2ClockMode, 1}, "Drift2 Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::drift2ClockDivision, 1}, "Drift2 Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::drift3ClockMode, 1}, "Drift3 Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::drift3ClockDivision, 1}, "Drift3 Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::delayClockMode, 1}, "Delay Clock Mode",
+        toChoices(ClockMode::kEntries), ClockMode::Off));
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{PID::delayClockDivision, 1}, "Delay Clock Division",
+        toChoices(ClockDivision::kEntries), ClockDivision::D1_4));
+
     // Delay damp
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{PID::delayDamp, 1}, "Delay Damp",

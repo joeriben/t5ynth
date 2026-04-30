@@ -1,125 +1,93 @@
 # Session 17 Handover — BPM Sync for LFO / Drift / Delay (+ LFO mode UI rework)
 
-**Status: not started.** This is a fresh feature ticket, written for a
-cold session. Read it end-to-end before touching code; the UX
-proposal interleaves with a code-level bug fix and an enum
-re-shaping, and getting the order right matters.
+**Status: design decided, not yet implemented.** This is a fresh
+feature ticket for a cold session. Read it end-to-end before
+touching code; the UX proposal interleaves with a code-level bug
+fix and an enum re-shaping, and getting the order right matters.
+
+The user has answered the open design questions — see §6
+("Resolved decisions"). Implementation order is **feature + UI
+first; the Free/Trig bugfix is deferred** to a later commit.
 
 ---
 
 ## 1. The feature in one sentence
 
-Add BPM-sync to **LFO 1/2/3**, **Drift LFO 1/2/3**, and **Delay Time**
-so their rates / times can be quantised to musical divisions of a
-clock, with a small inline UI selector that sits to the **left of
-the existing "Rate" slider** (or, for Delay, to the left of the
+Add BPM-sync to **LFO 1/2/3**, **Drift LFO 1/2/3**, and **Delay
+Time** so their rates / times can be quantised to musical divisions
+of a clock, with a small inline UI selector that sits to the **left
+of the existing "Rate" slider** (or, for Delay, to the left of the
 "Time" slider).
 
-The user wants two clock sources, selectable per parameter:
+**Two states**, not three:
 
-- **External clock** — host transport BPM (DAW playhead), when the
-  DAW is actually playing.
-- **Internal clock** — the existing `seqBpm` APVTS parameter that
-  the in-app sequencer already uses (defined in `PluginProcessor.cpp`
-  near line 2871; UI in `SequencerPanel.cpp:260-264`).
+| State | Visual                       | Behaviour                                            |
+| ----- | ---------------------------- | ---------------------------------------------------- |
+| Off   | grey clock symbol, no fill   | Free-running rate / time (current default)           |
+| Sync  | **orange fill** (background) | Sync to BPM; division picked by the rate/time slider |
 
-A third state is "off" → no sync, the rate / time slider keeps its
-current free-running Hz / ms semantics.
+The clock source is **auto-resolved internally** by priority:
 
-The user mocked it as a small **clock-symbol button with a frame**,
-visually similar to the **Delay-Vel** button they already have.
-Three states cycle on click:
+1. **Host transport playing** → use host BPM via `getPlayHead`.
+   Cache it as `hostBpmLastSeen` each block.
+2. **In-app sequencer running** (and host not playing) → use
+   `seqBpm`. Starting the in-app sequencer is the explicit signal
+   "I'm driving the tempo now."
+3. **Host paused, in-app seq stopped, host BPM ever seen** →
+   freeze at `hostBpmLastSeen`. Avoids jolting the rate when a
+   DAW user briefly pauses.
+4. **Standalone, host BPM never seen** → fall back to `seqBpm`.
 
-| State          | Visual                       | Behaviour                                  |
-| -------------- | ---------------------------- | ------------------------------------------ |
-| Off            | grey symbol, no fill         | Free-running rate / time (current default) |
-| External clock | **orange fill** (background) | Sync to host BPM via `getPlayHead`         |
-| Internal clock | **orange frame** (border)    | Sync to `seqBpm` APVTS                     |
+This uses two unambiguous transport signals (host playing,
+sequencer running) and avoids the slider-movement-as-override
+heuristic, which would have collided with preset loads and
+automation.
 
-When sync is on, the rate/time slider's value semantics shift from
-Hz/ms to a **musical division** (1/1, 1/2, 1/4, 1/8, 1/16, 1/32,
-plus dotted "·" and triplet "T" variants). The slider can either
-show those division names directly (preferred) or remain a
-continuous slider whose value is rounded to the nearest division at
-read time.
+The single button cycles Off ↔ Sync on click. Visual reference is
+the existing **Delay-Vel button**.
 
 ---
 
 ## 2. Companion changes the user asked for in the same breath
 
-### 2.1 LFO mode is currently a 2-entry choice (`Free / Trig`) — convert to a "1 cycle" button
+### 2.1 LFO mode: 2-entry choice (`Free / Trig`) → 1-cycle button
 
 Today the mode lives in `LfoMode` (`src/dsp/BlockParams.h:277-288`)
-as a 2-entry choice:
-
-```cpp
-namespace LfoMode {
-    enum : int { Free = 0, Trigger = 1 };
-    static constexpr ChoiceEntry kEntries[] = {
-        { "free",    "Free" },
-        { "trigger", "Trig" }
-    };
-    ...
-}
-```
-
-The UI is a `ComboBox` populated from this list (`SynthPanel.cpp:
-171-173`). The user wants it as a **single toggle button** that
-shows "F" or "T" (Free / Trig) and cycles on click — same visual
-language as the proposed clock button. Then the **clock button sits
-next to it**, so each LFO row has the layout:
+as a 2-entry choice rendered as a `ComboBox`
+(`SynthPanel.cpp:171-173`). The user wants a **single toggle
+button** showing "F" or "T" (Free / Trig) that cycles on click —
+same visual language as the clock button. Layout per LFO row:
 
 ```
-[F/T] [⏱]  Rate  ───●─────  Free
+[ Wave ] [F/T] [⏱] [ Target ]   Rate  ──●──   Depth  ──●──
 ```
 
-The user explicitly called this "1 cycle button" — meaning a single
-button that cycles through its states on click, NOT a dropdown.
+### 2.2 LFO Free/Trig is broken — bugfix is **deferred**
 
-### 2.2 LFO Free/Trig is broken — fix while you're there
-
-The user reports "Free/Trig funktioniert nicht". The wiring goes:
+The user reports "Free/Trig funktioniert nicht". Wiring trail:
 
 - `PluginProcessor.cpp:122-124` reads `lfo1Mode/lfo2Mode/lfo3Mode`
   → `lfoNTrigMode` bools.
-- These are passed into `voiceManager.setDroneNote(note, vel,
-  lfo1TrigMode, ...)` at line 126 and into the per-block update
-  path at `:1635`.
-- Investigation needed inside `VoiceManager::setDroneNote` and the
-  `SynthVoice` per-LFO trigger path. Verify that `Trig` mode
-  actually re-phases the LFO on note-on; `Free` should let it run
-  continuously across note boundaries.
+- These flow into `voiceManager.setDroneNote(...)` at line 126 and
+  the per-block update at `:1635`.
+- Suspected: the bool is read but never reaches `Lfo::setMode` /
+  `setRetriggerOnNote` inside `SynthVoice` — start there.
 
-The grep revealed `lfoNTrigMode` is read in two places, but I did
-not chase whether the bool actually reaches the LFO instance.
-Likely the bug is "param is read but never wired into
-`Lfo::setMode` / `setRetriggerOnNote`". Start there.
+**The user explicitly deferred this fix** — feature work first,
+this becomes its own commit afterwards. Don't bundle it in.
 
-### 2.3 Delay layout — the user is unsure where the sync button goes
+### 2.3 Delay layout — separate clock button (resolved)
 
-The Delay panel header row currently has just `OFF / Stereo` (a
-2-entry mode toggle that selects whether the delay is bypassed or
-running in stereo). The user proposed extending this row to
-**OFF / Free / Sync**, dropping the standalone `[F/T] [⏱]` pair
-that LFO/Drift rows have, and instead embedding the sync state in
-the existing mode selector:
+The Delay panel header row currently has just `OFF / Stereo`. The
+user considered extending it to OFF/Free/Sync but decided
+**against** — that row should stay reserved for future Stereo /
+Ping-Pong / etc. modes. Instead, **Delay gets the same separate
+clock button** as LFO/Drift, placed left of the "Time" slider.
 
-| Old        | New              |
-| ---------- | ---------------- |
-| OFF        | OFF              |
-| Stereo     | Free (= Stereo)  |
-|            | Sync             |
-
-Discuss with the user whether to also keep a separate Mono/Stereo
-choice (the current `Stereo` button is already inconsistent: there
-is no Mono mode — clicking OFF disables, clicking Stereo enables).
-A more honest design might be: keep OFF / ON (the current
-"OFF/Stereo" pair becomes "OFF/ON"), then add a separate Free/Sync
-toggle and a separate Mono/Stereo toggle if any of those gain
-multiple values. Confirm before refactoring.
-
-The user's wording was tentative ("ggf. bei der Typ.Zeile, die eh
-erst 2 Einträge hat") — this is the part to ask back about.
+Acknowledged tradeoff: this breaks the slider-row symmetry slightly
+(Delay's Time row now has a button-prefix the other Delay sliders
+don't). The user accepts this; the alternative (extending
+OFF/Stereo) was judged worse.
 
 ---
 
@@ -129,77 +97,135 @@ erst 2 Einträge hat") — this is the part to ask back about.
 
 For each of LFO 1/2/3, Drift 1/2/3, and Delay, add:
 
-- `*ClockMode` — choice of `{ "off", "external", "internal" }`.
-- `*Division` — choice of musical divisions (`{ "1/1", "1/2", "1/4",
-  "1/4d", "1/4t", "1/8", ... }`).
+- `*ClockMode` — choice of `{ "off", "sync" }`.
+- `*Division` — choice of musical divisions (see §3.2).
 
-Or — if the existing rate/time slider should itself snap to
-divisions when sync is on — keep the existing slider param and add
-only the `*ClockMode`. A separate `*Division` param is cleaner
-because divisions are discrete; rate/time sliders are continuous in
-Hz/ms.
+Old presets without these fields default to `ClockMode::Off` →
+behaviour identical to v1.6.0-beta.1.
 
-I recommend separate params: the slider stays Hz/ms (used in
-`*ClockMode == "off"`), the division choice is read in `external`
-and `internal` modes. Existing presets (no `*ClockMode` field) load
-as `off` → no behavioural change.
-
-Param IDs to add to `src/PIDs.h` (or wherever PIDs live — grep for
-`PID::lfo1Mode` to find the file):
+Param IDs (in `namespace PID` in `src/dsp/BlockParams.h`):
 
 ```
-lfo1ClockMode, lfo2ClockMode, lfo3ClockMode
-lfo1Division,  lfo2Division,  lfo3Division
+lfo1ClockMode,   lfo2ClockMode,   lfo3ClockMode
+lfo1ClockDivision, lfo2ClockDivision, lfo3ClockDivision
 drift1ClockMode, drift2ClockMode, drift3ClockMode
-drift1Division,  drift2Division,  drift3Division
+drift1ClockDivision, drift2ClockDivision, drift3ClockDivision
 delayClockMode
-delayDivision
+delayClockDivision
 ```
 
-The choice tables go in `BlockParams.h` next to the existing
+The `Clock` infix on the Division PIDs is intentional — disambiguates
+from the existing `seqDivision` (sequencer step duration) which is
+unrelated.
+
+Choice tables live in `BlockParams.h` next to the existing
 `LfoWave` / `LfoMode` / `DriftWave` namespaces, keyed
-`ClockMode::kEntries` and `Division::kEntries`.
+`ClockMode::kEntries` and `ClockDivision::kEntries`. The
+`ClockDivision` namespace also exports a `kFactor[]` array
+(events-per-whole-note) for use in §3.4.
 
-### 3.2 BPM source plumbing
+### 3.2 Division set (resolved)
 
-- `processor.driftRegenBpm` already exists as a `std::atomic<float>`
-  (read at `PromptPanel.cpp:1174`) — find where it gets written,
-  this is likely the existing internal-clock BPM.
-- Host BPM via `getPlayHead()->getCurrentPosition()` (deprecated in
-  newer JUCE) or `getPlayHead()->getPosition()->getBpm()` — check
-  which API the project's vendored JUCE supports. Cache it in
-  `processBlock` once per block, expose as
-  `processor.hostBpm.load(std::memory_order_relaxed)`.
-- Both internal and external BPM should be available to LFO / Drift
-  / Delay. Add a small helper:
+User chose: straight + triplets + quintuplets. **No dotted, no
+1/64.**
+
+```
+Straight:    1/1, 1/2, 1/4, 1/8, 1/16, 1/32
+Triplets:    1/2t, 1/4t, 1/8t, 1/16t
+Quintuplets: 1/4q, 1/8q, 1/16q
+```
+
+Total: 13 entries.
+
+Slider ordering must be **monotonic in rate** (slow → fast) so the
+slider feels coherent. The factor column is "events per whole
+note":
+
+| Index | Division | Factor |
+| ----- | -------- | ------ |
+| 0     | 1/1      | 1      |
+| 1     | 1/2      | 2      |
+| 2     | 1/2t     | 3      |
+| 3     | 1/4      | 4      |
+| 4     | 1/4q     | 5      |
+| 5     | 1/4t     | 6      |
+| 6     | 1/8      | 8      |
+| 7     | 1/8q     | 10     |
+| 8     | 1/8t     | 12     |
+| 9     | 1/16     | 16     |
+| 10    | 1/16q    | 20     |
+| 11    | 1/16t    | 24     |
+| 12    | 1/32     | 32     |
+
+Triplet convention: 3 in the space of 2 (= 1.5× the straight rate).
+Quintuplet convention: 5 in the space of 4 (= 1.25× the straight
+rate). These are the standard DAW conventions; flag if a different
+reading is wanted before locking in the table.
+
+### 3.3 BPM source plumbing
+
+- `processor.driftRegenBpm` already exists as `std::atomic<float>`
+  — find where it is written. Reuse if it already represents the
+  effective BPM the rest of the engine uses.
+- Cache **host BPM** and **host transport state** in `processBlock`
+  via `getPlayHead()->getPosition()->getBpm()` (or the older
+  `getCurrentPosition()` API — check which the vendored JUCE
+  supports). New members:
   ```cpp
-  float T5ynthProcessor::resolveSyncBpm(int clockMode) const {
-      if (clockMode == ClockMode::Internal) return seqBpm.load();
-      if (clockMode == ClockMode::External) return hostBpm.load();
-      return 0.0f;  // off — caller falls back to free-running
+  std::atomic<float> hostBpmLastSeen { 0.0f };
+  std::atomic<bool>  hostPlayingNow  { false };
+  ```
+- Each block:
+  ```cpp
+  bool playing = false;
+  if (auto* ph = getPlayHead())
+      if (auto pos = ph->getPosition())
+          if (pos->getIsPlaying()) {
+              playing = true;
+              if (auto bpm = pos->getBpm()) hostBpmLastSeen.store((float) *bpm);
+          }
+  hostPlayingNow.store(playing);
+  ```
+- The in-app sequencer's run-state is already tracked somewhere
+  (search for the sequencer Play/Stop button handler — likely an
+  `std::atomic<bool>` on the processor or a query on the
+  `StepSequencer` instance). Expose it as a `bool seqRunningNow()
+  const` method on the processor if it isn't already easy to read.
+- Resolution helper:
+  ```cpp
+  float T5ynthProcessor::resolveSyncBpm() const {
+      if (hostPlayingNow.load())  return hostBpmLastSeen.load();
+      if (seqRunningNow())        return seqBpm.load();
+      const float h = hostBpmLastSeen.load(std::memory_order_relaxed);
+      return (h > 0.0f) ? h : seqBpm.load();
   }
   ```
+  Priority: live host > running in-app seq > frozen host > `seqBpm`
+  fallback for never-played-host (= standalone).
 
-### 3.3 Sync rate computation
+### 3.4 Sync rate computation
 
-When `*ClockMode != off`, compute the effective rate from BPM and
-division:
+When `*ClockMode == sync`, compute the effective rate from BPM and
+division (using `factor` from §3.2):
 
-- LFO / Drift: `rateHz = (bpm / 60) * divisionFactor` where
-  `divisionFactor = 1.0` for 1/4-note, `0.5` for 1/2-note, `2.0`
-  for 1/8-note, etc. Look at `StepSequencer.h:60` for the
-  existing `DIVISION_FACTORS` table — reuse it if possible.
-- Delay Time: `delayMs = (60_000 / bpm) * (4.0 / divisionFactor)` —
-  i.e. quarter-note ms divided by the division factor.
+- LFO / Drift: `rateHz = factor * (bpm / 60.0) / 4.0`.
+  (Whole note at `bpm` lasts `4 * 60/bpm` seconds; `factor` events
+  per whole note ⇒ rate = `factor / wholeNoteSeconds`.)
+- Delay Time: `delayMs = (60000.0 / bpm) * (4.0 / factor)`.
 
-LFO / Drift rate is currently set per block via `lfo1.setRate(bp.lfo1Rate)`
-at `PluginProcessor.cpp:978`. Insert a sync override before that:
+Look at `StepSequencer.h:60` for any existing `DIVISION_FACTORS`
+table — reuse if values match. If they don't, prefer adding a
+shared header rather than duplicating numbers.
+
+LFO / Drift rate is currently set per block via
+`lfo1.setRate(bp.lfo1Rate)` at `PluginProcessor.cpp:978`. Insert a
+sync override before that:
 
 ```cpp
 const int lfo1Clock = static_cast<int>(parameters.getRawParameterValue(PID::lfo1ClockMode)->load());
 const float lfo1RateEff = (lfo1Clock == ClockMode::Off)
     ? bp.lfo1Rate
-    : computeSyncRate(resolveSyncBpm(lfo1Clock),
+    : computeSyncRate(resolveSyncBpm(),
                       static_cast<int>(parameters.getRawParameterValue(PID::lfo1Division)->load()));
 lfo1.setRate(lfo1RateEff);
 ```
@@ -207,35 +233,50 @@ lfo1.setRate(lfo1RateEff);
 Delay time: `PluginProcessor.cpp:1751` reads `baseDelayTime`. Wrap
 it the same way.
 
-### 3.4 UI changes
+### 3.5 UI: stepped slider that swaps semantics
 
-Each LFO row in `SynthPanel.cpp` (around line 171) currently
-renders:
+The user's mental model: **one** Rate / Time slider per row, which
+switches its labels between Hz/ms (Off) and division names (Sync).
+Implementation:
 
-```
-[ Wave ] [ Mode ] [ Target ]   Rate  ──●──   Depth  ──●──
-```
+- **Two backing APVTS params** (`*Rate` continuous Hz/ms,
+  `*Division` choice). JUCE/APVTS can't carry two semantics on one
+  param.
+- **One on-screen `juce::Slider`** whose attachment swaps when
+  ClockMode changes. Simplest: build both attachments, place two
+  sliders in the same screen rect, toggle `setVisible` based on
+  ClockMode.
+- In Sync mode the slider is stepped (`setRange(0, 12, 1)` for the
+  13 divisions) and uses a custom `getTextFromValue` returning the
+  division name (`"1/4"`, `"1/8t"`, `"1/16q"`, …).
+- In Off mode it is the existing continuous Hz/ms slider with its
+  current attachment.
 
-New layout:
+Users perceive it as one control because the screen position never
+changes; only the labels do.
+
+### 3.6 UI changes — row layouts
+
+LFO row in `SynthPanel.cpp` (~line 171), new layout:
 
 ```
 [ Wave ] [F/T] [⏱] [ Target ]   Rate  ──●──   Depth  ──●──
-                                 ^ shows "Hz" off, "1/4" external, "1/4" internal
+                                 ^ shows "Hz" (Off) or division (Sync)
 ```
 
 The `[⏱]` button is a small `juce::TextButton` with a custom
 `paintButton` override that draws the clock symbol and varies its
-fill / border per state. Look at how the existing Delay-Vel button
-is drawn — the user explicitly cited it as the visual reference.
+fill per state (grey vs orange-fill). The Delay-Vel button is the
+visual reference.
 
-Drift rows in `DriftPanel.cpp` get the same treatment minus the
-`[F/T]` (Drift has no Free/Trig mode today; it doesn't need one
-either). Just add the `[⏱]` clock button left of "Rate".
+Drift rows in `DriftPanel.cpp`: same minus the `[F/T]` (Drift has
+no Free/Trig mode and doesn't need one). Just add the `[⏱]` clock
+button left of "Rate".
 
-Delay: see §2.3 above. Either add a clock button next to "Time"
-or extend the type row.
+Delay row: add `[⏱]` left of "Time". (See §2.3 — the OFF/Stereo
+row is left untouched.)
 
-### 3.5 Preset / IPC compatibility
+### 3.7 Preset / IPC compatibility
 
 - Preset format (`.t5p`): all new APVTS params serialise
   automatically. Old presets without these fields default to
@@ -245,51 +286,63 @@ or extend the type row.
 
 ---
 
-## 4. Suggested implementation order
+## 4. Implementation order
 
-1. **Fix Free/Trig first.** It's a regression bug, independent of
-   the new feature. Bug-fix commit on its own.
-2. **Add clock-mode UI as a 1-cycle button** for LFO mode (replace
-   the current ComboBox). This validates the visual pattern before
-   introducing it everywhere.
-3. **Wire host BPM** via `getPlayHead`. Land before the sync logic
-   so it can be tested in isolation.
-4. **Add `*ClockMode` + `*Division` APVTS params** for LFO 1/2/3,
-   then UI clock button.
-5. **Apply same pattern to Drift 1/2/3**.
-6. **Apply to Delay Time.** Discuss the OFF/Free/Sync row with the
-   user before refactoring the existing OFF/Stereo toggle.
-7. **Document** in CHANGELOG, in-app Manual §1, and ARCHITECTURE.md
-   (if BPM-sync infrastructure becomes architecturally meaningful).
+User explicitly requested: **feature and frontend design first,
+then the Free/Trig bugfix.**
+
+1. **APVTS layout:** add `*ClockMode` + `*Division` for all 7
+   targets (LFO 1/2/3, Drift 1/2/3, Delay). No behaviour yet —
+   just wire them up so presets save/load.
+2. **Frontend design pass** for the dual-semantics slider + the
+   `[⏱]` clock button. Get the visuals right before the DSP wires
+   up — easier to iterate on UI in isolation.
+3. **Host BPM plumbing** in `processBlock`, with the
+   freeze-on-pause semantics.
+4. **Sync rate computation** for LFO 1/2/3 (one target proves the
+   pattern).
+5. **Apply to Drift 1/2/3.**
+6. **Apply to Delay Time.**
+7. **LfoMode → 1-cycle button** (UI rework, replaces the existing
+   `ComboBox`).
+8. **Free/Trig bugfix.** Separate commit, after the feature lands.
+9. **Document** in CHANGELOG, in-app Manual §1, and
+   ARCHITECTURE.md.
 
 ---
 
 ## 5. Out of scope (don't touch)
 
-- The seqBpm parameter itself (already correct).
-- Sequencer step rate (already BPM-synced via the same `seqBpm`).
+- The `seqBpm` parameter itself (already correct).
+- Sequencer step rate (already BPM-synced via `seqBpm`).
 - Arpeggiator rate (already BPM-synced).
 - The injection-mode work shipped in v1.6.0-beta.1 — done, do not
   revisit.
 
 ---
 
-## 6. Open questions to ask the user before coding
+## 6. Resolved decisions (was: open questions)
 
-1. **Delay's mode row** — extend the existing OFF/Stereo to
-   OFF/Free/Sync, or add a separate clock button (consistent with
-   LFO/Drift)? See §2.3.
-2. **Division coverage** — minimum useful set is probably
-   `{ 1/1, 1/2, 1/4, 1/8, 1/16, 1/32 }`. Add dotted (·) and
-   triplet (T)? Add 1/64? Confirm before fixing the choice list.
-3. **External-clock fallback** — when host transport is *not*
-   playing, what should `external` do? Freeze? Fall through to
-   internal? Free-run? Probably "freeze rate at last-known BPM"
-   so a paused DAW doesn't desync the LFO from the listener's
-   intuition.
-4. **Slider semantics in sync mode** — does the existing
-   continuous Rate slider become a stepped division-picker, or
-   does the division have its own dedicated control? Recommend
-   the latter (separate `*Division` param) — see §3.1.
+1. **Two states, not three.** Off / Sync. Clock source auto-resolved
+   internally (host when transport playing, else `seqBpm`; freeze
+   at last seen host BPM during pause).
+2. **Delay layout:** separate clock button (not extending
+   OFF/Stereo). Slider-symmetry break is accepted; the OFF/Stereo
+   row stays reserved for future Stereo / Ping-Pong / etc. modes.
+3. **Division set:** 1/1, 1/2, 1/4, 1/8, 1/16, 1/32 + triplets at
+   1/2t–1/16t + quintuplets at 1/4q–1/16q. **No dotted, no 1/64.**
+4. **External-clock fallback when transport paused:** priority is
+   live host > running in-app sequencer > frozen `hostBpmLastSeen`
+   > `seqBpm` (standalone, host never seen). Starting the in-app
+   sequencer is the explicit signal that the user is now driving
+   the tempo themselves; pausing the host alone keeps the LFO at
+   the last seen host rate so a brief DAW pause doesn't jolt
+   anything.
+5. **Slider semantics:** one slider per row, swaps between Hz/ms
+   labels (Off) and division names (Sync). Two backing APVTS
+   params, one visible UI control. Stepped in Sync mode.
 
-Get these four answers before writing any APVTS layout.
+The only thing left to confirm before locking the table in §3.2 is
+the triplet/quintuplet *convention* (3-in-2 / 5-in-4) — these are
+the DAW defaults and likely correct, but flag if the user wants a
+different reading.

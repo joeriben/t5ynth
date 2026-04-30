@@ -57,21 +57,81 @@ FxPanel::FxPanel(juce::AudioProcessorValueTreeState& apvts, T5ynthProcessor& pro
     delayDampRow = std::make_unique<SliderRow>("Damp", fmtDampHz, kFxCol);
     delayMixRow  = std::make_unique<SliderRow>("Mix",  fmtF3, kFxCol);
 
-    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
+    // Division row swaps in for the Time slider when ClockMode == Sync.
+    // Same screen rect, label "Time", but the value formatter returns
+    // a musical-division name and the slider is stepped 0..12.
+    delayDivisionRow = std::make_unique<SliderRow>("Time",
+        [](double v) {
+            const int idx = juce::jlimit(0, ClockDivision::kCount - 1,
+                                          juce::roundToInt(v));
+            return juce::String(ClockDivision::kEntries[idx].label);
+        }, kFxCol);
+    delayDivisionRow->getSlider().setRange(
+        0.0, static_cast<double>(ClockDivision::kCount - 1), 1.0);
+
+    // The Time/Division rows have no text label — the clock button on the
+    // left IS their label. We still RESERVE label-width on the row (sized
+    // dynamically in resized() to match Damp's natural label width) so
+    // the slider track left-edge aligns vertically with Damp below;
+    // the clock button is then positioned on top of that reserved area.
+    delayTimeRow->getLabel().setText({}, juce::dontSendNotification);
+    delayDivisionRow->getLabel().setText({}, juce::dontSendNotification);
+    // Lock value column widths so slider track RIGHT-edges align across
+    // rows within each pair-column. Hardcoded (not derived in resized()
+    // from current value text) because slider value changes don't trigger
+    // a relayout — the forced width must accommodate the widest possible
+    // text the formatter can produce.
+    //   LEFT  column (Time/Division/Damp): 56 fits "1500ms", "1/16T", "20.0k".
+    //   RIGHT column (FB/Mix):             48 fits "0.95" and "0.999".
+    delayTimeRow->setForcedValueWidth(56);
+    delayDivisionRow->setForcedValueWidth(56);
+    delayDampRow->setForcedValueWidth(56);
+    delayFbRow->setForcedValueWidth(48);
+    delayMixRow->setForcedValueWidth(48);
+
+    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(),
+                     delayMixRow.get(), delayDivisionRow.get() })
         addAndMakeVisible(*r);
 
-    delayTimeA = std::make_unique<SA>(apvts, PID::delayTime,     delayTimeRow->getSlider());
-    delayFbA   = std::make_unique<SA>(apvts, PID::delayFeedback, delayFbRow->getSlider());
-    delayDampA = std::make_unique<SA>(apvts, PID::delayDamp,     delayDampRow->getSlider());
-    delayMixA  = std::make_unique<SA>(apvts, PID::delayMix,      delayMixRow->getSlider());
+    // BPM-sync clock button — sits left of the Time row. Hidden ComboBox
+    // holds the APVTS state, click cycles it Off ↔ Sync.
+    juce::StringArray clockItems;
+    for (const auto& e : ClockMode::kEntries) clockItems.add(e.label);
+    delayClockModeHidden.addItemList(clockItems, 1);
+    delayClockBtn.setLookAndFeel(&delayClockLnf);
+    delayClockBtn.setClickingTogglesState(false);
+    delayClockBtn.onClick = [this] {
+        const int cur = delayClockModeHidden.getSelectedId();
+        delayClockModeHidden.setSelectedId(cur == 1 ? 2 : 1);
+    };
+    addAndMakeVisible(delayClockBtn);
+
+    delayTimeA      = std::make_unique<SA>(apvts, PID::delayTime,     delayTimeRow->getSlider());
+    delayFbA        = std::make_unique<SA>(apvts, PID::delayFeedback, delayFbRow->getSlider());
+    delayDampA      = std::make_unique<SA>(apvts, PID::delayDamp,     delayDampRow->getSlider());
+    delayMixA       = std::make_unique<SA>(apvts, PID::delayMix,      delayMixRow->getSlider());
+    delayDivisionA  = std::make_unique<SA>(apvts, PID::delayClockDivision,
+                                           delayDivisionRow->getSlider());
 
     delayTimeRow->updateValue();
     delayFbRow->updateValue();
     delayDampRow->updateValue();
     delayMixRow->updateValue();
+    delayDivisionRow->updateValue();
+
+    // Wire onChange BEFORE attachment so the CA's initial setSelectedId
+    // call fires it and syncs the visible state.
+    delayClockModeHidden.onChange = [this] {
+        const bool sync = delayClockModeHidden.getSelectedId() == 2;
+        delayClockBtn.setToggleState(sync, juce::dontSendNotification);
+        delayClockBtn.repaint();
+        if (delayTimeRow)     delayTimeRow->setVisible(!sync);
+        if (delayDivisionRow) delayDivisionRow->setVisible(sync);
+    };
 
     // Attach APVTS AFTER buttons are set up (triggers onChange → updateVisibility)
-    delayTypeA = std::make_unique<CA>(apvts, PID::delayType, delayTypeHidden);
+    delayTypeA       = std::make_unique<CA>(apvts, PID::delayType,      delayTypeHidden);
+    delayClockModeA  = std::make_unique<CA>(apvts, PID::delayClockMode, delayClockModeHidden);
 
     // ══════════ REVERB section ══════════
     paintSectionHeader(reverbHeader, "REVERB", kFxCol);
@@ -152,11 +212,14 @@ void FxPanel::updateVisibility()
     // Delay: always visible, dimmed when OFF
     bool delayOn = delayTypeHidden.getSelectedId() > 1;
     float delayAlpha = delayOn ? 1.0f : dimAlpha;
-    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(), delayMixRow.get() })
+    for (auto* r : { delayTimeRow.get(), delayFbRow.get(), delayDampRow.get(),
+                     delayMixRow.get(), delayDivisionRow.get() })
     {
         r->setAlpha(delayAlpha);
         r->setEnabled(delayOn);
     }
+    delayClockBtn.setAlpha(delayAlpha);
+    delayClockBtn.setEnabled(delayOn);
 
     // Reverb: always visible; dim params based on mode
     bool reverbOn = reverbTypeHidden.getSelectedId() > 1;
@@ -316,16 +379,41 @@ void FxPanel::resized()
         .getUnion(delayTypeBtns[kNumDelayBtns - 1].getBounds());
     area.removeFromTop(gap);
 
-    // Delay params — always laid out, dimmed when OFF
+    // Delay params — always laid out, dimmed when OFF.
+    // Time/Division/Damp share the LEFT label column; FB/Mix share the
+    // RIGHT label column. Both forced widths derive from natural-width
+    // maxima.
     {
+        const int delayPairGap = 2;
+        const int delayColumnW = juce::jmax(0, (area.getWidth() - delayPairGap) / 2);
+
+        const int delayLeftLabelW = std::max({
+            delayTimeRow->getNaturalLabelWidthForAvailableWidth(delayColumnW),
+            delayDivisionRow->getNaturalLabelWidthForAvailableWidth(delayColumnW),
+            delayDampRow->getNaturalLabelWidthForAvailableWidth(delayColumnW)
+        });
+        const int delayRightLabelW = std::max({
+            delayFbRow->getNaturalLabelWidthForAvailableWidth(delayColumnW),
+            delayMixRow->getNaturalLabelWidthForAvailableWidth(delayColumnW)
+        });
+
+        for (auto* r : { delayTimeRow.get(), delayDivisionRow.get(), delayDampRow.get() })
+            r->setForcedLabelWidth(delayLeftLabelW);
+        for (auto* r : { delayFbRow.get(), delayMixRow.get() })
+            r->setForcedLabelWidth(delayRightLabelW);
+
         auto row1 = area.removeFromTop(rowH);
-        auto pair1 = layoutSliderRowPairBounds(row1, *delayTimeRow, *delayFbRow, 2);
+        auto pair1 = layoutSliderRowPairBounds(row1, *delayTimeRow, *delayFbRow, delayPairGap);
         delayTimeRow->setBounds(pair1[0]);
         delayFbRow->setBounds(pair1[1]);
+        if (delayDivisionRow) delayDivisionRow->setBounds(pair1[0]);
+        // Overlay clock button on the (empty) reserved label slot at the
+        // start of pair1[0] so it sits in the same column as "Damp" below.
+        delayClockBtn.setBounds(pair1[0].withWidth(delayLeftLabelW));
 
         area.removeFromTop(gap);
         auto row2 = area.removeFromTop(rowH);
-        auto pair2 = layoutSliderRowPairBounds(row2, *delayDampRow, *delayMixRow, 2);
+        auto pair2 = layoutSliderRowPairBounds(row2, *delayDampRow, *delayMixRow, delayPairGap);
         delayDampRow->setBounds(pair2[0]);
         delayMixRow->setBounds(pair2[1]);
     }

@@ -276,6 +276,11 @@ public:
     // themselves and grow the reserved label column on each relayout.
     void setForcedLabelWidth(int width) { forcedLabelWidth = juce::jmax(0, width); }
     void clearForcedLabelWidth() { forcedLabelWidth = -1; }
+    /** Force the value-text column to a fixed pixel width. Use this on rate
+     *  and division rows that swap visibility so the slider track keeps the
+     *  same on-screen position regardless of which formatter is active. */
+    void setForcedValueWidth(int width) { forcedValueWidth = juce::jmax(0, width); }
+    void clearForcedValueWidth() { forcedValueWidth = -1; }
     int getNaturalLabelWidthForAvailableWidth(int totalWidth) const
     {
         const int resolvedHeight = juce::jmax(18, getHeight() > 0 ? getHeight() : 22);
@@ -415,6 +420,7 @@ private:
     float ghostSmoothed = NaN_;
     float lastGhostPx   = -100.0f;
     int forcedLabelWidth = -1;
+    int forcedValueWidth = -1;
 
     juce::String currentValueText() const
     {
@@ -441,6 +447,8 @@ private:
         profile.valueWidth = currentValueText().isEmpty() ? 0 : measureTextWidth(currentValueText(), valueFs) + valuePadding;
         if (applyForcedLabelWidth && forcedLabelWidth >= 0)
             profile.labelWidth = forcedLabelWidth;
+        if (applyForcedLabelWidth && forcedValueWidth >= 0)
+            profile.valueWidth = forcedValueWidth;
         profile.minTrackWidth = compact ? 40 : 64;
         profile.preferredTrackWidth = compact ? 70 : 112;
         profile.minimumWidth = profile.labelWidth + profile.valueWidth + profile.minTrackWidth;
@@ -459,8 +467,21 @@ private:
         int overflow = profile.minimumWidth - totalWidth;
         if (overflow > 0)
         {
-            const int minLabelWidth = label.getText().isEmpty() ? 0 : measureTextWidth("M", profile.labelFontSize) + 2;
-            const int minValueWidth = currentValueText().isEmpty() ? 0 : measureTextWidth("00", profile.valueFontSize) + 2;
+            // CRITICAL for cross-row column alignment: when label/value widths
+            // are FORCED, the row is part of a coordinated multi-row column.
+            // Empty-label rows (e.g. delay Time/Division with a clock button
+            // overlay) must shrink to the SAME minimum as their non-empty
+            // siblings (e.g. Damp). Otherwise the empty row's label can
+            // shrink to 0 while the non-empty row's label only shrinks to
+            // ~"M"+2 px, drifting the slider track X by the difference.
+            const bool labelForced = applyForcedLabelWidth && forcedLabelWidth >= 0;
+            const bool valueForced = applyForcedLabelWidth && forcedValueWidth >= 0;
+            const int minLabelWidth = (label.getText().isEmpty() && !labelForced)
+                ? 0
+                : measureTextWidth("M", profile.labelFontSize) + 2;
+            const int minValueWidth = (currentValueText().isEmpty() && !valueForced)
+                ? 0
+                : measureTextWidth("00", profile.valueFontSize) + 2;
             const int labelShrink = juce::jmin(overflow / 2 + overflow % 2,
                                                juce::jmax(0, profile.labelWidth - minLabelWidth));
             profile.labelWidth -= labelShrink;
@@ -645,4 +666,52 @@ private:
     std::unique_ptr<SliderRow> left, right;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SliderPair)
+};
+
+/**
+ * Look-and-feel for the BPM-sync clock button. Two visual states driven by
+ * the button's toggleState():
+ *   - Off  → grey kSurface background, dim icon
+ *   - Sync → orange fill (syncFill member), white icon
+ * Used by LFO 1/2/3, Drift 1/2/3 and Delay rows. Owners must declare the
+ * LnF instance BEFORE any button using it (so destruction order = button
+ * first, LnF second), and must NEVER call setLookAndFeel(nullptr) on the
+ * buttons during teardown — JUCE's normal Component destruction is enough.
+ */
+class ClockButtonLnF : public juce::LookAndFeel_V4
+{
+public:
+    juce::Colour syncFill { 0xffFF6F00 };  // amber-orange, shared sync indicator
+    juce::Path icon;
+
+    ClockButtonLnF()
+    {
+        // 16×16 viewport — classic 10:10 clock pose
+        icon.addEllipse(2.5f, 2.5f, 11.0f, 11.0f);
+        icon.startNewSubPath(8.0f, 8.0f); icon.lineTo(5.5f, 5.5f);
+        icon.startNewSubPath(8.0f, 8.0f); icon.lineTo(10.5f, 5.5f);
+    }
+
+    void drawButtonBackground(juce::Graphics& g, juce::Button& b,
+                              const juce::Colour&, bool over, bool down) override
+    {
+        const bool on = b.getToggleState();
+        auto base = on ? syncFill : kSurface;
+        if (down)      base = base.darker(0.15f);
+        else if (over) base = base.brighter(0.10f);
+        g.setColour(base);
+        g.fillRect(b.getLocalBounds());
+        g.setColour(kBorder);
+        g.drawRect(b.getLocalBounds(), 1);
+    }
+
+    void drawButtonText(juce::Graphics& g, juce::TextButton& b,
+                        bool over, bool /*down*/) override
+    {
+        auto bounds = b.getLocalBounds().toFloat().reduced(3.0f);
+        const bool on = b.getToggleState();
+        g.setColour(on ? juce::Colours::white : (over ? syncFill : kDim));
+        g.strokePath(icon, juce::PathStrokeType(1.4f),
+                     icon.getTransformToScaleToFit(bounds, true));
+    }
 };
