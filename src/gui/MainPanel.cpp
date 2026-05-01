@@ -332,6 +332,39 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
                 }
             });
     };
+    presetManager.onDuplicateRequested = [this](const juce::File& file)
+    {
+        // Byte-for-byte copy in the same bank, with a "<name> copy"
+        // suffix (or " copy 2", " copy 3" if that is taken). The JSON
+        // `name` field inside the new file is patched so the embedded
+        // metadata stays consistent with the duplicate's filename.
+        const auto stem = file.getFileNameWithoutExtension();
+        const auto parent = file.getParentDirectory();
+        // Build the target name by string concatenation, NOT withFileExtension —
+        // withFileExtension() strips at the last `.`, which destroys stems
+        // containing a dot ("Bass v1.2" → "Bass v1.t5p") and can land the
+        // duplicate on top of an unrelated existing file.
+        auto target = parent.getChildFile(stem + " copy.t5p");
+        for (int n = 2; target.existsAsFile() && n < 1000; ++n)
+            target = parent.getChildFile(stem + " copy " + juce::String(n) + ".t5p");
+
+        // Final belt-and-braces guard: never overwrite, even if the loop
+        // bailed out at n=1000 against a wedged collision.
+        if (target.existsAsFile())
+        {
+            presetManager.setStatusText("Duplicate failed: could not allocate a free name", true);
+            return;
+        }
+
+        if (! file.copyFileTo(target))
+        {
+            presetManager.setStatusText("Duplicate failed: could not copy file", true);
+            return;
+        }
+        patchPresetNameField(target, target.getFileNameWithoutExtension());
+        presetManager.refreshLibrary();
+        presetManager.setStatusText("Duplicated to " + target.getFileNameWithoutExtension());
+    };
     addChildComponent(presetManager);
 
     // Manual overlay — hosts the native WebBrowserComponent that renders

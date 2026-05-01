@@ -352,10 +352,11 @@ public:
         repaint();
     }
 
-    // Owner-side callbacks: load / save / import / delete / rename / tags / close.
+    // Owner-side callbacks: load / save / import / delete / rename / duplicate / tags / close.
     std::function<void(const juce::File&)>                              onLoadRequested;
     std::function<void(const juce::File&)>                              onDeleteRequested;
     std::function<void(const juce::File&)>                              onRenameRequested;
+    std::function<void(const juce::File&)>                              onDuplicateRequested;
     std::function<void()>                                                onImportRequested;
     std::function<void()>                                                onCloseRequested;
     std::function<void(const juce::File&, const juce::StringArray&)>    onTagsChanged;
@@ -1928,6 +1929,7 @@ private:
 
         juce::PopupMenu menu;
         menu.addItem(1, juce::String::fromUTF8("Rename\xe2\x80\xa6"), ! isFactory);
+        menu.addItem(3, "Duplicate",                                  ! isFactory);
         menu.addSeparator();
         menu.addItem(2, "Delete",                                     ! isFactory);
 
@@ -1940,8 +1942,9 @@ private:
             {
                 switch (result)
                 {
-                    case 1: if (onRenameRequested) onRenameRequested(file); break;
-                    case 2: if (onDeleteRequested) onDeleteRequested(file); break;
+                    case 1: if (onRenameRequested)    onRenameRequested(file);    break;
+                    case 2: if (onDeleteRequested)    onDeleteRequested(file);    break;
+                    case 3: if (onDuplicateRequested) onDuplicateRequested(file); break;
                     default: break;
                 }
             });
