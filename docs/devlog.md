@@ -1,5 +1,126 @@
 # T5ynth Development Log
 
+## 2026-05-01 — BPM-sync + Free/Trig + Delay crossfade (v1.7.0-beta.1)
+
+Shipped four-day continuation of session 17: the BPM-sync UI from the
+previous commit (`cd9b1d52`) is now wired through the DSP, the dead
+LFO Trigger mode finally retriggers, the delay's dry/wet curve is a
+true crossfade, and two preset-load stickiness bugs that surfaced
+during testing are fixed.
+
+### BPM-sync wiring (Steps 3-6 of the session-17 plan)
+
+`T5ynthProcessor::resolveSyncBpm()` is the single source of truth for
+synced rates, with priority **live host > running in-app sequencer >
+frozen `hostBpmLastSeen` > `seqBpm` fallback**. The host transport is
+snapshotted at the top of `processBlock` into two relaxed-ordering
+atomics (`hostBpmLastSeen`, `hostPlayingNow`); both are written and
+read exclusively from the audio thread, so no synchronisation cost.
+
+Effective values are derived by free helpers in `BlockParams.h`:
+`ClockSync::computeRate(bpm, divIdx)` for LFO/Drift Hz and
+`ClockSync::computeDelayMs(bpm, divIdx)` for delay milliseconds.
+Division → factor mapping lives in `ClockDivision::kFactor[]` — the
+canonical table; never duplicated.
+
+When a `*_clock_mode` is `Sync`, the synced value is written back into
+`BlockParams` (LFO) or fed directly to the DSP setter (Drift, Delay),
+so downstream env→LFO-rate modulation scales relative to the synced
+rate naturally instead of getting clobbered.
+
+The slow end of the division table (`16/1`, `8/1`, `4/1`, `2/1`)
+extends the slider to drift cycles spanning many bars — useful for
+slow harmonic motion and long auto-regen swings. All references go
+through the named enum (`ClockDivision::D1_4`) or `kCount`, so GUI
+and computeRate auto-track the +4 index shift.
+
+### LFO Free/Trigger regression
+
+The per-voice `perVoiceLfo1/2/3` instances on `SynthVoice` were prepared
+and reset on note-on by `VoiceManager`, but their output was never read.
+All voices read the global free-running LFO buffer regardless of mode,
+so Trigger had no audible effect.
+
+Fix: `SynthVoice::renderBlock` takes a small per-voice LFO buffer
+(allocated once in `prepare`); when `bp.lfoNTrigMode` is true it syncs
+rate/waveform from the global LFO, fills the per-voice buffer, and
+rebinds the function-local `lfoNBuf` pointer so all downstream readers
+(filter, scan, pitch) see the retriggered signal. Free mode is
+unchanged. Global FX targets (Dly Time/FB/Mix, Rev Mix) still use the
+shared global LFO since the FX bus is a single signal across voices.
+
+### Delay dry/wet crossfade
+
+`DelayLine::processBlock` previously used `dryGain = 1 - mix * 0.3f` —
+a hybrid that attenuated the dry path by 30 % at full wet, mislabelled
+in comments as "parallel send-bus". At high mix the delay felt like it
+was eating the signal; in external loopbacks each pass through the
+dry-attenuation compounded into a downward spiral. Now a true
+crossfade — `out = dry × (1 − mix) + wet × mix`, identical to the
+reverb's curve — so at `mix = 1` only the delay tail (with its own
+feedback) remains. Internal feedback path is unchanged; this only
+touches the post-mix output line.
+
+### Preset-load stickiness fixes
+
+Two bugs surfaced during user testing:
+
+1. **Clock state stuck across loads.** APVTS `replaceState` leaves
+   missing-from-tree params untouched. Old sessions / presets without
+   the new clock fields would inherit whatever clock state was last
+   touched in the host process — Drift 1's clock would mysteriously
+   stay on Sync after loading a vanilla preset. Fix in
+   `setStateInformation`: parse the loaded XML into a `ValueTree`,
+   walk children to find which clock PIDs are present, append PARAM
+   nodes with default values for the missing ones, then `replaceState`
+   atomically. No `setValueNotifyingHost` glitch between a pre-reset
+   and the actual restore. `importJsonPreset` gets the same
+   hasProperty fallback for each LFO / drift / delay clock pair, and
+   `exportJsonPreset` writes the new fields so v1.7+ presets round-trip
+   cleanly.
+
+2. **Injection mode stuck across `.t5p` loads.** Pre-injection presets
+   (saved before v1.6) didn't carry `injectionMode`; the loader left
+   the panel on whatever mode (e.g. Kombi 3) was active before, and
+   the resulting audio no longer matched the preset's source recording.
+   Old presets now default to `linear / 0.75 / 4 / 16` directly in
+   `PresetFormat::LoadResult`, so loading reproduces the original A↔B
+   crossfade behaviour the preset was generated with. New presets
+   continue to overwrite these with their saved values.
+
+### Files
+
+- `src/dsp/BlockParams.h` — `ClockSync::computeRate`/`computeDelayMs`
+  helpers, prepended slow divisions, added `lfoNTrigMode` to
+  `BlockParams`.
+- `src/PluginProcessor.{h,cpp}` — `hostBpmLastSeen`/`hostPlayingNow`
+  atomics, `seqRunningNow()`, `resolveSyncBpm()`, host-transport
+  snapshot in `processBlock`, LFO/Drift/Delay sync overrides,
+  ValueTree-injection in `setStateInformation`, JSON
+  export/import with hasProperty fallback for the clock fields.
+- `src/dsp/SynthVoice.{h,cpp}` — three per-voice LFO scratch buffers
+  filled when `lfoNTrigMode` is on, function-parameter pointer rebind.
+- `src/dsp/DelayLine.{h,cpp}` — true crossfade, comment cleanup.
+- `src/presets/PresetFormat.h` — `LoadResult` defaults to linear /
+  0.75 / 4 / 16 instead of empty/NaN.
+- `Resources/T5ynth_Guide.html`, `ARCHITECTURE.md`, `CHANGELOG.md` —
+  user-facing docs for the BPM-sync feature.
+
+### Verification
+
+Sticky-fix path was caught by a verification agent (Bug #2 in the
+review): the original `setValueNotifyingHost`-based pre-reset would
+have caused a brief audio-thread render of the wrong clock state
+between the reset and the `replaceState`. Switched to direct
+ValueTree manipulation before the swap — atomic from the audio
+thread's perspective.
+
+CI: `v1.7.0-beta.1` tagged after testing; the tag-triggered run
+publishes the macOS `.pkg` and Windows installer assets to a GitHub
+prerelease.
+
+---
+
 ## 2026-04-30 — Prompt-injection modes (v1.6.0-beta.1)
 
 Shipped six prompt-injection modes — *Linear*, *Fine*, *Layer*,
