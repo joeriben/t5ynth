@@ -3,7 +3,7 @@
 
 StatusBar::StatusBar()
 {
-    for (auto* btn : { &newBtn, &saveBtn, &saveAsBtn, &loadBtn, &exportBtn, &settingsBtn, &manualBtn })
+    for (auto* btn : { &newBtn, &saveBtn, &loadBtn, &exportBtn, &settingsBtn, &manualBtn })
     {
         btn->setColour(juce::TextButton::buttonColourId, kSurface);
         btn->setColour(juce::TextButton::textColourOffId, kDim);
@@ -12,7 +12,6 @@ StatusBar::StatusBar()
 
     newBtn.onClick      = [this] { if (onNewPreset) onNewPreset(); };
     saveBtn.onClick     = [this] { if (onSavePreset) onSavePreset(); };
-    saveAsBtn.onClick   = [this] { if (onSaveAsPreset) onSaveAsPreset(); };
     loadBtn.onClick     = [this] { if (onLoadPreset) onLoadPreset(); };
     exportBtn.onClick   = [this] { if (onExportWav) onExportWav(); };
     settingsBtn.onClick = [this] { if (onSettings) onSettings(); };
@@ -78,21 +77,19 @@ void StatusBar::resized()
     int y = 1;
     int gap = 4;
 
-    // Right to left: Manual, Settings, Export, Browse, Save As, Save, Init
+    // Right to left: Manual, Settings, Export, Library, Save, Init
     int manualW   = 60;
     int settingsW = 60;
     int exportW   = 54;
-    int browseW   = 58;
-    int saveAsW   = 64;
+    int libraryW  = 64;
     int saveW     = 50;
     int newW      = 40;
 
     manualBtn.setBounds(b.getRight() - manualW - gap, y, manualW, btnH);
     settingsBtn.setBounds(manualBtn.getX() - settingsW - gap, y, settingsW, btnH);
     exportBtn.setBounds(settingsBtn.getX() - exportW - gap, y, exportW, btnH);
-    loadBtn.setBounds(exportBtn.getX() - browseW - gap, y, browseW, btnH);
-    saveAsBtn.setBounds(loadBtn.getX() - saveAsW - gap, y, saveAsW, btnH);
-    saveBtn.setBounds(saveAsBtn.getX() - saveW - gap, y, saveW, btnH);
+    loadBtn.setBounds(exportBtn.getX() - libraryW - gap, y, libraryW, btnH);
+    saveBtn.setBounds(loadBtn.getX() - saveW - gap, y, saveW, btnH);
     newBtn.setBounds(saveBtn.getX() - newW - gap, y, newW, btnH);
 }
 

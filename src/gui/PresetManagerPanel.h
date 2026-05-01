@@ -183,7 +183,7 @@ public:
         topRow.removeFromRight(8);
         if (currentMode == Mode::Browse)
         {
-            importBtn.setBounds(topRow.removeFromRight(82));
+            importBtn.setBounds(topRow.removeFromRight(112));
             topRow.removeFromRight(8);
         }
         searchEditor.setBounds(topRow);
@@ -1786,7 +1786,7 @@ private:
     // ─── State ───────────────────────────────────────────────────────────
     juce::Label titleLabel;
     juce::TextEditor searchEditor;
-    juce::TextButton importBtn { "Import" };
+    juce::TextButton importBtn { "Import Presets" };
     juce::TextButton closeIconBtn;     // top-right × icon
     juce::TextButton cancelBtn { "Cancel" };
     juce::Label statusLabel;

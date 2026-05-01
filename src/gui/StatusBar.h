@@ -19,9 +19,8 @@ public:
 
     /** Callbacks for buttons. */
     std::function<void()> onNewPreset;
-    std::function<void()> onSavePreset;       // quick save (overwrite current)
-    std::function<void()> onSaveAsPreset;     // open save dialog
-    std::function<void()> onLoadPreset;       // open library browser
+    std::function<void()> onSavePreset;
+    std::function<void()> onLoadPreset;
     std::function<void()> onExportWav;
     std::function<void()> onSettings;
     std::function<void()> onManual;
@@ -39,8 +38,7 @@ private:
 
     juce::TextButton newBtn    { "Init" };
     juce::TextButton saveBtn   { "Save" };
-    juce::TextButton saveAsBtn { "Save As" };
-    juce::TextButton loadBtn   { "Browse" };
+    juce::TextButton loadBtn   { "Library" };
     juce::TextButton exportBtn { "Export" };
     juce::TextButton settingsBtn { "Settings" };
     juce::TextButton manualBtn { "Manual" };

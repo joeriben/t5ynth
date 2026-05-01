@@ -166,7 +166,6 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
     // Wire StatusBar buttons
     statusBar.onNewPreset    = [this] { loadInitPreset(); };
     statusBar.onSavePreset   = [this] { savePreset(); };
-    statusBar.onSaveAsPreset = [this] { saveAsPreset(); };
     statusBar.onLoadPreset   = [this] { loadPreset(); };
     statusBar.onExportWav    = [this] { exportWav(); };
     statusBar.onSettings     = [this] { if (settingsVisible) hideSettings(); else showSettings(); };
@@ -1548,15 +1547,6 @@ void MainPanel::savePreset()
     // confirm. There is no Undo in the synth, so silent overwrites of disk
     // state are not acceptable.
     enterLibrarySaveMode(SaveNameMode::keepName);
-}
-
-void MainPanel::saveAsPreset()
-{
-    // Same Library Save mode, but pre-fill nudges the user toward a NEW
-    // filename by appending " copy" to the current name. Conflict
-    // protection still applies if the user manually picks a name that
-    // collides.
-    enterLibrarySaveMode(SaveNameMode::appendCopy);
 }
 
 void MainPanel::loadPreset()

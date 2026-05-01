@@ -84,9 +84,8 @@ private:
     void showDimExplorer();
     void hideDimExplorer();
     void tryLoadInferenceModels(bool forceRestart = false);
-    void savePreset();        // quick save (overwrite current; fall back to dialog)
-    void saveAsPreset();      // always opens the save dialog
-    void loadPreset();        // open library browser
+    void savePreset();
+    void loadPreset();
     void renameCurrentPreset();
     void deleteCurrentPreset();
     void showPresetNameContextMenu(juce::Point<int> screenPos);
