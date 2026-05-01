@@ -112,6 +112,15 @@ public:
     /** True if a live WT bank-morph is still in progress. */
     bool isMorphing() const { return morphActive_; }
 
+    /** Snapshot the latest published level-0 frames as a flat buffer
+     *  (numFrames × FRAME_SIZE floats, frame-major). Used by the
+     *  Wavetable-WAV exporter — full bandwidth, no mip downsampling.
+     *  Returns false if no frames have been published yet, or if the
+     *  published bank's frame size disagrees with FRAME_SIZE. */
+    bool snapshotLevel0Frames(std::vector<float>& outFlat,
+                              int& outFrameSize,
+                              int& outNumFrames) const;
+
 private:
     struct PitchEstimate {
         float hz = -1.0f;

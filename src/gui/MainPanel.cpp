@@ -624,6 +624,83 @@ void MainPanel::enterLibrarySaveMode(SaveNameMode mode)
 
 namespace
 {
+/** Write a Serum-format wavetable .wav: standard RIFF/WAVE container with
+ *  a `clm ` metadata chunk indicating frame size. Recognised by Serum,
+ *  Vital, Bitwig Polysynth and most modern wavetable importers — they
+ *  use the `<!>FRAME_SIZE …` text in the chunk to slice the data into
+ *  single-cycle frames.
+ *
+ *  Layout: 32-bit IEEE-float PCM, mono, frames concatenated frame-major. */
+bool writeWavetableWav(const juce::File& file,
+                       const std::vector<float>& samples,
+                       int frameSize,
+                       int numFrames,
+                       double sampleRate)
+{
+    if (frameSize <= 0 || numFrames <= 0) return false;
+    if ((int) samples.size() != frameSize * numFrames) return false;
+    if (sampleRate <= 0.0) sampleRate = 44100.0;
+
+    auto out = file.createOutputStream();
+    if (out == nullptr) return false;
+    out->setPosition(0);
+    out->truncate();
+
+    const uint16_t numChannels   = 1;
+    const uint16_t bitsPerSample = 32;
+    const uint16_t blockAlign    = static_cast<uint16_t>(numChannels * (bitsPerSample / 8));
+    const auto sr32              = static_cast<uint32_t>(sampleRate);
+    const uint32_t avgBytesPerSec = sr32 * blockAlign;
+    const uint32_t pcmBytes       = static_cast<uint32_t>(samples.size() * sizeof(float));
+
+    // <!> + frame size + version-id + name. Serum reads the first integer
+    // after "<!>" as the per-frame sample count.
+    const juce::String clmText = "<!>" + juce::String(frameSize) + " 0 t5ynth";
+    const auto clmUtf8         = clmText.toRawUTF8();
+    const auto clmLen          = static_cast<uint32_t>(std::strlen(clmUtf8));
+    const auto clmPad          = static_cast<uint32_t>(clmLen % 2);  // RIFF chunks 2-byte aligned
+
+    const uint32_t fmtChunkBytes  = 16;
+    const uint32_t totalRiffSize  = 4                                // "WAVE"
+                                  + (8 + fmtChunkBytes)              // fmt
+                                  + (8 + clmLen + clmPad)            // clm
+                                  + (8 + pcmBytes);                  // data
+
+    // JUCE's writeInt / writeShort are little-endian by default — the
+    // explicit BigEndian variants exist but the LE ones are the
+    // unsuffixed defaults. RIFF / WAVE is little-endian.
+    auto writeFourCC = [&out](const char* fcc) { out->write(fcc, 4); };
+    auto writeU32LE  = [&out](uint32_t v) { out->writeInt(static_cast<int>(v)); };
+    auto writeU16LE  = [&out](uint16_t v) { out->writeShort(static_cast<int16_t>(v)); };
+
+    writeFourCC("RIFF");
+    writeU32LE(totalRiffSize);
+    writeFourCC("WAVE");
+
+    writeFourCC("fmt ");
+    writeU32LE(fmtChunkBytes);
+    writeU16LE(3);                  // wFormatTag = 3 → IEEE float
+    writeU16LE(numChannels);
+    writeU32LE(sr32);
+    writeU32LE(avgBytesPerSec);
+    writeU16LE(blockAlign);
+    writeU16LE(bitsPerSample);
+
+    // RIFF: chunk size reports the unpadded payload length; the optional
+    // pad byte exists only to 2-byte-align the *next* chunk and is NOT
+    // included in this size field. (Strict importers like Serum mis-frame
+    // when the size is overstated by 1.)
+    writeFourCC("clm ");
+    writeU32LE(clmLen);
+    out->write(clmUtf8, clmLen);
+    if (clmPad) out->writeByte(0);
+
+    writeFourCC("data");
+    writeU32LE(pcmBytes);
+    out->write(samples.data(), pcmBytes);
+    return true;
+}
+
 /** Generic in-place patcher for the JSON header of a .t5p — caller mutates
  *  the parsed DynamicObject; PCM tail is preserved byte-for-byte. */
 template <typename Mutator>
@@ -1506,33 +1583,75 @@ void MainPanel::loadInitPreset()
 
 void MainPanel::exportWav()
 {
-    const auto& audio = processorRef.getGeneratedAudio();
-    if (audio.getNumSamples() == 0)
+    // Single Export entry-point that branches on engine mode:
+    //   Sampler   → 24-bit PCM .wav of the loaded audio buffer.
+    //   Wavetable → Serum-format .wav (32-bit float, mono, frames
+    //               concatenated, with `clm ` chunk for frame size).
+    const bool isWavetable = processorRef.isWavetableMode();
+
+    if (isWavetable)
     {
-        statusBar.setStatusText("No audio to export");
-        return;
+        if (!processorRef.getMasterOscConst().hasFrames())
+        {
+            statusBar.setStatusText("No wavetable to export");
+            return;
+        }
+    }
+    else
+    {
+        if (processorRef.getGeneratedAudio().getNumSamples() == 0)
+        {
+            statusBar.setStatusText("No audio to export");
+            return;
+        }
     }
 
     auto chooser = std::make_shared<juce::FileChooser>(
-        "Export WAV", juce::File::getSpecialLocation(juce::File::userDesktopDirectory), "*.wav");
+        isWavetable ? "Export Wavetable" : "Export WAV",
+        juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+        "*.wav");
 
     juce::Component::SafePointer<MainPanel> safeThis(this);
     chooser->launchAsync(juce::FileBrowserComponent::saveMode
                          | juce::FileBrowserComponent::canSelectFiles
                          | juce::FileBrowserComponent::warnAboutOverwriting,
-        [safeThis, chooser](const juce::FileChooser& fc)
+        [safeThis, chooser, isWavetable](const juce::FileChooser& fc)
         {
             if (!safeThis) return;
             auto* self = safeThis.getComponent();
             auto file = fc.getResult();
             if (file == juce::File()) return;
 
+            // String-concat (not withFileExtension) — the user-typed name
+            // may contain dots (e.g. "Pad 0.5"); withFileExtension would
+            // truncate everything after the last dot.
             if (!file.hasFileExtension("wav"))
-                file = file.withFileExtension("wav");
+                file = file.getParentDirectory().getChildFile(file.getFileName() + ".wav");
 
-            const auto& buf = self->processorRef.getGeneratedAudio();
             double sr = self->processorRef.getGeneratedSampleRate();
             if (sr <= 0.0) sr = 44100.0;
+
+            if (isWavetable)
+            {
+                std::vector<float> samples;
+                int frameSize = 0, numFrames = 0;
+                if (! self->processorRef.getMasterOscConst()
+                        .snapshotLevel0Frames(samples, frameSize, numFrames))
+                {
+                    self->statusBar.setStatusText("Wavetable export failed: no frames");
+                    return;
+                }
+                if (writeWavetableWav(file, samples, frameSize, numFrames, sr))
+                    self->statusBar.setStatusText("Exported wavetable: "
+                                                  + file.getFileName()
+                                                  + "  (" + juce::String(numFrames) + " frames)");
+                else
+                    self->statusBar.setStatusText("Wavetable export failed");
+                return;
+            }
+
+            // Sampler mode — write the loaded audio buffer as 24-bit PCM.
+            const auto& buf = self->processorRef.getGeneratedAudio();
             auto outStream = file.createOutputStream();
             if (!outStream) { self->statusBar.setStatusText("Export failed"); return; }
 

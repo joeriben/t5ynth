@@ -41,6 +41,29 @@ int WavetableOscillator::getNumFrames() const
     return published != nullptr ? published->numFrames : 0;
 }
 
+bool WavetableOscillator::snapshotLevel0Frames(std::vector<float>& outFlat,
+                                               int& outFrameSize,
+                                               int& outNumFrames) const
+{
+    auto published = loadPublishedMipData();
+    if (published == nullptr || published->numFrames == 0
+        || published->frames.empty() || published->frames[0].empty())
+        return false;
+
+    const auto& level0 = published->frames[0];
+    outFrameSize = FRAME_SIZE;
+    outNumFrames = (int) level0.size();
+
+    outFlat.clear();
+    outFlat.reserve(static_cast<size_t>(outFrameSize) * static_cast<size_t>(outNumFrames));
+    for (const auto& frame : level0)
+    {
+        if ((int) frame.size() != outFrameSize) return false;  // bank shape mismatch
+        outFlat.insert(outFlat.end(), frame.begin(), frame.end());
+    }
+    return true;
+}
+
 void WavetableOscillator::syncSharedConfigFrom(const WavetableOscillator& source)
 {
     // Copy traversal/morph configuration, but keep per-voice runtime state.
