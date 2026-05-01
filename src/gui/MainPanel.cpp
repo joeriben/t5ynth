@@ -140,6 +140,9 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
       sequencerPanel(processor)
 {
     setOpaque(true);
+    // Allow keyboard shortcuts (⌘S) to reach the panel even when no inner
+    // text editor has focus.
+    setWantsKeyboardFocus(true);
     addAndMakeVisible(promptPanel);
     addAndMakeVisible(axesPanel);
     addAndMakeVisible(synthPanel);
@@ -864,6 +867,25 @@ void MainPanel::mouseDown(const juce::MouseEvent& e)
         if (!mb.contains(e.x, e.y))
             hideManual();
     }
+}
+
+bool MainPanel::keyPressed(const juce::KeyPress& key)
+{
+    // ⌘S / Ctrl+S opens the Library in Save mode. Skipped when another
+    // modal overlay (settings, manual, dim explorer) is up so the
+    // shortcut doesn't yank the user out of an unrelated workflow. Also
+    // skipped if the Library is already in Save mode (a no-op re-entry
+    // would just reset the typed name).
+    if (key.getModifiers().isCommandDown() && key.getTextCharacter() == 's')
+    {
+        if (settingsVisible || manualVisible || dimExplorerVisible) return false;
+        if (presetManagerVisible
+            && presetManager.getMode() == PresetManagerPanel::Mode::Save)
+            return true;   // already there; consume so nothing else fires
+        savePreset();
+        return true;
+    }
+    return false;
 }
 
 void MainPanel::toggleSettings()
