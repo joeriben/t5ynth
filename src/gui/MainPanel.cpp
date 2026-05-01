@@ -219,7 +219,10 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
             bankDir = bankDir.getChildFile(bank);
         bankDir.createDirectory();
 
-        auto target = bankDir.getChildFile(presetName).withFileExtension("t5p");
+        // String-concat (not withFileExtension) — withFileExtension strips
+        // at the last dot, so a user-typed name like "Pad 0.5" would be
+        // truncated to "Pad 0.t5p" and could clobber an unrelated preset.
+        auto target = bankDir.getChildFile(presetName + ".t5p");
 
         processorRef.setLastTags(tags);
         if (savePresetToFile(target))
@@ -272,7 +275,8 @@ MainPanel::MainPanel(T5ynthProcessor& processor)
                 if (requested.isEmpty() || requested == file.getFileNameWithoutExtension())
                     return;
 
-                auto target = file.getParentDirectory().getChildFile(requested).withFileExtension("t5p");
+                // String-concat (not withFileExtension) — see save callback above.
+                auto target = file.getParentDirectory().getChildFile(requested + ".t5p");
                 if (target.existsAsFile())
                 {
                     presetManager.setStatusText("Rename failed: name already exists", true);
