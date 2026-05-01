@@ -169,36 +169,36 @@
   }
   .arrow { color: var(--accent2); }
   .lab-wordmark {
-    display: inline-flex;
-    flex-direction: column;
-    gap: 0.02rem;
+    display: inline-block;
     margin-bottom: 1.2rem;
     text-decoration: none;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    opacity: 0.9;
-  }
-  .lab-wordmark:hover { opacity: 1; text-decoration: none; }
-  .lab-wordmark-main {
-    font-size: 0.72rem;
+    font-size: 0.95rem;
     font-weight: 700;
     line-height: 1;
-    color: var(--accent3);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    opacity: 0.9;
+    white-space: nowrap;
   }
-  .lab-wordmark-sub {
-    font-size: 1.05rem;
-    font-weight: 700;
-    line-height: 1.05;
+  .lab-wordmark:hover { opacity: 1; text-decoration: none; }
+  .lab-blue { color: #667eea; }
+  .lab-magenta { color: #e91e63; }
+  .lab-violet { color: #7C4DFF; }
+  .lab-orange { color: #FF6F00; }
+  .lab-green { color: #4CAF50; }
+  .lab-cyan { color: #00BCD4; }
+  @media (max-width: 768px) {
+    .lab-wordmark {
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+    }
   }
-  .lab-wordmark-ai { color: var(--accent); }
-  .lab-wordmark-lab { color: var(--accent2); }
 </style>
 </head>
 <body>
 
 <a class="lab-wordmark" href="https://github.com/joeriben/ucdcae-ai-lab" aria-label="UCDCAE AI Lab">
-  <span class="lab-wordmark-main">UCDCAE</span>
-  <span class="lab-wordmark-sub"><span class="lab-wordmark-ai">AI</span> <span class="lab-wordmark-lab">Lab</span></span>
+  <span class="lab-blue">U</span><span class="lab-magenta">C</span><span class="lab-violet">D</span><span class="lab-orange">C</span><span class="lab-green">A</span><span class="lab-cyan">E</span> <span class="lab-blue">A</span><span class="lab-magenta">I</span> <span class="lab-violet">L</span><span class="lab-orange">A</span><span class="lab-green">B</span>
 </a>
 
 <h1>T5ynth</h1>
@@ -209,8 +209,9 @@
 <!-- ═══════════════════════════════════════════ PREAMBLE -->
 <div style="background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:1.2rem 1.5rem; margin-bottom:2rem;">
 <p>
-With two short impulses, this innovative music synthesizer opens up a hidden
-space between two poles of meaning before audio comes into being. Set those poles as
+T5ynth opens hidden spaces of possible sound. Two short impulses mark the poles
+of a space of meaning you define. The synth lets you explore what can become
+audible between them. Set those poles as
 textures, transients, patterns, sonic and musical fragments, field recordings,
 everyday noises, orchestral gestures, alien voices, human emotional
 expressions, or impossible hybrids.
@@ -220,13 +221,14 @@ Impulse A and Impulse B are not two samples, two song requests, or two
 oscillators. They are two markers for the space you want to explore. You can
 pull between the markers, push the space harder or softer, disturb it, bend it
 along sound qualities, open individual dimensions, change where one idea enters
-the other, and let the space drift over time before audio exists.
+the other, and let the space drift over time while it remains open as a space
+of possibilities.
 </p>
 <p style="margin-top:0.6rem;">
 Most AI audio tools hide that space and only return an audio result. T5ynth
-turns the pre-audio space into the instrument. Generation is not a separate AI
-step after the synth; the synth reaches into the generation process itself.
-The rendered fragment is one stage in a signal path that continues through
+turns this space of possible sound into the instrument. Generation is not a
+separate AI step after the synth; the synth reaches into the generation process
+itself. The rendered fragment is one stage in a signal path that continues through
 sampler or wavetable playback, filters, envelopes, LFOs, sequencing, delay,
 and reverb.
 </p>
@@ -302,7 +304,8 @@ You do not need to know what "T5" is to use the instrument. In practice, T5 is
 the text-reading part inside the model: it turns words into numbers the audio
 model can respond to. T5ynth opens up musical control over the hidden space
 where the model decides what sound can become. You are not operating a black
-box and waiting for a result; you are entering the model before the result.
+box and waiting for a result; you are exploring the model's space of
+possibilities.
 </p>
 
 <p>
@@ -311,8 +314,8 @@ The interface calls the two text fields <strong>Impulse A</strong> and
 markers for one inner sound space, not two finished audio files, not two song
 requests, and not two oscillators. Neither pole is an attachment to the other:
 A and B define the relation that opens the space. Alpha does not mix two
-rendered samples; it moves through the pre-audio space before anything is
-rendered.
+rendered samples; it moves through the space of possibilities from which one
+fragment can become audible.
 </p>
 
 <p>
@@ -329,7 +332,7 @@ text-to-audio tools:
 </p>
 <ol>
   <li>Two short impulses mark the hidden space.</li>
-  <li>Alpha, Semantic Axes, Noise, Dimension Explorer, Injection Modes, and Drift move that space before audio exists.</li>
+  <li>Alpha, Semantic Axes, Noise, Dimension Explorer, Injection Modes, and Drift move that space of possibilities.</li>
   <li>Shape the sonic flow as a Sampler or Wavetable engine, with filters, envelopes, LFOs, sequencers, delay, reverb, presets, and Drift Modulators &amp; Auto-Regenerate.</li>
 </ol>
 
@@ -442,12 +445,12 @@ On first launch, the status bar shows backend connection status. Once you see <s
 <!-- PART I -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <div class="part-label">Part I</div>
-<h2 id="gen">1. The Generation Section (Pre-Audio Space)</h2>
+<h2 id="gen">1. The Generation Section (Possible Sound Space)</h2>
 
 <p>
-T5ynth's Generation section is where the instrument begins before audio
-exists. Instead of choosing a sine, saw, sample, or wavetable, you mark a
-bounded hidden sound space inside the selected audio model. In that sense, the
+T5ynth's Generation section is where the instrument opens a space of possible
+sound. Instead of choosing a sine, saw, sample, or wavetable, you mark a bounded
+hidden sound space inside the selected audio model. In that sense, the
 T5ynth Oscillator is a meta-oscillator: it does not start from one waveform,
 but from a space of possible sounds. The main purpose is to explore that space,
 shape the generation itself, and decide which state becomes a short playable
@@ -465,7 +468,7 @@ are two markers for one inner sound space.
 A and B are equal markers for one hidden sound space. Each impulse is turned
 into internal control data by the model's text-reading stage. That control data
 is not audio; it is the model's way of deciding what kind of sound can become.
-T5ynth changes that pre-audio state before any audio is generated.
+T5ynth changes that internal state so different fragments can become audible.
 </p>
 <p>
 T5ynth can use Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2.
@@ -486,10 +489,10 @@ abstract phrase can still be used as a strange marker in the model's space.
 T5ynth is where you find out what that marker can become.
 </p>
 <div class="tip">
-  <strong>A and B mark a pre-audio space.</strong> In the interface, <em>Alpha</em> is the pull between A and B, <em>Magnitude</em> is how strongly the space is pushed, <em>Noise</em> perturbs it, Semantic Axes bend it along sound qualities, the Dimension Explorer opens individual dimensions, Injection Modes decide where B enters A during generation, and Drift moves the space over time.
+  <strong>A and B mark a space of possible sound.</strong> In the interface, <em>Alpha</em> is the pull between A and B, <em>Magnitude</em> is how strongly the space is pushed, <em>Noise</em> perturbs it, Semantic Axes bend it along sound qualities, the Dimension Explorer opens individual dimensions, Injection Modes decide where B enters A during generation, and Drift moves the space over time.
 </div>
 <ul>
-  <li><strong>Two marked poles</strong> — Impulse A and Impulse B are equal markers for one hidden sound space. The <em>Alpha</em> slider (labeled <strong>A ↔ B</strong>) moves through that space before audio exists when the active <a href="#injection-modes">Injection Mode</a> is <em>Linear</em>; in other modes the slider's role shifts (see the mode-row explanation below).</li>
+  <li><strong>Two marked poles</strong> — Impulse A and Impulse B are equal markers for one hidden sound space. The <em>Alpha</em> slider (labeled <strong>A ↔ B</strong>) moves through that space and changes what can become audible when the active <a href="#injection-modes">Injection Mode</a> is <em>Linear</em>; in other modes the slider's role shifts (see the mode-row explanation below).</li>
   <li><strong>One field empty: Echoraum</strong> — leaving either text field empty is an aesthetic choice. T5ynth interprets the empty side as an echo chamber for the present impulse: a reflection through the model's neutral point. Alpha then traces a path from the impulse through that neutral midpoint to the impulse's tonal antipode — sounds the impulse actively isn't. There is no such thing as "no meaning" in creative processes.</li>
   <li><strong>Both fields empty</strong> — both sides use the model's neutral point. The model produces its own self-portrait (pure unconditional sampling), varying with the seed.</li>
 </ul>
@@ -508,17 +511,17 @@ T5ynth is where you find out what that marker can become.
   <tr>
     <td><strong>Alpha (A ↔ B)</strong></td>
     <td>-2.0 … +2.0</td>
-    <td>Moves between Sound A (−1) and Sound B (+1) <strong>before audio exists</strong>. This is not a crossfade or mix of two audio signals — it moves through the model's hidden sound space and changes what kind of sound can become audible in one generation. The midpoint (0) is not "half A plus half B" in any audible sense; it is a new internal sound-space position that the model interprets independently. For example, if Sound A is <em>"bowed cello, sustained"</em> and Sound B is <em>"crackling fire"</em>, the midpoint will not sound like cello mixed with fire — it might produce something like a warm, textured, resonant hum that resembles neither source directly. Values beyond ±1 <em>extrapolate</em> — pushing past either marker into regions no direct phrase would naturally reach. When one text field is left empty, the empty side is the Echoraum reflection of the other, so Alpha sweeps from the impulse through the model-neutral midpoint to its antipode (see <a href="#gen">the A/B section</a>). The slider uses a quadratic curve for fine control near the center.</td>
+    <td>Moves through the hidden sound space marked by Sound A (−1) and Sound B (+1). This is not a crossfade or mix of two audio signals — it changes what kind of sound can become audible in one generation. The midpoint (0) is not "half A plus half B" in any audible sense; it is a new internal sound-space position that the model interprets independently. For example, if Sound A is <em>"bowed cello, sustained"</em> and Sound B is <em>"crackling fire"</em>, the midpoint will not sound like cello mixed with fire — it might produce something like a warm, textured, resonant hum that resembles neither source directly. Values beyond ±1 <em>extrapolate</em> — pushing past either marker into regions no direct phrase would naturally reach. When one text field is left empty, the empty side is the Echoraum reflection of the other, so Alpha sweeps from the impulse through the model-neutral midpoint to its antipode (see <a href="#gen">the A/B section</a>). The slider uses a quadratic curve for fine control near the center.</td>
   </tr>
   <tr>
     <td><strong>Magnitude</strong></td>
     <td>0.001 … 5.0</td>
-    <td>Scales how strongly the current pre-audio state steers the model. At 1.0 the A/B text influence is normal. Lower values drift toward the model's "average" sound; higher values push the model harder (can get unstable above ~2.0).</td>
+    <td>Scales how strongly the current internal state steers the model. At 1.0 the A/B text influence is normal. Lower values drift toward the model's "average" sound; higher values push the model harder (can get unstable above ~2.0).</td>
   </tr>
   <tr>
     <td><strong>Noise</strong></td>
     <td>0.0 … 1.0</td>
-    <td>This is not audio noise. It is noise added to the model's internal pre-audio controls before the model generates sound. Even small values (0.05–0.15) introduce subtle variation between otherwise identical generations. Higher values scramble the pre-audio state — good for exploration, less for precision.</td>
+    <td>This is not audio noise. It is noise added to the model's internal generation controls. Even small values (0.05–0.15) introduce subtle variation between otherwise identical generations. Higher values scramble the internal state — good for exploration, less for precision.</td>
   </tr>
   <tr>
     <td><strong>Duration</strong></td>
@@ -558,7 +561,7 @@ T5ynth is where you find out what that marker can become.
 </table>
 
 <div class="note">
-  <strong>The instrument starts before audio.</strong> The generation parameters above — Alpha, Semantic Axes, Noise, Magnitude — can all be modulated by the <a href="#drift">Drift &amp; Regenerate</a> system. With Drift active, these values shift continuously, and T5ynth can automatically re-generate audio as they move. The hidden space keeps evolving instead of behaving like a fixed one-shot source. See <a href="#drift">section 6</a> for details.
+  <strong>The instrument is built around a space of possible sound.</strong> The generation parameters above — Alpha, Semantic Axes, Noise, Magnitude — can all be modulated by the <a href="#drift">Drift &amp; Regenerate</a> system. With Drift active, these values shift continuously, and T5ynth can automatically re-generate audio as they move. The hidden space keeps evolving instead of behaving like a fixed one-shot source. See <a href="#drift">section 6</a> for details.
 </div>
 
 <h3>Model &amp; Device</h3>
@@ -628,7 +631,7 @@ fall through to Linear behaviour.
 <h2 id="axes">2. Sound-Character Axes</h2>
 
 <p>
-Below the A/B area, three dropdown slots let you apply <strong>sound-character axes</strong> — continuous sliders between two conceptual poles. Each axis nudges the source before audio exists. In the UI and technical background these are also called semantic axes; musically, treat them as broad tone-character directions, not as precise EQ controls.
+Below the A/B area, three dropdown slots let you apply <strong>sound-character axes</strong> — continuous sliders between two conceptual poles. Each axis nudges the current possible-sound space. In the UI and technical background these are also called semantic axes; musically, treat them as broad tone-character directions, not as precise EQ controls.
 </p>
 
 <table>
@@ -670,7 +673,7 @@ After generating audio, T5ynth receives the 768-dimensional source-control vecto
 
 <h4>What You Can Do</h4>
 <p>
-Drag any bar vertically to apply a per-dimension <strong>offset</strong>. Edited bars turn <span style="color:var(--accent3)">blue</span>. Click <strong>"Apply + Generate"</strong> to send these offsets to the inference engine, where they are added directly to the pre-audio controls before diffusion runs.
+Drag any bar vertically to apply a per-dimension <strong>offset</strong>. Edited bars turn <span style="color:var(--accent3)">blue</span>. Click <strong>"Apply + Generate"</strong> to send these offsets to the inference engine, where they are added directly to the internal generation controls used by diffusion.
 </p>
 
 <h4>What This Means</h4>
@@ -826,7 +829,7 @@ Three identical ADSR envelopes, each with a <strong>Target dropdown</strong> to 
 
 <div style="background:linear-gradient(135deg, rgba(233,69,96,0.15), rgba(255,152,0,0.15)); border:2px solid var(--accent); border-radius:8px; padding:1.2rem 1.5rem; margin-bottom:1.2rem;">
 <p style="font-size:1.1rem; margin:0;">
-<strong style="color:var(--accent); font-size:1.15rem;">Drift &amp; Regenerate keeps the pre-audio space moving.</strong><br>
+<strong style="color:var(--accent); font-size:1.15rem;">Drift &amp; Regenerate keeps the possible-sound space moving.</strong><br>
 Without it, you shape one space, generate one fragment, and then process that fragment with conventional synth tools. With Drift &amp; Regenerate, the hidden sound space itself evolves. The modulation system shifts generation parameters over time, triggering new inference runs in the background. The source is no longer a static waveform — it follows a changing path through the model's internal sound space.
 </p>
 </div>
@@ -838,7 +841,7 @@ step count, and hardware, a regeneration can arrive in roughly 0.1 seconds on
 an RTX 6000-class GPU or take several seconds on a Mac M-series processor
 without a dedicated AI-capable graphics card. T5ynth creates an
 <strong>asynchronous feedback loop</strong> between the modulation system and the
-pre-audio sound space that keeps the instrument playing while new fragments are
+possible-sound space that keeps the instrument playing while new fragments are
 rendered in the background:
 </p>
 <p>
@@ -853,7 +856,7 @@ material inside the marked space.
 </p>
 <p>
 When an auto regen mode is active, T5ynth monitors how far the modulated
-pre-audio controls have drifted from the last generated state. Once the drift
+generation controls have drifted from the last generated state. Once the drift
 exceeds a threshold, it fires a new inference request in the background. The
 current sound keeps playing uninterrupted. When the new generation arrives, it
 is crossfaded into the playback buffer, replacing the old sound with the new
@@ -861,7 +864,7 @@ one without stopping playback.
 </p>
 <p>
 The result is a <strong>continuous stream of new generations</strong>, each one
-produced from a slightly different pre-audio state between and around the two
+produced from a slightly different internal state between and around the two
 impulses. With Random active, no generation is simply repeated; without Random,
 the same seed and same state remain recallable. In both cases, the movement is
 not arbitrary: it follows the trajectories defined by the drift LFO settings
@@ -892,11 +895,11 @@ When a drift LFO targets Alpha, a sound-character axis, Noise, or Magnitude, the
 
 <h4>Regenerate</h4>
 <p>
-Drift modulation of generation parameters only changes the pre-audio controls — to actually hear the change, the audio must be re-generated. The <strong>Regen Mode</strong> controls when this happens:
+Drift modulation of generation parameters only changes the internal generation controls — to actually hear the change, the audio must be re-generated. The <strong>Regen Mode</strong> controls when this happens:
 </p>
 <table>
   <tr><th>Mode</th><th>Behavior</th></tr>
-  <tr><td><strong>Manual</strong></td><td>You click Generate yourself. Drift still moves the pre-audio controls, but nothing re-generates until you trigger it.</td></tr>
+  <tr><td><strong>Manual</strong></td><td>You click Generate yourself. Drift still moves the generation controls, but nothing re-generates until you trigger it.</td></tr>
   <tr><td><strong>Auto</strong></td><td>Automatically re-generates as soon as drift pushes parameters far enough from the last generated state. No rate limit — fastest option, highest energy use.</td></tr>
   <tr><td><strong>max 1♩ / 4♩ / 16♩</strong></td><td>Like Auto, but with a minimum cooldown between generations: at most one re-generation per 1, 4, or 16 beats (at the current BPM). "max" means this is a <em>maximum rate</em>, not a guarantee — actual generation time depends on your hardware and model settings.</td></tr>
 </table>
@@ -1467,15 +1470,15 @@ Modes enter the path; the detailed mode mechanics follow in the next section.
 
 <p>
 The important point in this overview is the position in the signal flow:
-Injection Modes change what the diffusion model receives before audio is
-rendered. They are not sampler, wavetable, filter, or effect modes.
+Injection Modes change what the diffusion model receives as its generative
+control state. They are not sampler, wavetable, filter, or effect modes.
 </p>
 
 <p>
 Key observations from this flow:
 </p>
 <ul>
-  <li>Impulse A/B, Alpha, Injection Modes, Semantic Axes, Magnitude, Noise, and DimExplorer offsets all operate <strong>before</strong> audio exists — they shape the control path that guides generation.</li>
+  <li>Impulse A/B, Alpha, Injection Modes, Semantic Axes, Magnitude, Noise, and DimExplorer offsets shape the control path that guides generation.</li>
   <li>Filter, envelopes, LFOs, effects operate <strong>after</strong> generation — they are traditional synth processing on the generated audio.</li>
   <li>Drift LFOs bridge both worlds — they can modulate pre-generation parameters (Alpha, Semantic Axes, Noise, Magnitude) <em>and</em> post-generation parameters (Filter, Scan).</li>
   <li>The Python inference subprocess stays alive between generations — no startup overhead.</li>

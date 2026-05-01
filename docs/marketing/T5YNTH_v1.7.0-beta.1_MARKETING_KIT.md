@@ -8,12 +8,12 @@ Ziel: T5ynth soll Aufmerksamkeit bei Synth-, Sounddesign-, Open-Source- und kuns
 
 T5ynth ist schwer zu vermitteln, weil viele Begriffe sofort in die falsche Richtung fuehren. Chatbot-Begriffe klingen nach ChatGPT, technische Vektorbegriffe nach Fachsprache, Oszillator-Metaphern nach Theorie, KI-Musik nach Ergebnis-Automation. Der Einstieg muss deshalb aus musikalischer Kontrolle heraus kommen:
 
-- Jedes der unterstuetzten Audiomodelle hat einen verborgenen Klangraum, bevor Audio entsteht.
+- Jedes der unterstuetzten Audiomodelle kann als verborgener Raum moeglicher Klaenge verstanden werden.
 - T5ynth macht diesen Raum als Instrument zugaenglich.
 - Impuls A und Impuls B sind keine zwei Samples, keine zwei Songwuensche und keine zwei Oszillatoren.
 - A und B markieren einen inneren Klangraum.
 - Der T5ynth Oscillator ist ein Meta-Oszillator: kein einzelner Klanggenerator, sondern ein Zugang zu vielen moeglichen Klaengen innerhalb der Grenzen des gewaehlten Modells.
-- T5ynth macht diesen Raum vor der Audio-Entstehung formbar: zwischen den Markern ziehen, staerker oder weicher machen, stoeren, entlang Klangqualitaeten biegen, einzelne Dimensionen oeffnen, den Eintritt einer Idee in die andere veraendern und den Raum driften lassen.
+- T5ynth macht diesen Raum als Moeglichkeitsraum formbar: zwischen den Markern ziehen, staerker oder weicher machen, stoeren, entlang Klangqualitaeten biegen, einzelne Dimensionen oeffnen, den Eintritt einer Idee in die andere veraendern und den Raum driften lassen.
 - Danach entsteht ein spielbares Fragment, das mit Sampler, Wavetable, Filter, Huelle, LFO, Sequencer, Delay und Reverb weitergeformt wird.
 
 Die staerkste Formulierung ist:
@@ -29,7 +29,8 @@ Die Abgrenzung zu Ergebnis-Automation ist wichtig, aber nicht als erster Satz. D
 English:
 
 > Resonance with meaning.
-> With two short impulses, this innovative music synthesizer opens up a hidden space before audio comes into being.
+> T5ynth opens hidden spaces of possible sound.
+> Two impulses mark the poles of a space of meaning you define. The synth lets you explore what can become audible between them.
 
 ### Kernversprechen
 
@@ -38,15 +39,15 @@ T5ynth ist ein vollwertiger Musik-Synthesizer, der mit Bedeutung resoniert. Mit 
 ### Claim-Optionen
 
 1. "Resonance with meaning."
-2. "With two short impulses, this innovative music synthesizer opens up a hidden space before audio comes into being."
-3. "Mark two poles of meaning. Shape the space before generation."
+2. "T5ynth opens hidden spaces of possible sound."
+3. "Two impulses mark the poles of a space of meaning you define."
 4. "A/B mark a space, not two samples."
 5. "From hidden model space to playable synth fragment."
 
 ### Drei Proof Points
 
 1. **A/B markieren einen Klangraum:** Impuls A und Impuls B sind keine zwei Samples, keine Songwuensche und keine zwei Oszillatoren. Sie oeffnen einen inneren Klangraum mit vielen moeglichen Klaengen innerhalb der Grenzen des gewaehlten Modells.
-2. **Pre-audio Kontrolle:** T5ynth macht den Raum formbar, bevor Audio entsteht: ziehen, druecken, stoeren, biegen, einzelne Dimensionen oeffnen, Eingriffspunkte veraendern, driften lassen.
+2. **Moeglichkeitsraum-Kontrolle:** T5ynth macht den Raum formbar: ziehen, druecken, stoeren, biegen, einzelne Dimensionen oeffnen, Eingriffspunkte veraendern, driften lassen.
 3. **Generation als Teil des Instruments:** Der Synth beginnt nicht nach Generate. T5ynth greift in die Generierung selbst ein; das gerenderte Fragment ist eine Station im Signalweg.
 
 ### Kommunikations-Grenzen
@@ -56,7 +57,7 @@ T5ynth ist ein vollwertiger Musik-Synthesizer, der mit Bedeutung resoniert. Mit 
 - Modellgewichte werden nicht gebundelt. Nutzer:innen laden Modelle separat und akzeptieren deren Lizenzen.
 - AudioLDM2 ist non-commercial only; nicht als kommerziell frei nutzbare Engine bewerben.
 - Nicht defensiv starten: keine Headline, die zuerst nur erklaert, was T5ynth nicht ist.
-- Lieferanten-/Material-Framing nicht als Kernbotschaft verwenden. Besser: spielbares Fragment, verborgener Klangraum, pre-audio Kontrolle.
+- Lieferanten-/Material-Framing nicht als Kernbotschaft verwenden. Besser: spielbares Fragment, verborgener Klangraum, Moeglichkeitsraum-Kontrolle.
 - "Meta-Oszillator" ist als erklaerender Begriff nuetzlich, aber nicht als erster Claim. Erst Resonanz/Klangraum/Empowerment, dann Meta-Oszillator als Praezisierung.
 - Technische Vektor-/Encoder-Fachbegriffe erst im technischen Hintergrund verwenden, nicht in Hero, Kurzbeschreibung oder Pitch.
 - Semantik-Oszillator-Framing nicht als Claim verwenden.
@@ -67,7 +68,7 @@ T5ynth ist ein vollwertiger Musik-Synthesizer, der mit Bedeutung resoniert. Mit 
 ### Primaer
 
 1. Experimentelle Synth- und Sounddesign-User
-   - Hook: "Ein Instrument, das vor der Audio-Entstehung ansetzt."
+   - Hook: "Ein Instrument fuer verborgene Raeume moeglicher Klaenge."
    - Gute Formate: kurze Audio/Videodemos, A/B-Klangraum-Sweeps, Injection-Mode-Vergleiche, Drift-Demos.
 
 2. Open-Source- und Freeware-Audio-Communities
@@ -135,7 +136,7 @@ Danach monatlich: ein neues Preset-Pack, ein Feature-Clip oder ein kurzer Forsch
 
 3. Synth Anatomy / Synthtopia / Create Digital Music / Bedroom Producers Blog
    - Nur kurze, spezifische Pitches.
-   - Schwerpunkt: "resonance with meaning", "pre-audio control", "music synthesizer".
+   - Schwerpunkt: "resonance with meaning", "possible sound spaces", "music synthesizer".
 
 4. Ein Demo-Video auf YouTube/Vimeo
    - Kein YouTuber-Stil noetig.
@@ -161,7 +162,7 @@ Danach monatlich: ein neues Preset-Pack, ein Feature-Clip oder ein kurzer Forsch
 1. `01-main-generation-panel.png`
    - Impulse A/B, Alpha, Injection Modes sichtbar; Caption: "A/B mark the hidden sound space."
 2. `02-drift-bpm-sync.png`
-   - Drift-LFOs mit Clock/Synchronisation; Caption: "Drift moves the space before audio exists."
+   - Drift-LFOs mit Clock/Synchronisation; Caption: "Drift moves the space of possibilities."
 3. `03-generative-sequencer-strands.png`
    - Polyphoner generativer Sequencer mit mehreren Strands.
 4. `04-wavetable-sampler-mode.png`
@@ -185,7 +186,7 @@ Danach monatlich: ein neues Preset-Pack, ein Feature-Clip oder ein kurzer Forsch
 1. 90 Sekunden: "Resonance with meaning"
    - 0-15s: Hero-Satz, Generation Panel zeigen.
    - 15-35s: Impuls A/B markieren einen inneren Klangraum, keine zwei Samples.
-   - 35-65s: Alpha, Drift und Injection Modes bewegen diesen Raum vor der Audio-Entstehung.
+   - 35-65s: Alpha, Drift und Injection Modes bewegen diesen Moeglichkeitsraum.
    - 65-90s: Generate, Fragment spielen, mit Synth-Werkzeugen formen.
 
 2. 2 Minuten: "BPM-synced Drift in v1.7"
@@ -208,13 +209,13 @@ Resonance with meaning.
 
 ### Kurzbeschreibung, English
 
-T5ynth is an innovative music synthesizer built around resonance with meaning. Impulse A and Impulse B mark two poles of meaning in the selected engine: Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2. The space between them becomes shapeable before audio exists: pull, push, perturb, bend along sound qualities, open individual dimensions, change where one idea enters the other, and let the space drift. T5ynth then renders a playable fragment that can be shaped with sampler/wavetable playback, filters, envelopes, LFOs, sequencing, delay and reverb.
+T5ynth is an innovative music synthesizer built around resonance with meaning. Impulse A and Impulse B mark two poles of meaning in the selected engine: Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2. T5ynth opens the space of possible sounds between them: pull, push, perturb, bend along sound qualities, open individual dimensions, change where one idea enters the other, and let the space drift. T5ynth then renders a playable fragment that can be shaped with sampler/wavetable playback, filters, envelopes, LFOs, sequencing, delay and reverb.
 
 ### Website-/README-Teaser, English
 
-T5ynth does not start with a sample or a wavetable. It starts one step earlier: in the resonance space between two poles of meaning. Impulse A and Impulse B are not two finished results; they mark a space of possible sounds in the selected engine.
+T5ynth does not start with a sample or a wavetable. It opens a resonance space between two poles of meaning. Impulse A and Impulse B are not two finished results; they mark a space of possible sounds in the selected engine.
 
-Alpha, Magnitude, Noise, sound-character axes, the Dimension Explorer, Injection Modes and Drift move that space before audio exists. Only then does T5ynth render a short playable fragment. From there, the workflow becomes familiar synthesis: sampler or wavetable playback, filters, envelopes, LFOs, sequencing, delay and reverb.
+Alpha, Magnitude, Noise, sound-character axes, the Dimension Explorer, Injection Modes and Drift move that space of possibilities. T5ynth renders a short playable fragment from the current state. From there, the workflow becomes familiar synthesis: sampler or wavetable playback, filters, envelopes, LFOs, sequencing, delay and reverb.
 
 In v1.7.0-beta.1, LFOs, Drift LFOs and Delay can be clock-synced, tying slow multi-bar movement, background regeneration and tempo-locked delay more closely to DAW, sequencer and performance workflows.
 
@@ -226,9 +227,9 @@ Hi [Name],
 
 I would like to share T5ynth v1.7.0-beta.1, an innovative music synthesizer that gives musicians a sound space they define themselves.
 
-The Generation section starts with Impulse A and Impulse B. These are not two samples, two song requests or two oscillators; they are two markers that open up a space of possible sounds in the selected engine: Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2. Alpha, Magnitude, Noise, sound-character axes, the Dimension Explorer, Injection Modes and Drift move that space before audio is generated. T5ynth then renders a short playable fragment that can be used as a sampler or wavetable source and shaped with familiar synth tools.
+The Generation section starts with Impulse A and Impulse B. These are not two samples, two song requests or two oscillators; they are two markers that open up a space of possible sounds in the selected engine: Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2. Alpha, Magnitude, Noise, sound-character axes, the Dimension Explorer, Injection Modes and Drift move that space of possibilities. T5ynth then renders a short playable fragment that can be used as a sampler or wavetable source and shaped with familiar synth tools.
 
-The new version adds BPM sync for LFOs, Drift LFOs and Delay. Slow pre-audio movement, background auto-regeneration and delay movement can now be tied to musical divisions across multiple bars, making T5ynth easier to connect to DAW and sequencer workflows.
+The new version adds BPM sync for LFOs, Drift LFOs and Delay. Slow sound-space movement, background auto-regeneration and delay movement can now be tied to musical divisions across multiple bars, making T5ynth easier to connect to DAW and sequencer workflows.
 
 Release: https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1
 Repository: https://github.com/joeriben/t5ynth
@@ -241,12 +242,12 @@ Best,
 
 T5ynth v1.7.0-beta.1 has been released.
 
-T5ynth is an innovative GPLv3 music synthesizer that gives musicians a sound space they define themselves. Its Generation section opens a pre-audio space in the selected engine: Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2. Impulse A and Impulse B mark that space, while Alpha, Magnitude, Noise, sound-character axes, a 768-dimension explorer and diffusion-layer injection modes move it before audio is generated. The resulting fragment can then be played through sampler or wavetable modes and processed with filters, envelopes, LFOs, drift, sequencing, delay and reverb.
+T5ynth is an innovative GPLv3 music synthesizer that gives musicians a sound space they define themselves. Its Generation section opens a space of possible sounds in the selected engine: Stable Audio Open 1.0, Stable Audio Open Small, or AudioLDM2. Impulse A and Impulse B mark that space, while Alpha, Magnitude, Noise, sound-character axes, a 768-dimension explorer and diffusion-layer injection modes move it as a space of possibilities. The resulting fragment can then be played through sampler or wavetable modes and processed with filters, envelopes, LFOs, drift, sequencing, delay and reverb.
 
 New in v1.7.0-beta.1:
 
 - BPM sync for LFOs, Drift LFOs and Delay Time.
-- Multi-bar drift divisions for slow pre-audio and timbral movement.
+- Multi-bar drift divisions for slow sound-space and timbral movement.
 - Host transport sync when available, with standalone sequencer fallback.
 - Fixes for preset restore of clock modes and injection modes.
 - Per-voice LFO Trigger mode fix.
@@ -266,7 +267,7 @@ Title: T5ynth v1.7.0-beta.1 - resonance with meaning
 
 I released T5ynth v1.7.0-beta.1. Short version: it is an innovative music synthesizer that gives musicians a sound space they define themselves.
 
-The UI calls the two text fields Impulse A and Impulse B. These are not ChatGPT commands, song requests, two samples or two oscillators, but musical impulses such as "steady clean saw wave, C3" and "120 bpm syncopated transient pattern". A/B mark an inner sound space. Alpha, Magnitude, Noise, sound-character axes, the Dimension Explorer, Injection Modes and Drift move that space before audio exists.
+The UI calls the two text fields Impulse A and Impulse B. These are not ChatGPT commands, song requests, two samples or two oscillators, but musical impulses such as "steady clean saw wave, C3" and "120 bpm syncopated transient pattern". A/B mark an inner sound space. Alpha, Magnitude, Noise, sound-character axes, the Dimension Explorer, Injection Modes and Drift move that space of possibilities.
 
 T5ynth then renders a short playable fragment. From there, it becomes a familiar synth workflow: sampler or wavetable playback, filters, envelopes, LFOs, drift, sequencing, delay and reverb.
 
@@ -280,21 +281,21 @@ I am especially interested in audible A/Bs: which impulse pairs and injection mo
 
 ### Social posts, English
 
-1. T5ynth v1.7.0-beta.1 is out: an innovative music synth built around resonance with meaning. A/B mark the space; Alpha, Drift and Injection move it before audio exists. https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1
+1. T5ynth v1.7.0-beta.1 is out: an innovative music synth built around resonance with meaning. A/B mark a space of possible sounds; Alpha, Drift and Injection move that space. https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1
 
 2. Impulse A and B in T5ynth are not two samples, song requests or oscillators. They mark a sound space inside the model. Then Alpha, Noise, axes, Dimension Explorer, Injection and Drift decide where that space becomes audio. https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1
 
-3. A sound can begin before audio exists: cross "steady clean saw wave, C3" with "120 bpm syncopated transient pattern". T5ynth turns that space into a playable fragment for sampler, wavetable, filters and sequencing. v1.7 adds clocked Drift. https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1
+3. T5ynth opens hidden spaces of possible sound: cross "steady clean saw wave, C3" with "120 bpm syncopated transient pattern". T5ynth turns that space into a playable fragment for sampler, wavetable, filters and sequencing. v1.7 adds clocked Drift. https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1
 
-4. New clip: one impulse pair, six Injection Modes. Not six orders sent to a black box, but six interventions in the sound space before generation. This is where T5ynth becomes interesting: as an instrument. [Video link]
+4. New clip: one impulse pair, six Injection Modes. Not six orders sent to a black box, but six interventions in the hidden sound space. This is where T5ynth becomes interesting: as an instrument. [Video link]
 
 ### LinkedIn / Research post, English
 
-T5ynth v1.7.0-beta.1 is out. For me, the project is a practical thesis: generative models do not have to be result machines. They can also be treated as spaces where musical decisions happen before the result appears.
+T5ynth v1.7.0-beta.1 is out. For me, the project is a practical thesis: generative models do not have to be result machines. They can also be treated as spaces of possibility where musical decisions happen.
 
-T5ynth gives musicians a sound space they define themselves. Impulse A and B mark that space in the selected audio engine; if you want to, Alpha, Semantic Axes, Noise, the Dimension Explorer, Injection Modes and Drift move it before audio exists. Only then does T5ynth render a playable fragment that can be shaped with synth tools.
+T5ynth gives musicians a sound space they define themselves. Impulse A and B mark that space in the selected audio engine; if you want to, Alpha, Semantic Axes, Noise, the Dimension Explorer, Injection Modes and Drift move it as a space of possibilities. T5ynth then renders a playable fragment that can be shaped with synth tools.
 
-The new version adds BPM sync for LFOs, Drift LFOs and Delay. This makes movement of the pre-audio sound space rhythmically connectable to DAWs, sequencers, repetition and performance.
+The new version adds BPM sync for LFOs, Drift LFOs and Delay. This makes movement of the possible-sound space rhythmically connectable to DAWs, sequencers, repetition and performance.
 
 It is also an arts education question: how can AI systems be reworked so they foster access, exploration, judgment and creative agency rather than consumption and substitution?
 

@@ -2,8 +2,9 @@
 
 **Resonance with meaning.**
 
-With two short impulses, this innovative music synthesizer opens up a hidden
-space between two poles of meaning before audio comes into being. Set those poles as
+T5ynth opens hidden spaces of possible sound. Two short impulses mark the poles
+of a space of meaning you define. The synth lets you explore what can become
+audible between them. Set those poles as
 textures, transients, patterns, sonic and musical fragments, field recordings,
 everyday noises, orchestral gestures, alien voices, human emotional
 expressions, or impossible hybrids.
@@ -12,12 +13,12 @@ The fields labeled **Impulse A** and **Impulse B** are not two samples, two song
 requests, or two oscillators. They are two markers for the space you want to
 explore. You can pull between the markers, push the space harder or softer,
 disturb it, bend it along sound qualities, open individual dimensions, change
-where one idea enters the other, and let the space drift over time before
-audio exists.
+where one idea enters the other, and let the space drift over time while it
+remains open as a space of possibilities.
 
 Most AI audio tools hide that space and only return an audio result. T5ynth
-turns the pre-audio space into the instrument. Generation is not a separate AI
-step after the synth; the synth reaches into the generation process itself.
+turns this space of possible sound into the instrument. Generation is not a
+separate AI step after the synth; the synth reaches into the generation process itself.
 The rendered fragment is one stage in a signal path that continues through
 sampler or wavetable playback, filters, envelopes, LFOs, sequencing, delay,
 reverb, and limiting.
@@ -39,28 +40,27 @@ not the current public release assets.
 T5ynth is easiest to understand from its signal flow.
 
 In a conventional synth, an oscillator produces audio immediately: sine, saw,
-square, noise, sample, wavetable. T5ynth inserts a stage before that. The
-T5ynth Oscillator is a meta-oscillator: it does not begin with one waveform or
-one sample, but opens a bounded hidden sound space inside the selected audio
-model. Within that space, many possible sounds can exist before any one of them
-is rendered. The main musical act is to explore that space and decide which
-state becomes a short audio fragment.
+square, noise, sample, wavetable. T5ynth opens a bounded hidden sound space
+inside the selected audio model. The T5ynth Oscillator is a meta-oscillator:
+it does not begin with one waveform or one sample, but with a space of possible
+sounds. The main musical act is to explore that space and decide which state
+becomes a short audio fragment.
 
-The fields labeled **Impulse A** and **Impulse B** belong to that pre-audio stage.
+The fields labeled **Impulse A** and **Impulse B** belong to that hidden-space stage.
 They do not mean a ChatGPT conversation, a song request, or a rendered audio
 file. A and B are text impulses that mark one inner space. They do not
 produce two samples, and they are not two oscillators.
 
-The interface names for those pre-audio operations are **Alpha** for the pull
+The interface names for those space-shaping operations are **Alpha** for the pull
 between A and B, **Magnitude** for how strongly the space is pushed,
 **Noise** for perturbation, **sound-character axes** for broad directions,
 **Dimension Explorer** for individual dimensions, **Injection Modes** for where
 B enters A during generation, and **Drift** for movement over time. They do
-not mix audio. They move or reshape the hidden sound space before audio exists.
+not mix audio. They move or reshape the hidden sound space.
 
 **Generate** renders the current state of that space into audio, but it is
-not where the instrument starts. T5ynth has already shaped the generation
-before audio exists. The rendered fragment is then carried further through
+not where the instrument starts. T5ynth has already shaped the generation.
+The rendered fragment is then carried further through
 sampler playback or wavetable extraction, followed by filter, envelopes, LFOs,
 sequencers, delay, reverb, limiter, and presets.
 
@@ -70,7 +70,7 @@ The instrument flow is therefore:
    example "steady clean saw wave, C3" and "120 bpm syncopated transient
    pattern".
 2. Alpha, Semantic Axes, Noise, Dimension Explorer, Injection Modes, and Drift
-   move that space before audio exists.
+   move that space of possibilities.
 3. Shape the sonic flow as a **Sampler** or **Wavetable** engine, with filters,
    envelopes, LFOs, sequencers, delay, reverb, limiter, presets, and
    **Drift Modulators & Auto-Regenerate**.
@@ -95,7 +95,7 @@ find out what that marker can become.
 About the name: **T5** is the text encoder used by the Stable Audio engines.
 It turns a phrase into control data that the audio model can use. You do not
 need to know T5 to use T5ynth. The practical point is simpler: meaning opens
-a model space before it becomes audio.
+a model space of possible sound.
 
 From there, T5ynth behaves much more like an instrument than like an audio
 generator website:
@@ -104,7 +104,7 @@ generator website:
 2. If you want to, you move through that space with Alpha, Magnitude,
    model-space noise, sound-character axes, the Dimension Explorer, Injection
    Modes, and Drift.
-3. The diffusion backend renders the current pre-audio state into short stereo
+3. The diffusion backend renders the current internal state into short stereo
    audio.
 4. The synth engine plays that fragment as a sampler source or converts it
    into a scannable wavetable.
@@ -174,20 +174,19 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full release history.
 
 ## Core Concepts
 
-### The Pre-Audio Sound Space
+### The Possible Sound Space
 
-The center of T5ynth is the sound space before audio exists. Traditional
-oscillators generate sine, saw, square, noise, or sample playback. T5ynth
-starts inside the model, at the stage where meaning still shapes what sound can
-become.
+The center of T5ynth is the space of possible sound. Traditional oscillators
+generate sine, saw, square, noise, or sample playback. T5ynth starts inside the
+model, where meaning shapes what sound can become.
 
 Behind the scenes, that space is numerical. You can ignore that while playing,
 just as you can use FM without solving the equations.
 
 - **Impulse A/B and Alpha** mark and move through the model's inner sound space.
-  This is not an audio crossfade; the midpoint is a new pre-audio state.
+  This is not an audio crossfade; the midpoint is a new internal state.
 - **Magnitude** changes how strongly that state steers the diffusion model.
-- **Model-space noise** perturbs the state before audio exists.
+- **Model-space noise** perturbs that state.
 - **Sound-character axes** add musically legible directions such as noisy/tonal or
   sustained/rhythmic. Sometimes they work better, sometimes not, depending on
   the impulses.
@@ -197,22 +196,22 @@ just as you can use FM without solving the equations.
   interesting.
 - **Injection Modes** change where B enters A inside the
   diffusion process: Linear, Step-in, Layer, Combo 1, Combo 2, Combo 3.
-- **Drift** keeps the pre-audio state moving over time and can trigger new
+- **Drift** keeps the possible-sound space moving over time and can trigger new
   generations in the background.
 
 ### Drift Modulators & Auto-Regenerate
 
-Drift Modulators & Auto-Regenerate turn the pre-audio space into something
+Drift Modulators & Auto-Regenerate turn the possible-sound space into something
 that can evolve. Three slow Drift LFOs can target generation-level parameters
 such as Alpha, Semantic Axes, Noise, and Magnitude. When Auto-Regenerate is active,
-T5ynth generates new audio in the background as the pre-audio state moves,
+T5ynth generates new audio in the background as the possible-sound space moves,
 then crossfades the new fragment into playback. Depending on the host machine,
 regeneration can range from roughly 0.1 seconds on an RTX 6000-class GPU to
 several seconds on a Mac M-series processor without a dedicated AI-capable
 graphics card.
 
 With v1.7, those drift cycles can be clock-synced to musical divisions, so
-long pre-audio motion can sit inside a DAW, sequencer, or standalone tempo
+long sound-space motion can sit inside a DAW, sequencer, or standalone tempo
 workflow.
 
 ### Sampler and Wavetable Modes
