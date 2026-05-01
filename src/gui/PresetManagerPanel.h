@@ -202,9 +202,10 @@ public:
         if (currentMode == Mode::Save)
         {
             // Sized so that after the drawer's own reduced(12, 8) padding
-            // and the fixed name/warning/bank/tags/strip rows, ~40 px remain
-            // for the tag-chip flow area (good for one or two chip rows).
-            const int drawerH = 200;
+            // and the fixed name/warning/bank/tags/strip rows, the active
+            // tag-chip area gets ~40 px and the vocabulary picker beneath
+            // it gets ~70 px (good for two rows of suggestion chips).
+            const int drawerH = 280;
             saveDrawer.setBounds(area.removeFromBottom(drawerH));
             area.removeFromBottom(8);
         }
@@ -1482,14 +1483,12 @@ private:
 
             // Tag chips fill whatever space chipArea got from resized().
             chipRects.clear();
-            if (chipArea.isEmpty()) return;
-
-            int x = chipArea.getX();
-            int y = chipArea.getY();
             const int rowH = 22;
             const int gapX = 4;
             const int gapY = 4;
-            for (int i = 0; i < tags.size(); ++i)
+            int x = chipArea.getX();
+            int y = chipArea.getY();
+            for (int i = 0; ! chipArea.isEmpty() && i < tags.size(); ++i)
             {
                 const auto& t = tags[i];
                 const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(t) + 28;
@@ -1516,6 +1515,47 @@ private:
                            juce::Justification::centred, false);
                 chipRects.push_back({ chip, i });
                 x += chipW + gapX;
+            }
+
+            // ── Vocabulary cloud (suggestions) ─────────────────────────
+            // Outline-only chips below the active set. Already-selected
+            // tags are filtered out so the cloud only ever offers new
+            // additions; clicking adds via the same idempotent path
+            // used by drag-and-drop.
+            cloudChipRects.clear();
+            if (! cloudArea.isEmpty() && ! tagVocabulary.empty())
+            {
+                auto local = cloudArea;
+                auto headerRect = local.removeFromTop(14);
+                g.setColour(kDim);
+                g.setFont(juce::FontOptions(kUiLabelFontMin, juce::Font::bold));
+                g.drawText("Known tags  \xe2\x80\x94  click to add",
+                           headerRect, juce::Justification::centredLeft, false);
+                local.removeFromTop(2);
+
+                int cx = local.getX();
+                int cy = local.getY();
+                const int cRowH = 20;
+                for (size_t vi = 0; vi < tagVocabulary.size(); ++vi)
+                {
+                    const auto& t = tagVocabulary[vi];
+                    if (t.isEmpty() || tags.contains(t, true)) continue;
+                    const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(t) + 16;
+                    if (cx + chipW > local.getRight())
+                    {
+                        cx = local.getX();
+                        cy += cRowH + gapY;
+                        if (cy + cRowH > local.getBottom()) break;
+                    }
+                    const juce::Rectangle<int> chip(cx, cy, chipW, cRowH - 2);
+                    g.setColour(kBorder);
+                    g.drawRoundedRectangle(chip.toFloat(), 3.0f, 1.0f);
+                    g.setColour(juce::Colours::white.withAlpha(0.78f));
+                    g.setFont(juce::FontOptions(11.0f));
+                    g.drawText(t, chip.reduced(6, 1), juce::Justification::centredLeft, false);
+                    cloudChipRects.push_back({ chip, (int) vi });
+                    cx += chipW + gapX;
+                }
             }
         }
 
@@ -1553,6 +1593,15 @@ private:
             tagsLabel.setBounds(tagsRow.removeFromLeft(54));
             tagInput.setBounds(tagsRow.removeFromRight(120));
             area.removeFromTop(4);
+
+            // Bottom slice = vocabulary cloud (header + chip flow). Empty
+            // when the user has no saved tags yet, in which case the active
+            // chip area absorbs the space.
+            const int cloudH = tagVocabulary.empty()
+                                   ? 0
+                                   : juce::jlimit(40, 100, area.getHeight() / 2 + 10);
+            cloudArea = (cloudH > 0) ? area.removeFromBottom(cloudH)
+                                     : juce::Rectangle<int>{};
             chipArea = area;
         }
 
@@ -1574,6 +1623,22 @@ private:
                     }
                     return;
                 }
+            }
+
+            // Vocabulary-cloud click: add the suggested tag (idempotent
+            // case-insensitive — same path as drag-and-drop drop).
+            for (const auto& cc : cloudChipRects)
+            {
+                if (! cc.bounds.contains(p)) continue;
+                if (cc.index < 0 || cc.index >= (int) tagVocabulary.size()) return;
+                const auto& tag = tagVocabulary[(size_t) cc.index];
+                if (tag.isNotEmpty())
+                {
+                    tags.addIfNotAlreadyThere(tag, true);
+                    resized();
+                    repaint();
+                }
+                return;
             }
         }
 
@@ -1673,7 +1738,7 @@ private:
                 "very","quite","more","less","some","any","for","you","not",
                 "but","are","was","were","has","had","its","their","them",
                 "like","just","only","also","than","then","there","what",
-                "when","while","which","who","why","how","ing"
+                "when","while","which","who","why","how"
             };
             auto words = juce::StringArray::fromTokens(src,
                 " \t\n\r,.;:!?\"'/\\()[]{}_<>", {});
@@ -1715,8 +1780,10 @@ private:
         juce::String              promptA, promptB;
 
         struct ChipRect { juce::Rectangle<int> bounds; int index; };
-        std::vector<ChipRect> chipRects;
+        std::vector<ChipRect> chipRects;        // active tags (× to remove)
+        std::vector<ChipRect> cloudChipRects;   // vocabulary suggestions (click to add)
         juce::Rectangle<int>  chipArea;
+        juce::Rectangle<int>  cloudArea;
         bool                  dropHover = false;
     };
     SaveDrawer saveDrawer;
