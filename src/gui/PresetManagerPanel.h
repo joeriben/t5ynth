@@ -26,6 +26,7 @@
  * enough to scan the whole library on each open.
  */
 class PresetManagerPanel : public juce::Component,
+                           public juce::DragAndDropContainer,
                            private juce::ListBoxModel,
                            private juce::KeyListener
 {
@@ -319,6 +320,7 @@ public:
                              prefill.existingBanks,
                              std::move(prefill.existingPathKeys));
         saveDrawer.setVisible(true);
+        detail.setDragSourceEnabled(true);
         resized();
         repaint();
         saveDrawer.focusName();
@@ -334,6 +336,7 @@ public:
         cancelBtn.setVisible(true);
         statusLabel.setVisible(true);
         saveDrawer.setVisible(false);
+        detail.setDragSourceEnabled(false);
         conflictEntryIndex = -1;
         resized();
         repaint();
@@ -1005,6 +1008,12 @@ private:
             tagInput.setBounds(tagInputRow.removeFromRight(tagInputW));
         }
 
+        /** Toggled by the owner when entering / leaving Save mode. While
+         *  off, chip clicks behave exactly as before (× to remove). While
+         *  on, a chip drag starts a DragAndDrop session whose description
+         *  is the tag string. */
+        void setDragSourceEnabled(bool e) { dragSourceEnabled = e; }
+
     private:
         static void configureBtn(juce::TextButton& b, juce::Colour c)
         {
@@ -1155,11 +1164,26 @@ private:
 
         void mouseDown(const juce::MouseEvent& e) override
         {
-            if (locked) return;
+            pressedChipIndex = -1;
             const auto p = e.getPosition();
+
+            // Drag-source: any chip can be picked up while save mode is
+            // active. The actual juce::DragAndDropContainer::startDragging
+            // is deferred until mouseDrag once the press has moved enough
+            // to be unambiguously a drag rather than a click.
+            if (dragSourceEnabled)
+            {
+                for (const auto& cr : chipRects)
+                    if (cr.bounds.contains(p)) { pressedChipIndex = cr.index; break; }
+            }
+
+            if (locked) return;
+
+            // The × hitbox (right ~16 px of each chip) removes the tag —
+            // user-edited tags only, factory-locked presets fall through
+            // because of the `locked` early-return above.
             for (const auto& cr : chipRects)
             {
-                // The × hitbox is the right ~16 px of each chip
                 const auto closeBox = juce::Rectangle<int>(
                     cr.bounds.getRight() - 16, cr.bounds.getY(), 16, cr.bounds.getHeight());
                 if (closeBox.contains(p))
@@ -1171,10 +1195,25 @@ private:
                         resized();
                         repaint();
                     }
+                    pressedChipIndex = -1;   // × overrides drag intent
                     return;
                 }
             }
         }
+
+        void mouseDrag(const juce::MouseEvent& e) override
+        {
+            if (! dragSourceEnabled || pressedChipIndex < 0) return;
+            if (e.getDistanceFromDragStart() < 4) return;
+            if (! juce::isPositiveAndBelow(pressedChipIndex, tags.size())) return;
+            if (auto* container = findParentComponentOfClass<juce::DragAndDropContainer>())
+            {
+                container->startDragging(juce::var(tags[pressedChipIndex]), this);
+                pressedChipIndex = -1;   // consumed
+            }
+        }
+
+        void mouseUp(const juce::MouseEvent&) override { pressedChipIndex = -1; }
 
         bool entryValid = false;
         bool hasAxes = false;
@@ -1199,6 +1238,9 @@ private:
         struct ChipRect { juce::Rectangle<int> bounds; int index; };
         std::vector<ChipRect> chipRects;
 
+        int  pressedChipIndex   = -1;
+        bool dragSourceEnabled  = false;
+
         juce::TextButton loadBtn { "Load" };
         juce::TextEditor tagInput;
     };
@@ -1211,7 +1253,9 @@ private:
      *  existing file), Cancel, and a "+ copy" quick-suffix helper. The
      *  drawer is self-contained: it only emits onSaveClicked / onCancelClicked
      *  and exposes getName/getTags/getBank for the owner to consume on save. */
-    class SaveDrawer : public juce::Component, private juce::KeyListener
+    class SaveDrawer : public juce::Component,
+                       public juce::DragAndDropTarget,
+                       private juce::KeyListener
     {
     public:
         std::function<void()> onSaveClicked;
@@ -1364,9 +1408,51 @@ private:
                             juce::sendNotificationSync);
         }
 
+        // ── DragAndDropTarget ──
+        // Source is the Detail-card chips: dropping a chip here adds the
+        // tag to the drawer's tag set (idempotent — already-present tags
+        // are dropped silently rather than duplicated).
+        bool isInterestedInDragSource(const SourceDetails& d) override
+        {
+            return d.description.isString() && d.description.toString().isNotEmpty();
+        }
+        void itemDragEnter(const SourceDetails&) override
+        {
+            dropHover = true;
+            repaint();
+        }
+        void itemDragExit(const SourceDetails&) override
+        {
+            dropHover = false;
+            repaint();
+        }
+        void itemDropped(const SourceDetails& d) override
+        {
+            dropHover = false;
+            const auto tag = d.description.toString().trim();
+            // Case-insensitive uniqueness matches the invariant that
+            // configure() establishes via `removeDuplicates(true)`.
+            if (tag.isNotEmpty())
+            {
+                tags.addIfNotAlreadyThere(tag, true);
+                resized();
+            }
+            repaint();
+        }
+
         void paint(juce::Graphics& g) override
         {
             paintCard(g, getLocalBounds());
+
+            // Drag-hover indicator: tints the chip area with the accent
+            // colour while the user is hovering a tag-chip drag over it.
+            if (dropHover && ! chipArea.isEmpty())
+            {
+                g.setColour(kAccent.withAlpha(0.14f));
+                g.fillRoundedRectangle(chipArea.toFloat(), 4.0f);
+                g.setColour(kAccent.withAlpha(0.55f));
+                g.drawRoundedRectangle(chipArea.toFloat(), 4.0f, 1.5f);
+            }
 
             // Tag chips fill whatever space chipArea got from resized().
             chipRects.clear();
@@ -1553,6 +1639,7 @@ private:
         struct ChipRect { juce::Rectangle<int> bounds; int index; };
         std::vector<ChipRect> chipRects;
         juce::Rectangle<int>  chipArea;
+        bool                  dropHover = false;
     };
     SaveDrawer saveDrawer;
 
