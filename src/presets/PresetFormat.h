@@ -55,13 +55,14 @@ public:
         juce::StringArray tags;
 
         // Research-mode injection state. Old .t5p files predating this feature
-        // leave `injectionMode` empty and the floats at NaN — the panel keeps
-        // its current values (linear / 0.75 / 4 / 16) on load instead of
-        // overwriting them. New presets always carry all four fields.
-        juce::String injectionMode;
-        float lateMixAmount = std::numeric_limits<float>::quiet_NaN();
-        float splitStart    = std::numeric_limits<float>::quiet_NaN();
-        float splitEnd      = std::numeric_limits<float>::quiet_NaN();
+        // get the canonical pre-injection defaults — linear / 0.75 / 4 / 16 —
+        // so loading an old preset reproduces its original sound regardless
+        // of which mode the panel was on. New presets always overwrite these
+        // with their saved values.
+        juce::String injectionMode { "linear" };
+        float lateMixAmount = 0.75f;
+        float splitStart    = 4.0f;
+        float splitEnd      = 16.0f;
     };
 
     /** Save current state to a .t5p file with embedded audio. */
