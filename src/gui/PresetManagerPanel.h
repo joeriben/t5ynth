@@ -365,6 +365,65 @@ public:
 
 private:
     // ─── Helpers ─────────────────────────────────────────────────────────
+
+    /** Visual variants of the tag-chip primitive shared by Detail-card,
+     *  Save-Drawer active set, and Save-Drawer suggestion cloud. */
+    enum class ChipKind
+    {
+        ActiveRemovable,   // Save-Drawer active set: filled, with × hitbox
+        ActiveLocked,      // Detail-card on a factory preset: filled, no ×
+        Suggestion         // Save-Drawer cloud: outline-only, click to add
+    };
+
+    /** Render one tag-chip. Returns the bounding rectangle so callers can
+     *  cache it for hit-testing. Geometry (rowH, padding, font, corner
+     *  radius) is identical across variants — only fill style and the
+     *  trailing × differ — so chips read as the same primitive wherever
+     *  they appear. */
+    static juce::Rectangle<int> paintTagChip(juce::Graphics& g,
+                                             int x, int y,
+                                             const juce::String& label,
+                                             ChipKind kind)
+    {
+        const int rowH = 22;
+        const int chipH = rowH - 2;
+        const int paddingX = (kind == ChipKind::ActiveRemovable) ? 28
+                            : (kind == ChipKind::ActiveLocked)   ? 14
+                                                                 : 14;
+        const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(label) + paddingX;
+        const juce::Rectangle<int> chip(x, y, chipW, chipH);
+
+        if (kind == ChipKind::Suggestion)
+        {
+            g.setColour(kBorder);
+            g.drawRoundedRectangle(chip.toFloat(), 3.0f, 1.0f);
+        }
+        else
+        {
+            g.setColour(kSurface.brighter(0.08f));
+            g.fillRoundedRectangle(chip.toFloat(), 3.0f);
+            g.setColour(kBorder);
+            g.drawRoundedRectangle(chip.toFloat(), 3.0f, 1.0f);
+        }
+
+        g.setColour(kind == ChipKind::Suggestion ? juce::Colours::white.withAlpha(0.78f)
+                                                 : juce::Colours::white);
+        g.setFont(juce::FontOptions(11.0f));
+        auto labelArea = chip.reduced(7, 2);
+        if (kind == ChipKind::ActiveRemovable) labelArea.removeFromRight(14);
+        g.drawText(label, labelArea, juce::Justification::centredLeft, false);
+
+        if (kind == ChipKind::ActiveRemovable)
+        {
+            const juce::Rectangle<int> closeBox(chip.getRight() - 16, chip.getY(),
+                                                16, chip.getHeight());
+            g.setColour(kDimmer);
+            g.drawText(juce::String::fromUTF8("\xc3\x97"), closeBox,
+                       juce::Justification::centred, false);
+        }
+        return chip;
+    }
+
     static void configureEditor(juce::TextEditor& e, const juce::String& placeholder)
     {
         e.setTextToShowWhenEmpty(placeholder, kDimmer);
@@ -1142,33 +1201,20 @@ private:
             const int rowH = 22;
             const int gapX = 4;
             const int gapY = 4;
+            const auto kind = locked ? ChipKind::ActiveLocked : ChipKind::ActiveRemovable;
 
             for (int i = 0; i < tags.size(); ++i)
             {
                 const auto& t = tags[i];
-                const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(t) + (locked ? 14 : 28);
+                const int paddingX = locked ? 14 : 28;
+                const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(t) + paddingX;
                 if (x + chipW > r.getRight())
                 {
                     x = r.getX();
                     y += rowH + gapY;
                     if (y + rowH > r.getBottom()) break;
                 }
-                const juce::Rectangle<int> chip(x, y, chipW, rowH - 2);
-                g.setColour(kSurface.brighter(0.08f));
-                g.fillRoundedRectangle(chip.toFloat(), 3.0f);
-                g.setColour(kBorder);
-                g.drawRoundedRectangle(chip.toFloat(), 3.0f, 1.0f);
-                g.setColour(juce::Colours::white);
-                g.setFont(juce::FontOptions(11.0f));
-                auto labelArea = chip.reduced(7, 2);
-                if (! locked) labelArea.removeFromRight(14);
-                g.drawText(t, labelArea, juce::Justification::centredLeft, false);
-                if (! locked)
-                {
-                    const juce::Rectangle<int> closeBox(chip.getRight() - 16, chip.getY(), 16, chip.getHeight());
-                    g.setColour(kDimmer);
-                    g.drawText(juce::String::fromUTF8("\xc3\x97"), closeBox, juce::Justification::centred, false);
-                }
+                const auto chip = paintTagChip(g, x, y, t, kind);
                 chipRects.push_back({ chip, i });
                 x += chipW + gapX;
             }
@@ -1498,30 +1544,17 @@ private:
                     y += rowH + gapY;
                     if (y + rowH > chipArea.getBottom()) break;
                 }
-                const juce::Rectangle<int> chip(x, y, chipW, rowH - 2);
-                g.setColour(kSurface.brighter(0.08f));
-                g.fillRoundedRectangle(chip.toFloat(), 3.0f);
-                g.setColour(kBorder);
-                g.drawRoundedRectangle(chip.toFloat(), 3.0f, 1.0f);
-                g.setColour(juce::Colours::white);
-                g.setFont(juce::FontOptions(11.0f));
-                auto labelArea = chip.reduced(7, 2);
-                labelArea.removeFromRight(14);
-                g.drawText(t, labelArea, juce::Justification::centredLeft, false);
-                const juce::Rectangle<int> closeBox(chip.getRight() - 16, chip.getY(),
-                                                    16, chip.getHeight());
-                g.setColour(kDimmer);
-                g.drawText(juce::String::fromUTF8("\xc3\x97"), closeBox,
-                           juce::Justification::centred, false);
+                const auto chip = paintTagChip(g, x, y, t, ChipKind::ActiveRemovable);
                 chipRects.push_back({ chip, i });
                 x += chipW + gapX;
             }
 
             // ── Vocabulary cloud (suggestions) ─────────────────────────
-            // Outline-only chips below the active set. Already-selected
-            // tags are filtered out so the cloud only ever offers new
-            // additions; clicking adds via the same idempotent path
-            // used by drag-and-drop.
+            // Outline-only chips below the active set, same primitive as
+            // the active set so the two read as one chip family. Already-
+            // selected tags are filtered out so the cloud only offers new
+            // additions; clicking adds via the same idempotent path used
+            // by drag-and-drop.
             cloudChipRects.clear();
             if (! cloudArea.isEmpty() && ! tagVocabulary.empty())
             {
@@ -1535,24 +1568,18 @@ private:
 
                 int cx = local.getX();
                 int cy = local.getY();
-                const int cRowH = 20;
                 for (size_t vi = 0; vi < tagVocabulary.size(); ++vi)
                 {
                     const auto& t = tagVocabulary[vi];
                     if (t.isEmpty() || tags.contains(t, true)) continue;
-                    const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(t) + 16;
+                    const int chipW = juce::Font(juce::FontOptions(11.0f)).getStringWidth(t) + 14;
                     if (cx + chipW > local.getRight())
                     {
                         cx = local.getX();
-                        cy += cRowH + gapY;
-                        if (cy + cRowH > local.getBottom()) break;
+                        cy += rowH + gapY;
+                        if (cy + rowH > local.getBottom()) break;
                     }
-                    const juce::Rectangle<int> chip(cx, cy, chipW, cRowH - 2);
-                    g.setColour(kBorder);
-                    g.drawRoundedRectangle(chip.toFloat(), 3.0f, 1.0f);
-                    g.setColour(juce::Colours::white.withAlpha(0.78f));
-                    g.setFont(juce::FontOptions(11.0f));
-                    g.drawText(t, chip.reduced(6, 1), juce::Justification::centredLeft, false);
+                    const auto chip = paintTagChip(g, cx, cy, t, ChipKind::Suggestion);
                     cloudChipRects.push_back({ chip, (int) vi });
                     cx += chipW + gapX;
                 }
