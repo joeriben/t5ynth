@@ -150,7 +150,10 @@ public:
             if (name.isEmpty()) return;
             onSaveRequested(name, saveDrawer.getTags(), saveDrawer.getBank());
         };
-        saveDrawer.onCancelClicked = [this] { leaveSaveMode(); };
+        // Cancel from the Save-Drawer dismisses the entire overlay rather
+        // than dropping the user into Browse mode — the user came for a
+        // save action, "Cancel" means abort all the way back to the synth.
+        saveDrawer.onCancelClicked = [this] { if (onCloseRequested) onCloseRequested(); };
         saveDrawer.onConflictChanged = [this]
         {
             computeConflictRow();
