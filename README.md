@@ -27,11 +27,13 @@ Links:
 
 - User guide: bundled and rendered inside the app; source HTML lives at [`resources/T5ynth_Guide.html`](resources/T5ynth_Guide.html)
 - Preset collection: [`joeriben/T5ynth-Presets`](https://github.com/joeriben/T5ynth-Presets)
-- Current beta release: [`v1.7.0-beta.1`](https://github.com/joeriben/t5ynth/releases/tag/v1.7.0-beta.1)
+- Current beta release: [`v1.7.1-beta.2`](https://github.com/joeriben/T5ynth/releases/tag/v1.7.1-beta.2)
 
-Current tagged GitHub Releases publish the macOS and Windows installers.
-Linux, VST3, and AU build outputs exist in the project/build pipeline, but are
-not the current public release assets.
+Current tagged GitHub Releases publish:
+
+- **macOS** — single `.pkg` containing Standalone, VST3 plugin, and Audio Unit (AU) plugin.
+- **Windows** — `.exe` setup containing Standalone and VST3 plugin.
+- **Linux** — *best-effort.* Build from source via [`docs/DEV_BUILD.md`](docs/DEV_BUILD.md) or [`docs/LINUX_INSTALLATION.md`](docs/LINUX_INSTALLATION.md). The CI builds Linux Standalone and VST3 archives plus an Ubuntu `.deb` on every push; they are downloadable as workflow artifacts under the *Actions* tab but are intentionally not attached to release pages and are not officially supported.
 
 ---
 
